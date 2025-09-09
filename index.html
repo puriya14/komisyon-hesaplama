@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Ayaz Travel - Fiyat Hesaplama</title>
+  <meta name="theme-color" content="#0d47a1" />
+  <link rel="manifest" href="manifest.json" />
+  <style>
+    :root {
+      --primary: #0d47a1;
+      --primary-dark: #08306b;
+      --accent: #42a5f5;
+      --bg: #f4f6f9;
+      --white: #ffffff;
+      --text: #333333;
+    }
+
+    body {
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    header {
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      color: var(--white);
+      text-align: center;
+      padding: 2rem 1rem;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 2rem;
+      letter-spacing: 1px;
+    }
+
+    header p {
+      margin: 0.5rem 0 0;
+      font-size: 1.1rem;
+      opacity: 0.9;
+    }
+
+    main {
+      flex: 1;
+      padding: 2rem 1rem;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+    }
+
+    .calculator {
+      background: var(--white);
+      padding: 2rem;
+      border-radius: 16px;
+      max-width: 480px;
+      width: 100%;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.1);
+      transition: transform 0.2s ease;
+    }
+
+    .calculator:hover {
+      transform: translateY(-3px);
+    }
+
+    .calculator h2 {
+      margin-top: 0;
+      text-align: center;
+      color: var(--primary);
+    }
+
+    label {
+      display: block;
+      margin-bottom: 1.2rem;
+      font-weight: 500;
+    }
+
+    select, input {
+      width: 100%;
+      padding: 10px;
+      margin-top: 6px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      font-size: 1rem;
+      transition: border 0.2s ease;
+    }
+
+    input:focus, select:focus {
+      border-color: var(--accent);
+      outline: none;
+    }
+
+    button {
+      width: 100%;
+      padding: 12px;
+      background: var(--primary);
+      color: var(--white);
+      border: none;
+      border-radius: 10px;
+      font-size: 1.1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.3s ease, transform 0.1s ease;
+    }
+
+    button:hover {
+      background: var(--primary-dark);
+      transform: scale(1.02);
+    }
+
+    #results {
+      margin-top: 1.8rem;
+      background: #f1f5fb;
+      padding: 1.2rem;
+      border-radius: 10px;
+      text-align: center;
+      border: 1px solid #dbe2ef;
+    }
+
+    #results p {
+      margin: 0.6rem 0;
+      font-size: 1rem;
+    }
+
+    footer {
+      text-align: center;
+      padding: 1rem;
+      font-size: 0.9rem;
+      color: #777;
+      background: #e9edf5;
+      border-top: 1px solid #d0d7e2;
+    }
+
+    footer span {
+      display: block;
+      margin-top: 0.3rem;
+      font-size: 0.85rem;
+      font-weight: bold;
+      color: var(--primary-dark);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Ayaz Travel</h1>
+    <p>Otel Kontrat Fiyat Hesaplama Aracı</p>
+  </header>
+
+  <main>
+    <section class="calculator">
+      <h2>Fiyat Hesaplama</h2>
+      <form id="priceForm">
+        <label>
+          Brüt / Net Fiyat (ör: 200 €):
+          <input type="number" id="grossPrice" placeholder="200" required />
+        </label>
+
+        <label>
+          Kahvaltı Fiyatı (opsiyonel, €):
+          <input type="number" id="breakfastPrice" placeholder="0" />
+        </label>
+
+        <label>
+          Vergi Durumu:
+          <select id="taxMode">
+            <option value="included">Dahil</option>
+            <option value="excluded">Hariç</option>
+          </select>
+        </label>
+
+        <label>
+          Vergi Oranı (%):
+          <input type="number" id="taxRate" placeholder="10" required />
+        </label>
+
+        <label>
+          Komisyon Oranı (% - opsiyonel):
+          <input type="number" id="commissionRate" placeholder="10" />
+        </label>
+
+        <button type="submit">Hesapla</button>
+      </form>
+
+      <div id="results">
+        <p><strong>Kahvaltı Hariç Fiyat:</strong> <span id="withoutBreakfast">-</span> €</p>
+        <p><strong>Toplam Vergi:</strong> <span id="taxAmount">-</span> €</p>
+        <p><strong>Komisyon:</strong> <span id="commissionAmount">-</span> €</p>
+        <p><strong>Net Fiyat:</strong> <span id="netPrice">-</span> €</p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>© 2025 Ayaz Travel</p>
+    <span>Created_By_Puriya</span>
+  </footer>
+
+  <script>
+    document.getElementById("priceForm").addEventListener("submit", function(e) {
+      e.preventDefault();
+
+      const grossPrice = parseFloat(document.getElementById("grossPrice").value);
+      const breakfastPrice = parseFloat(document.getElementById("breakfastPrice").value) || 0;
+      const taxMode = document.getElementById("taxMode").value;
+      const taxRate = parseFloat(document.getElementById("taxRate").value);
+      const commissionRate = parseFloat(document.getElementById("commissionRate").value);
+
+      if (isNaN(grossPrice) || isNaN(taxRate)) {
+        alert("Lütfen fiyat ve vergi oranını girin!");
+        return;
+      }
+
+      // Kahvaltı hariç fiyat
+      const priceWithoutBreakfast = grossPrice - breakfastPrice;
+
+      let taxAmount = 0;
+      let priceWithoutTax = priceWithoutBreakfast;
+
+      // Vergiler dahil → önce vergiyi ayır
+      if (taxMode === "included") {
+        taxAmount = (priceWithoutBreakfast * taxRate) / (100 + taxRate);
+        priceWithoutTax = priceWithoutBreakfast - taxAmount;
+      }
+      // Vergiler hariç → gelen fiyat zaten vergisiz
+      else if (taxMode === "excluded") {
+        taxAmount = (priceWithoutBreakfast * taxRate) / 100; 
+        priceWithoutTax = priceWithoutBreakfast;
+      }
+
+      // Komisyon (opsiyonel)
+      let commissionAmount = 0;
+      let netPrice = priceWithoutTax;
+
+      if (!isNaN(commissionRate) && commissionRate > 0) {
+        commissionAmount = (priceWithoutTax * commissionRate) / 100;
+        netPrice = priceWithoutTax - commissionAmount;
+      }
+
+      // Sonuçları yazdır
+      document.getElementById("withoutBreakfast").innerText = priceWithoutBreakfast.toFixed(2);
+      document.getElementById("taxAmount").innerText = taxAmount.toFixed(2);
+      document.getElementById("commissionAmount").innerText = commissionAmount.toFixed(2);
+      document.getElementById("netPrice").innerText = netPrice.toFixed(2);
+    });
+
+    // Service Worker kayıt
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("service-worker.js")
+          .then(reg => console.log("Service Worker kayıtlı:", reg.scope))
+          .catch(err => console.log("Service Worker hatası:", err));
+      });
+    }
+  </script>
+</body>
+</html>
