@@ -169,6 +169,10 @@ class MatchPage(Page):
             market = {}
         offered = user if user else (market if market else {})
         p = eng.predict_match(lg, home, away, pd.Timestamp(date), "", market, offered, source="manuel")
+        # Elle seçilen maç da ortak veri uygunluk kontrolünden geçer (bağlam yoksa sonuç uygun değildir)
+        from ...eligibility import gate_match_prediction
+
+        gate_match_prediction(self.ctl.eligibility_context(eng), p, self.ctl.now())
         self.info.setText(" ".join(notes))
         self.info.setVisible(bool(notes))
         self.detail.show_prediction(p)

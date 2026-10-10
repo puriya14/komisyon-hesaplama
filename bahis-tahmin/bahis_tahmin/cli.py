@@ -55,6 +55,26 @@ def _progress(p: int, msg: str) -> None:
     print(f"[{p:3d}%] {msg}", flush=True)
 
 
+def _eligibility_ctx(st, eng):
+    """Ortak veri uygunluk bağlamı (veri deposu + motor durumu + önbellekteki kaynak takvimleri + kayıtlı haklar).
+
+    Kullanıcı onayı yalnızca kaynak ERİŞİMİNİ kapsar; komut satırında uygunluğu atlatan bir bayrak yoktur."""
+    from .eligibility import build_context
+    from .timeutil import ISTANBUL
+
+    return build_context(st, eng, Settings.load().source_consent, today=_now_utc().astimezone(ISTANBUL).date())
+
+
+def _now_utc():
+    import datetime as _dt
+
+    return _dt.datetime.now(_dt.timezone.utc)
+
+
+def _blocked_line(e) -> str:
+    return f"TAHMİN YOK — {e.short_text()}" if e is not None else "TAHMİN YOK — uygunluk değerlendirilmedi"
+
+
 def cmd_update(a) -> int:
     from .data.store import DataStore
 
@@ -118,19 +138,32 @@ def cmd_predict(a) -> int:
     st = _store()
     eng = _engine()
     s = Settings.load()
+    from .eligibility import gated_match_predictions
+
     fx = st.fixtures
+    un = st.unmatched_fixtures
     if a.league:
         fx = fx[fx["league"] == a.league.upper()]
-    preds = eng.predict_fixtures(fx, s.odds_type)
-    if not preds:
+        un = un[un["league"] == a.league.upper()]
+    preds, missing = gated_match_predictions(eng, _eligibility_ctx(st, eng), fx, _now_utc(), s.odds_type, un)
+    if not preds and not missing:
         print("Yaklaşan maç bulunamadı.")
         return 0
+    now = _now_utc()
     for p in preds[: a.top]:
-        best = p.best_value(s)
+        head = f"{p.date:%d.%m} {p.time:5s} {p.league:4s} {p.home:>18s} - {p.away:<18s} "
+        if not p.forecast_ok_at(now):
+            print(head + _blocked_line(p.eligibility))
+            continue
+        best = p.best_value(s, now=now)
+        block = p.data_block(now)
         val = f"  DEĞER: {best['label']} @{best['odds']:.2f} ({100 * best['ev']:+.0f}%)" if best else ""
-        print(f"{p.date:%d.%m} {p.time:5s} {p.league:4s} {p.home:>18s} - {p.away:<18s} "
-              f"1:%{100 * p.p_final[0]:4.1f} X:%{100 * p.p_final[1]:4.1f} 2:%{100 * p.p_final[2]:4.1f} "
-              f"Ü2.5:%{100 * p.markets['O2.5']:4.1f} KG:%{100 * p.markets['BTTS_Y']:4.1f}{val}")
+        gate = "" if (best or not block) else f"  (bahis/değer önerisi yok: {', '.join(block)})"
+        print(head + f"1:%{100 * p.p_final[0]:4.1f} X:%{100 * p.p_final[1]:4.1f} 2:%{100 * p.p_final[2]:4.1f} "
+              f"Ü2.5:%{100 * p.markets['O2.5']:4.1f} KG:%{100 * p.markets['BTTS_Y']:4.1f}{val}{gate}")
+    for v in missing:
+        tag = "" if v.canonical_id else f" [aday kimlik {v.candidate_id}, kanonik değil]"
+        print(f"{v.date:%d.%m} {v.time:5s} {v.league:4s} {v.home:>18s} - {v.away:<18s} {_blocked_line(v.first())}{tag}")
     return 0
 
 
@@ -145,8 +178,18 @@ def cmd_likely(a) -> int:
     if v["n"]:
         print(f"Geçmiş doğrulama (olasılık ≥ %{100 * a.threshold:.0f}): gerçekleşme %{100 * v['isabet']:.1f}, "
               f"{v['n']} seçim, maçların %{100 * v['kapsam']:.1f}'i")
-    preds = eng.predict_fixtures(st.fixtures, Settings.load().odds_type)
+    from .eligibility import gated_match_predictions
+
+    preds, missing = gated_match_predictions(eng, _eligibility_ctx(st, eng), st.fixtures, _now_utc(),
+                                             Settings.load().odds_type, st.unmatched_fixtures)
+    now = _now_utc()
+    blocked = [p for p in preds if not p.forecast_ok_at(now)]
+    if blocked or missing:
+        print(f"Veri uygunluğu doğrulanmadığı için listelenmeyen maç: {len(blocked) + len(missing)} "
+              "(ayrıntı: predict komutu).")
     for p in preds:
+        if not p.forecast_ok_at(now):
+            continue
         k, prob = max(((k, p.markets[k]) for k in keys), key=lambda kv: kv[1])
         if prob >= a.threshold:
             print(f"{p.date:%d.%m} {league_name(p.league):28s} {p.home} - {p.away}: {MARKETS[k][0]} "
@@ -208,75 +251,79 @@ def _goal_engine():
 
 
 def cmd_goal_predict(a) -> int:
+    from .goals.service import gated_goal_predictions
+
     eng = _goal_engine()
-    fx = _store().fixtures
+    store = _store()
+    fx, un = store.fixtures, store.unmatched_fixtures
     if a.league:
         fx = fx[fx["league"] == a.league.upper()]
-    preds = eng.predict_fixtures(fx)
-    if not preds:
+        un = un[un["league"] == a.league.upper()]
+    now = _now_utc()
+    verdicts = gated_goal_predictions(eng, _eligibility_ctx(store, eng), fx, now, unmatched=un)
+    if not verdicts:
         print("Yaklaşan maç bulunamadı.")
         return 0
     st = {k: ("doğrulandı" if v else "DOĞRULANMADI") for k, v in eng.validated.items()}
     print(f"Model durumu: A {st.get('BTTS_BOTH_HALVES_YES')} · B {st.get('FT_OVER_3_5')} · C {st.get('FH_OVER_1_5')}. "
-          "Gerçek oran olmadan öneri üretilmez.")
-    for p in preds:
-        iv = {k: p.interval(k) for k in ("BTTS_BOTH_HALVES_YES", "FT_OVER_3_5", "FH_OVER_1_5")}
-        txt = " ".join(
-            f"{s}:%{100 * p.probs[s]:4.1f} [{100 * iv[k][0]:.0f}-{100 * iv[k][1]:.0f}]" if iv[k][0] is not None
-            else f"{s}:%{100 * p.probs[s]:4.1f}"
-            for s, k in (("A", "BTTS_BOTH_HALVES_YES"), ("B", "FT_OVER_3_5"), ("C", "FH_OVER_1_5")))
-        note = "  (veri uyarısı)" if p.data_notes else ""
-        print(f"{p.kickoff_text:>28s} {p.league:4s} {p.home:>18s} - {p.away:<18s} {txt}{note}")
+          "Gerçek oran olmadan öneri üretilmez. Olasılık yalnızca veri uygunluğu doğrulanan pazarlarda gösterilir.")
+    for v in verdicts:
+        p = v.prediction
+        when = p.kickoff_text if p is not None else f"{v.date:%d.%m.%Y}"
+        head = f"{when:>28s} {v.league:4s} {v.home:>18s} - {v.away:<18s} "
+        if p is None or not v.any_usable(now):
+            tag = "" if v.canonical_id else f" [aday kimlik {v.candidate_id}, kanonik değil]"
+            print(head + _blocked_line(v.first()) + tag)
+            continue
+        parts = []
+        for s_, k in (("A", "BTTS_BOTH_HALVES_YES"), ("B", "FT_OVER_3_5"), ("C", "FH_OVER_1_5")):
+            if not v.usable(k, now):
+                parts.append(f"{s_}:yok({v.display_codes(k, now)[0]})")
+                continue
+            lo, hi = p.interval(k)
+            parts.append(f"{s_}:%{100 * p.probs[s_]:4.1f} [{100 * lo:.0f}-{100 * hi:.0f}]" if lo is not None
+                         else f"{s_}:%{100 * p.probs[s_]:4.1f}")
+        e0 = v.first()
+        note = "" if (e0 is not None and e0.bet_ok) else f"  (bahis adayı değil: {e0.lead_code if e0 else 'BAGLAM_YOK'})"
+        print(head + " ".join(parts) + note)
     return 0
 
 
 def _forecast_inputs():
-    """Ölçüm kaydı girdileri: veri deposu, gol motoru (yüklenebiliyorsa), fikstürler, eksik maç sayıları, hak durumu."""
-    import datetime as _dt
+    """Ölçüm kaydı girdileri: veri deposu, gol motoru (yüklenebiliyorsa), fikstür kaynaklarının hak durumu metni.
 
-    from .data.leagues import openfootball_season
+    Veri uygunluğu (v2) ortak kontrolden gelir; önbellekteki openfootball dosyaları bağlam kurulurken okunur
+    (ağ isteği yapılmaz)."""
     from .data.source_registry import allowed_sources
     from .goals.engine import GoalEngine
-    from .goals.forecast_log import missing_played_openfootball
 
     st = _store()
     eng, err = GoalEngine.load(app_home() / GOAL_ENGINE_FILE)
-    missing = {}
-    for code in st.fixtures["league"].unique() if not st.fixtures.empty else []:
-        lg = LEAGUES.get(code)
-        if not lg or not lg.openfootball:
-            continue
-        # Fikstür güncellemesinin önbelleğe aldığı openfootball dosyası (ağ isteği yapılmaz)
-        path = st.raw_dir / "openfootball" / openfootball_season(_dt.date.today(), lg.calendar_year) / f"{lg.openfootball}.json"
-        if path.exists():
-            n = missing_played_openfootball(path.read_bytes(), st.matches, code)
-            if n is not None:
-                missing[code] = n
     allowed = allowed_sources(Settings.load().source_consent)
     rights = {"openfootball": "CC0 (belgeli: openfootball/football.json LICENSE.md)",
               "football-data.co.uk": ("kullanıcı onayı ile; yeniden kullanım/model eğitimi hakkı belgelenmedi"
                                       if "football-data" in allowed else "onay yok"),
               "manuel": "kullanıcı girdisi"}
-    return st, eng, err, missing, rights
+    return st, eng, err, rights
 
 
 def cmd_goal_forecast_log(a) -> int:
     """İleriye dönük ölçüm: yaklaşan maçlar için A/B/C tahmin kayıtları (varsayılan kuru çalıştırma)."""
-    from .goals.forecast_log import PROTOCOL_VERSION, build_forecast_records, record_forecasts
+    from .goals.forecast_log import ACTIVE_PROTOCOL, build_forecast_records, record_forecasts
     from .goals.ledger import Ledger
 
-    st, eng, err, missing, rights = _forecast_inputs()
-    if st.fixtures.empty:
+    st, eng, err, rights = _forecast_inputs()
+    if st.fixtures.empty and st.unmatched_fixtures.empty:
         print("Yaklaşan maç (fikstür) yok. Önce 'update' çalıştırın; gerçek fikstür olmadan kayıt üretilmez.")
         return 0
     if eng is None:
         print(f"Gol modeli yüklenemedi ({err}); tüm adaylar MODEL_YOK nedeniyle olasılıksız kaydedilir.")
     led_path = app_home() / LEDGER_FILE
     led = Ledger(led_path) if (a.uygula or led_path.exists()) else None
-    recs = build_forecast_records(eng, st.fixtures, st.matches, ledger=led, missing_played=missing,
-                                  source_rights=rights)
+    recs = build_forecast_records(eng, st.fixtures, st.matches, ledger=led, ctx=_eligibility_ctx(st, eng),
+                                  unmatched=st.unmatched_fixtures, source_rights=rights)
     ok = [r for r in recs if r["decision_status"] == "TAHMIN"]
-    print(f"Protokol {PROTOCOL_VERSION}: {len(recs)} aday kayıt ({len(ok)} tahmin, {len(recs) - len(ok)} tahmin yok).")
+    print(f"Protokol {ACTIVE_PROTOCOL}: {len(recs)} aday kayıt ({len(ok)} tahmin, {len(recs) - len(ok)} tahmin yok).")
     seen = set()
     for r in recs:
         key = r["event_id"]
@@ -299,11 +346,13 @@ def cmd_goal_forecast_log(a) -> int:
 def cmd_goal_forecast_eval(a) -> int:
     import json as _json
 
-    from .goals.forecast_log import evaluate_forecasts, protocol_document
+    from .goals.forecast_log import ACTIVE_PROTOCOL, PROTOCOL_VERSION, evaluate_forecasts, protocol_document
     from .goals.ledger import Ledger
 
     if a.protokol:
-        print(_json.dumps(protocol_document(), ensure_ascii=False, indent=1))
+        print(_json.dumps({"etkin_protokol": protocol_document(ACTIVE_PROTOCOL),
+                           "dondurulmus_onceki_protokol": protocol_document(PROTOCOL_VERSION)},
+                          ensure_ascii=False, indent=1))
         return 0
     path = app_home() / LEDGER_FILE
     if not path.exists():

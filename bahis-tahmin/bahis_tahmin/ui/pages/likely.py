@@ -86,6 +86,10 @@ class LikelyPage(Page):
         self.view.setMinimumHeight(420)
         self.view.doubleClicked.connect(self._open)
         self.body.addWidget(self.view)
+        self.gate_note = QLabel("")
+        self.gate_note.setWordWrap(True)
+        self.gate_note.setObjectName("muted")
+        self.body.addWidget(self.gate_note)
         self.kupon = QLabel("Kupon için satırlardaki kutucukları işaretleyin.")
         self.kupon.setWordWrap(True)
         self.kupon.setTextFormat(Qt.RichText)
@@ -120,6 +124,8 @@ class LikelyPage(Page):
         return keys
 
     def refresh(self) -> None:
+        if self.ctl.check_day():  # gün değişti: yeniden değerlendirme sinyali bu sayfayı yeniden çizer
+            return
         thr = self.sp_thr.value()
         keys = self._keys()
         one = self.chk_one.isChecked()
@@ -147,7 +153,12 @@ class LikelyPage(Page):
                 c.set("-", "Model eğitilince hesaplanır")
 
         rows = []
+        skipped = len(self.ctl.match_unpredicted)
+        now = self.ctl.now()
         for i, p in enumerate(self.ctl.predictions):
+            if not p.forecast_ok_at(now):  # veri uygunluğu doğrulanmadı: "en olası" listesine girmez
+                skipped += 1
+                continue
             cands = [(k, float(p.markets[k])) for k in keys]
             if not cands:
                 continue
@@ -164,6 +175,9 @@ class LikelyPage(Page):
                     "ev": prob * o - 1.0 if o else np.nan,
                 })
         self.model.set_frame(pd.DataFrame(rows))
+        self.gate_note.setText(
+            f"Veri uygunluğu doğrulanamadığı için listelenmeyen maç: {skipped} (neden ve gereken veri için "
+            "Tahminler sayfasındaki 'Veri durumu' sütununa bakın)." if skipped else "")
 
     def _update_kupon(self, *args) -> None:
         df = self.model.frame

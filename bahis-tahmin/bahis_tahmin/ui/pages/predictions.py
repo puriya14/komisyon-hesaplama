@@ -40,17 +40,17 @@ class PredictionsPage(Page):
         self.body.addLayout(filters)
 
         self.model = DataFrameModel()
-        self.model.hidden = {"_i", "value_ev", "has_market", "date"}
+        self.model.hidden = {"_i", "value_ev", "has_market", "date", "veri_neden"}
         self.model.headers = {
             "when": "Tarih", "league": "Lig", "home": "Ev sahibi", "away": "Deplasman",
             "p1": "1", "px": "X", "p2": "2", "pick": "Tahmin", "o25": "2.5 Üst", "btts": "KG Var",
-            "xg": "Beklenen gol", "odds": "Oranlar 1/X/2", "value": "En iyi değer",
+            "xg": "Beklenen gol", "odds": "Oranlar 1/X/2", "value": "En iyi değer", "veri": "Veri durumu",
         }
         self.model.formatters = {
             "p1": fmt_pct, "px": fmt_pct, "p2": fmt_pct, "o25": fmt_pct, "btts": fmt_pct,
             "league": lambda v: LEAGUES[v].name if v in LEAGUES else v,
         }
-        prob_bg = lambda v, r: theme.prob_color(float(v) * 0.9)  # noqa: E731
+        prob_bg = lambda v, r: theme.prob_color(float(v) * 0.9) if v == v else None  # noqa: E731
         self.model.backgrounds = {
             "p1": prob_bg, "px": prob_bg, "p2": prob_bg, "o25": prob_bg, "btts": prob_bg,
             "value": lambda v, r: theme.ev_color(r["value_ev"]) if v else None,
@@ -58,6 +58,7 @@ class PredictionsPage(Page):
         self.model.tooltips = {
             "league": lambda v, r: league_name(v),
             "odds": lambda v, r: "Piyasa oranlarıyla harmanlandı (ortalama; yedek veri setinde tek bahisçi)" if r["has_market"] else "Oran yok: yalnızca model",
+            "veri": lambda v, r: r["veri_neden"],
         }
         self.view, self.proxy = make_table(self.model)
         self.view.setMinimumHeight(520)
@@ -84,6 +85,8 @@ class PredictionsPage(Page):
         self.refresh()
 
     def refresh(self) -> None:
+        if self.ctl.check_day():  # gün değişti: uygunluk yeniden değerlendirilir
+            return  # yeniden değerlendirme sinyali bu sayfayı yeniden çizer
         df = self.ctl.prediction_frame()
         current = self.cb_league.currentData()
         self.cb_league.blockSignals(True)
@@ -120,12 +123,19 @@ class PredictionsPage(Page):
         n = self.proxy.rowCount()
         total = self.model.rowCount()
         s = self.ctl.settings
+        df = self.model.frame
+        n_blocked = int((df["p1"].isna()).sum()) if not df.empty else 0
         self.footer.setText(
             f"{n} / {total} maç gösteriliyor · Değer hesabı: {ODDS_TYPE_LABELS.get(s.odds_type, s.odds_type)}, "
-            f"en az %{100 * s.min_ev:.0f} beklenen değer, oran {s.min_odds:.2f}–{s.max_odds:.2f}"
+            f"en az %{100 * s.min_ev:.0f} beklenen değer, oran {s.min_odds:.2f}–{s.max_odds:.2f} · "
+            f"veri uygunluğu doğrulanamayan {n_blocked} maçta olasılık ve değer gösterilmez (Veri durumu sütunu)"
         )
 
     def _open(self, index) -> None:
         src = self.proxy.mapToSource(index)
-        i = int(self.model.frame.iloc[src.row()]["_i"])
+        row = self.model.frame.iloc[src.row()]
+        i = int(row["_i"])
+        if i < 0:  # tahmini üretilemeyen fikstür: yalnızca neden gösterilir
+            self.footer.setText(f"{row['home']} - {row['away']}: {row['veri_neden']}")
+            return
         MatchDialog(self.ctl, self.ctl.predictions[i], self).exec()

@@ -1,5 +1,6 @@
 """Arayüz duman testleri (ekransız / offscreen)."""
 
+import datetime as dt
 import os
 import sys
 
@@ -43,6 +44,8 @@ def window(app, synthetic, trained_engine, tmp_home):
 
 def test_all_pages_render(app, window):
     assert len(window.ctl.predictions) == 5
+    # Geçici uygulama dizininde kaynak takvimi yok: güncellik doğrulanamaz, hiçbir tahmin "uygun" gösterilmez
+    assert all(not p.forecast_ok and p.eligibility is not None for p in window.ctl.predictions)
     for row in range(window.nav.count()):
         window.nav.setCurrentRow(row)
         app.processEvents()
@@ -55,9 +58,38 @@ def test_predictions_table_and_dialog(app, window):
 
     page = window.page(PredictionsPage)
     assert page.model.rowCount() == 5
+    df = page.model.frame
+    assert df["p1"].isna().all() and (df["value"] == "").all()  # olasılık boş (sıfır değil), değer önerisi yok
+    assert df["veri"].str.startswith("Doğrulanamıyor").all()  # durum renkle değil metinle
     dlg = MatchDialog(window.ctl, window.ctl.predictions[0])
+    assert dlg.detail.mk_model.rowCount() == 0 and "Tahmin gösterilmiyor" in dlg.detail.summary.text()
+    dlg.close()
+    # Aynı model durumuna bağlı, açıkça SENTETİK "uygun" sonuçla ayrıntı tablosu normal görünür
+    from uygunluk_yardim import verified
+
+    p = window.ctl.predictions[0]
+    now = dt.datetime.now(dt.timezone.utc)
+    window.ctl.clock = lambda: now
+    p.eligibility = verified(p.event_id, "1X2", now, state_digest=p.state_digest)
+    dlg = MatchDialog(window.ctl, p)
     assert dlg.detail.mk_model.rowCount() == 14
     dlg.close()
+    assert window.ctl.prediction_frame()["p1"].notna().sum() == 1
+    # Ertesi gün: aynı sonuç yeniden kullanılmaz (olasılık gösterilmez, neden yazılır)
+    window.ctl.clock = lambda: now + dt.timedelta(days=1)
+    df = window.ctl.prediction_frame()
+    assert df["p1"].isna().all() and "BAGLAM_UYUSMUYOR" in df.loc[0, "veri"]
+    dlg = MatchDialog(window.ctl, p)
+    assert dlg.detail.mk_model.rowCount() == 0
+    dlg.close()
+    # Tahminler sayfası gün değişimini görünce uygunluğu yeniden değerlendirir
+    window.ctl._match_day = (now - dt.timedelta(days=1)).date()
+    page.refresh()
+    assert window.ctl._match_day == window.ctl.today()
+    # Sayfa geçişi (on_show) de gün değişimini denetler
+    window.ctl._match_day = (now - dt.timedelta(days=1)).date()
+    window.nav.setCurrentRow((window.nav.currentRow() + 1) % window.nav.count())
+    assert window.ctl._match_day == window.ctl.today()
 
 
 def test_backtest_and_likely_pages(app, window):
@@ -72,11 +104,40 @@ def test_backtest_and_likely_pages(app, window):
     bk.sp_thr.setValue(0.7)
     bk.refresh()
     assert bk.c_hit.value.text() != ""
+    assert bk.model.rowCount() == 0 and "listelenmeyen maç: 5" in bk.gate_note.text()  # uygun olmayan listelenmez
+    # Açıkça SENTETİK "uygun" sonuçla olumlu yol (liste + kupon) çalışır
+    from uygunluk_yardim import verified
+
+    now = dt.datetime.now(dt.timezone.utc)
+    window.ctl.clock = lambda: now
+    for p in window.ctl.predictions:
+        p.eligibility = verified(p.event_id, "1X2", now, state_digest=p.state_digest)
+    bk.refresh()
+    assert bk.model.rowCount() > 0 and bk.gate_note.text() == ""
     if bk.model.rowCount():
         from PySide6.QtCore import Qt
 
         bk.model.setData(bk.model.index(0, 0), Qt.Checked, Qt.CheckStateRole)
         assert "maç" in bk.kupon.text()
+
+
+def test_unmatched_only_fixtures_are_listed_with_reasons(app, window):
+    """Fikstür tablosu boşken yalnızca eşleşmeyen fikstür varsa da nedenli satır üretilir (sessizce düşmez)."""
+    from bahis_tahmin.ui.pages.dashboard import DashboardPage
+    from bahis_tahmin.ui.pages.predictions import PredictionsPage
+
+    ctl = window.ctl
+    ctl.store.fixtures = ctl.store.fixtures.iloc[0:0]
+    ctl.store.meta["eslesmeyen_fikstur"] = [{"league": "T1", "date": str(pd.Timestamp.today().date()), "time": "",
+                                             "raw_home": "Qwerty Kulubu", "raw_away": "Zyx Gucu",
+                                             "source": "openfootball"}]
+    ctl.refresh_predictions()
+    df = ctl.prediction_frame()
+    assert len(df) == 1 and df.loc[0, "_i"] == -1 and "TAKIM_ESLESMEDI" in df.loc[0, "veri"]
+    assert window.page(PredictionsPage).model.rowCount() == 1
+    dash = window.page(DashboardPage)
+    dash.refresh()
+    assert "tahmin yok 1" in dash.c_fix.sub.text()
 
 
 def test_match_analysis_page(app, window):
@@ -96,27 +157,36 @@ def test_match_analysis_page(app, window):
 @pytest.fixture(scope="module")
 def goal_setup():
     from bahis_tahmin.goals.engine import GoalEngine
-    from bahis_tahmin.selftest import synthetic_matches
+    from uygunluk_yardim import recent_synthetic
 
-    m = synthetic_matches(n_seasons=8, n_teams=16, seed=1, half_time=True)
+    m = recent_synthetic()
     eng = GoalEngine()
     eng.train(m)
     return m, eng
 
 
 def test_goals_page(app, window, goal_setup):
+    """Açıkça SENTETİK tam bağlamla (takvim + haklar) ana ekran akışı: uygunluk geçer, kararlar ve kayıt çalışır."""
+    from bahis_tahmin.goals.service import gated_goal_predictions
     from bahis_tahmin.ui.pages.goals import GoalsPage
+    from uygunluk_yardim import AS_OF, FIXTURE_DAY, full_context
 
     m, eng = goal_setup
     ctl = window.ctl
     ctl.store.matches = m
-    fx = m.tail(4)[["league", "date", "time", "home", "away", "source"]].copy()
-    fx["date"] = pd.Timestamp.today().normalize() + pd.Timedelta(days=1)
+    teams = sorted(set(m["home"]))
+    fx = pd.DataFrame([{"league": "T1", "date": pd.Timestamp(FIXTURE_DAY), "time": "", "home": teams[2 * i],
+                        "away": teams[2 * i + 1], "source": "SENTETIK"} for i in range(4)])
+    ctx = full_context(m, eng, AS_OF, FIXTURE_DAY)
+    ctl.clock = lambda: AS_OF
+    ctl.eligibility_context = lambda engine: ctx
     ctl.goal_engine = eng
-    ctl.goal_predictions = eng.predict_fixtures(fx)
+    ctl.goal_verdicts = gated_goal_predictions(eng, ctx, fx, AS_OF)
+    assert all(v.forecast_ok for v in ctl.goal_verdicts)
     ctl.goalModelChanged.emit()
     page = window.page(GoalsPage)
     assert page.scan_model.rowCount() == 4
+    assert page.scan_model.frame["data"].str.startswith("Kullanılabilir").all()
     assert "DOĞRULANMADI" in page.status_banner.text()
     page.cb_mode.setCurrentIndex(1)  # avantaj adayları: doğrulanmamış model ve oran yok → boş, açıklamalı
     assert page.scan_model.rowCount() == 0 and "Uygun aday yok" in page.scan_note.text()
@@ -132,7 +202,88 @@ def test_goals_page(app, window, goal_setup):
     assert row["oran"] == pytest.approx(2.10)
     page._record()
     assert len(ctl.ledger.predictions()) == 6
+    assert all(r["veri_uygunlugu"]["tahmin_uygun"] for r in ctl.ledger.predictions())
     assert page.led_model.rowCount() == 6
+    # T01 (ana ekran): bilinen eksik tamamlanmış maç → olasılık gösterilmez, hiçbir pazar aday olmaz
+    team = fx.loc[0, "home"]
+    idx = m[(m["home"] == team) | (m["away"] == team)].index[-3]
+    stale = full_context(m.drop(index=idx), eng, AS_OF, FIXTURE_DAY, schedule=m)
+    for k in eng.validated:
+        eng.validated[k] = True
+    try:
+        sv = gated_goal_predictions(eng, stale, fx.iloc[[0]], AS_OF)
+        p0 = sv[0].prediction
+        from bahis_tahmin.goals.markets import MARKETS as GM
+        from bahis_tahmin.goals.value import OddsQuote as Q
+
+        ctl.ledger.add_odds([Q(p0.event_id, k, GM[k].period, GM[k].line, GM[k].selection, "manuel", "t", 3.0,
+                               AS_OF, AS_OF) for k in ("FT_OVER_3_5", "FH_OVER_1_5", "BTTS_BOTH_HALVES_YES")])
+        saved = ctl.goal_verdicts
+        ctl.goal_verdicts = sv
+        page.cb_mode.setCurrentIndex(0)
+        page.refresh_scan()
+        row = page.scan_model.frame.iloc[0]
+        assert row["data"].startswith("Eksik veri") and "DEPODA_EKSIK_MAC" in row["neden"] and row["B"] != row["B"]
+        assert "ADAY" not in row["decision"] and "VERİ UYGUN DEĞİL" in row["decision"]
+        page.cb_mode.setCurrentIndex(1)
+        assert page.scan_model.rowCount() == 0
+        page.cb_mode.setCurrentIndex(0)
+        ctl.goal_verdicts = saved
+        # Kayıt anında yeniden doğrulama: aday dün hesaplandı, kayıt ertesi gün → bahis adayı kaydı/stake yok
+        page.refresh_scan()
+        good = next((i for i, v in enumerate(ctl.goal_verdicts) if v.prediction is not None), 0)
+        pv = ctl.goal_verdicts[good].prediction
+        ctl.ledger.add_odds([Q(pv.event_id, k, GM[k].period, GM[k].line, GM[k].selection, "manuel", "t",
+                               round(1.06 / max(pv.interval(k)[0], 0.05), 2), AS_OF, AS_OF)
+                             for k in ("FT_OVER_3_5", "FH_OVER_1_5", "BTTS_BOTH_HALVES_YES")])
+        page.cb_fixture.setCurrentIndex(good + 1)
+        page._show(ctl.goal_verdicts[good])
+        n0 = len(ctl.ledger.predictions())
+        ctl.clock = lambda: AS_OF + dt.timedelta(days=3)
+        page._record()
+        new = ctl.ledger.predictions()[n0:]
+        assert new and all(r["kayit_turu"] == "KARAR_KAYDI" and r["stake_units"] == 0 for r in new)
+        # Gün değişince tarama önceki günün sonucunu "Kullanılabilir" göstermez
+        page.refresh_scan()
+        assert page.scan_model.frame["A"].isna().all()
+        assert page.scan_model.frame["data"].str.contains("BAGLAM_UYUSMUYOR").all()
+        ctl.clock = lambda: AS_OF
+    finally:
+        for k in eng.validated:
+            eng.validated[k] = False
+    # Model değişince maç analizi paneli eski tahminle kalmaz; eski tahminle kayıt yapılmaz
+    page.cb_fixture.setCurrentIndex(1)
+    assert page._current is not None and page.btn_record.isEnabled()
+    n0 = len(ctl.ledger.predictions())
+    from bahis_tahmin.goals.engine import GoalEngine
+
+    other = GoalEngine()
+    other.train(m[m["date"] < pd.Timestamp("2026-02-15")])
+    ctl.goal_engine = other  # sinyal gelmeden önce bile _record eski durumu reddeder
+    page._record()
+    assert len(ctl.ledger.predictions()) == n0 and page._current is None and not page.btn_record.isEnabled()
+    page.cb_fixture.setCurrentIndex(2)
+    ctl.goal_engine = None
+    page._record()  # model yok: istisna yok, kayıt yok
+    assert len(ctl.ledger.predictions()) == n0
+    ctl.goal_engine = eng
+    ctl.goalModelChanged.emit()
+    assert page._current is None and not page.btn_record.isEnabled()
+    # Gün değişimi + fikstür yok: sonsuz yeniden değerlendirme döngüsü yok
+    saved_fx = ctl.store.fixtures
+    ctl.store.fixtures = ctl.store.fixtures.iloc[0:0]
+    ctl._goal_day = (AS_OF - dt.timedelta(days=1)).date()
+    ctl.goalModelChanged.emit()
+    assert ctl._goal_day == ctl.today() and ctl.goal_verdicts == []
+    ctl.store.fixtures = saved_fx
+    ctl.goal_verdicts = gated_goal_predictions(eng, ctx, fx, AS_OF)
+    # Bağlamsız (uygunluğu değerlendirilmemiş) maç: olasılık yok, neden metni var, en sona sıralanır
+    blocked = gated_goal_predictions(eng, None, fx.iloc[[0]].assign(home=teams[8], away=teams[9]), AS_OF)
+    ctl.goal_verdicts = ctl.goal_verdicts + blocked
+    page.cb_mode.setCurrentIndex(0)
+    page.refresh_scan()
+    last = page.scan_model.frame.iloc[-1]
+    assert last["A"] != last["A"] and last["data"].startswith("Doğrulanamıyor") and "BAGLAM_YOK" in last["neden"]
     page.refresh_coverage()
     assert page.cov_model.rowCount() > 0 and page.src_model.rowCount() == 4
 

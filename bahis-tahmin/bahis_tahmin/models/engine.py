@@ -237,14 +237,51 @@ class MatchPrediction:
     odds: dict[str, float]
     info: dict
     source: str = ""
+    # Ortak veri uygunluk sonucu (bahis_tahmin.eligibility; pazar "1X2") ve tahminde kullanılan lig durumunun özeti.
+    # Uygunluk verilmemişse değer/öneri satırı ve stake üretilmez (varsayılan: uygun değil).
+    eligibility: object | None = None
+    state_digest: str = ""
 
     @property
     def exp_goals(self) -> tuple[float, float]:
         return expected_goals_from_matrix(self.matrix)
 
-    def value_rows(self, settings, odds: dict[str, float] | None = None) -> list[dict]:
-        """Her market için olasılık, adil oran, EV ve önerilen bahis miktarı."""
+    @property
+    def event_id(self) -> str:
+        from ..goals.ledger import event_id
+
+        return event_id(self.league, self.date, self.home, self.away)
+
+    def display_codes(self, now: dt.datetime | None = None) -> list[str]:
+        """Gösterim engeli (boş = gösterilebilir): uygunluk sonucu bu gün, bu maç ve bu model durumu için olmalı."""
+        from ..eligibility import check_for_display
+
+        return check_for_display(self.eligibility, self.event_id, "1X2", now or dt.datetime.now(dt.timezone.utc),
+                                 self.state_digest)
+
+    def forecast_ok_at(self, now: dt.datetime | None = None) -> bool:
+        """Veri uygunluğu bu tahminin şu anda gösterilmesine izin veriyor mu (bağlam yoksa veya gün değiştiyse hayır)?"""
+        return not self.display_codes(now)
+
+    @property
+    def forecast_ok(self) -> bool:
+        return self.forecast_ok_at(None)
+
+    def data_block(self, now: dt.datetime | None = None) -> list[str]:
+        """Bahis/öneri için veri engel kodları (boş = engel yok). Bağlamsız tahmin korumayı aşmaz."""
+        from ..eligibility import check_for_decision
+
+        now = now or dt.datetime.now(dt.timezone.utc)
+        return check_for_decision(self.eligibility, self.event_id, "1X2", now, self.state_digest)
+
+    def value_rows(self, settings, odds: dict[str, float] | None = None,
+                   now: dt.datetime | None = None) -> list[dict]:
+        """Her market için olasılık, adil oran, EV ve önerilen bahis miktarı.
+
+        Veri uygunluğu bahis için geçilmemişse hiçbir satır "değer" sayılmaz ve stake 0'dır (``veri_engeli``).
+        ``now``: karar anı (uygunluk sonucu bu günün değerlendirmesi olmalı)."""
         odds = self.odds if odds is None else odds
+        block = self.data_block(now)
         rows = []
         for key, (label, group) in MARKETS.items():
             p = float(self.markets[key])
@@ -253,7 +290,8 @@ class MatchPrediction:
             ev = float(expected_value(p, o)) if o else float("nan")
             k = float(kelly_fraction(p, o, settings.kelly_fraction, settings.max_stake_pct)) if o else 0.0
             is_value = bool(
-                o is not None
+                not block
+                and o is not None
                 and ev >= settings.min_ev
                 and p >= settings.min_prob
                 and settings.min_odds <= o <= settings.max_odds
@@ -262,12 +300,14 @@ class MatchPrediction:
             rows.append({
                 "market": key, "label": label, "group": group, "prob": p,
                 "fair": 1.0 / p if p > 0 else float("inf"), "odds": o, "ev": ev,
-                "kelly": k, "stake": k * settings.bankroll if (is_value and show_stake) else 0.0, "value": is_value,
+                "kelly": k if not block else 0.0,
+                "stake": k * settings.bankroll if (is_value and show_stake) else 0.0, "value": is_value,
+                "veri_engeli": list(block),
             })
         return rows
 
-    def best_value(self, settings) -> dict | None:
-        rows = [r for r in self.value_rows(settings) if r["value"]]
+    def best_value(self, settings, now: dt.datetime | None = None) -> dict | None:
+        rows = [r for r in self.value_rows(settings, now=now) if r["value"]]
         return max(rows, key=lambda r: r["ev"]) if rows else None
 
 
@@ -283,6 +323,8 @@ class PredictionEngine:
         self.margin_method = "power"
         self.data_signature = ""
         self.last_match_date: pd.Timestamp | None = None
+        self.state_available_since: dt.datetime | None = None  # eğitim/yükleme anı; köken bilgisi yoksa None
+        self.train_sources: list[str] | None = None
 
     # ------------------------------------------------------------- persist
     @property
@@ -317,6 +359,9 @@ class PredictionEngine:
         if not isinstance(eng, PredictionEngine):
             PredictionEngine.last_load_error = "Beklenmeyen model nesnesi."
             return None
+        # Dosyadan yüklenen durum en geç yükleme anında vardı: dosyadaki değer kullanılmaz, yükleme anıyla değiştirilir
+        # (dosya güncellenmez; köken bilgisi uydurulmaz)
+        eng.state_available_since = dt.datetime.now(dt.timezone.utc)
         return eng
 
     @staticmethod
@@ -410,6 +455,15 @@ class PredictionEngine:
         self.oos = oos.reset_index(drop=True) if not oos.empty else oos
         self.data_signature = self.signature(matches, margin_method)
         self.last_match_date = pd.Timestamp(matches["date"].max())
+        self.state_available_since = dt.datetime.now(dt.timezone.utc)
+        # Veri uygunluk kontrolü için köken bilgisi (olasılık hesabını etkilemez): her lig durumunun kurulduğu maç
+        # kümesinin kimliği ve eğitim verisinin kaynak etiketleri
+        from ..eligibility import rows_digest
+
+        for lg, st in self.states.items():
+            g = matches[matches["league"] == lg]
+            st.row_digest = rows_digest(g, "mac")
+        self.train_sources = sorted(set(matches["source"].dropna().astype(str))) if "source" in matches else None
 
         per_season = []
         if not oos.empty:
@@ -512,6 +566,8 @@ class PredictionEngine:
             info = dict(f)
             info.update({"dc_lambda": lam, "dc_nu": nu, "hfa": snap.elo.hfa})
             offered = it["offered"] if it["offered"] is not None else market
+            from ..eligibility import league_state_digest
+
             out.append(MatchPrediction(
                 league=it["league"], home=it["home"], away=it["away"], date=it["date"], time=it["time"] or "",
                 p_model=pm, p_market=pk, p_final=pf,
@@ -519,6 +575,7 @@ class PredictionEngine:
                 matrix=m, markets=markets_from_matrix(m),
                 odds={k: float(v) for k, v in offered.items() if v is not None and np.isfinite(v)},
                 info=info, source=it.get("source", ""),
+                state_digest=league_state_digest(self.states.get(it["league"])),
             ))
         return out
 

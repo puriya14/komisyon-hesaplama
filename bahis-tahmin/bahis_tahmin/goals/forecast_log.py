@@ -10,9 +10,14 @@ defteri (``goals.ledger.Ledger``) yeniden kullanır; ikinci bir kayıt sistemi k
 * Sonuç ayrı olay olarak eklenir (``service.settle_pending``); eski tahmin değiştirilmez. Geçersiz ilan da ayrı ve
   gerekçeli bir kayıttır (``FORECAST_GECERSIZ_ILAN``); değerlendirmede hem dahil hem hariç sayılar gösterilir.
 
-Zaman kuralı (protokol ``ileriye-donuk-olcum-v1``): hedef karar anı = maç günü 00:00 Europe/Istanbul. Fiilî kayıt
-anı (defterin ``created_at`` alanı, sistem saati) hedeften önce olmalıdır; değilse olasılık yazılmaz
-(``PENCERE_KACIRILDI``). Sonucu bilinen veya protokol dondurma anından önce oynanan maç ileriye dönük kabul edilmez.
+Zaman kuralı: hedef karar anı = maç günü 00:00 Europe/Istanbul. Fiilî kayıt anı (defterin ``created_at`` alanı,
+sistem saati) hedeften önce olmalıdır; değilse olasılık yazılmaz (``PENCERE_KACIRILDI``). Sonucu bilinen veya protokol
+dondurma anından önce oynanan maç ileriye dönük kabul edilmez.
+
+Protokol sürümleri: ``ileriye-donuk-olcum-v1`` (2026-10-10, dondurulmuş; 21 gün / son tarih sonrası eksik maç
+kuralı) DEĞİŞTİRİLMEDİ ve kayıtları ayrı raporlanır. Yeni kayıtlar ``ileriye-donuk-olcum-v2`` ile yazılır: veri
+uygunluğu ortak kontrolden (``bahis_tahmin.eligibility``, politika ``veri-uygunluk-v1``) gelir; eşleşmeyen fikstürler
+aday kimlikle nedenli ``TAHMIN_YOK`` olarak kaydedilir (S3-GATE-01).
 """
 
 from __future__ import annotations
@@ -117,6 +122,53 @@ PROTOCOL_FROZEN = {
     "govde_sha256": "3946a6e2865f4ea5386156e20cb5ccb7ccd8a4c1520c3dc65fdd4e2a6814fddf",
 }
 
+# ----------------------------------------------------------------------------
+# Protokol v2 (etkin): uygunluk anlamı değiştiği için yeni sürüm. v1 gövdesi ve kayıtları değişmez.
+# ----------------------------------------------------------------------------
+
+PROTOCOL_V2_VERSION = "ileriye-donuk-olcum-v2"
+PROTOCOL_V2_BODY = {
+    **{k: v for k, v in PROTOCOL_BODY.items() if k not in ("surum", "fikstur_kaynagi", "uygunluk", "veri_haklari")},
+    "surum": PROTOCOL_V2_VERSION,
+    "onceki_surum": (f"{PROTOCOL_VERSION}: dondurulmuş; gövdesi ve kayıtları değiştirilmez, değerlendirmede ayrı "
+                     "raporlanır. v1 ile v2 kayıtları birleştirilmez."),
+    "degisiklik_gerekcesi": ("v1 güncellik kuralı (ligin son kayıtlı maçından sonra oynanmış maç sayısı veya 21 gün) "
+                             "takım düzeyindeki ara eksikleri, modelin kullandığı durumun depodan geride kalmasını ve "
+                             "kaynak kapsamının boş/kısmi olmasını yakalamıyordu (S3-GATE-01)."),
+    "fikstur_kaynagi": ("Çalışma anında kullanımına izin verilmiş kaynaklar (source_registry.allowed_sources): "
+                        "openfootball (CC0) ve yalnızca kullanıcı onayı varsa football-data.co.uk. Takım adı "
+                        "eşleşmeyen fikstür maçı DÜŞÜRÜLMEZ: kaynak, lig, tarih ve ham takım adlarından türetilen "
+                        "kararlı bir aday kimlikle (kanonik maç kimliği değildir) üç pazar için TAKIM_ESLESMEDI "
+                        "nedenli TAHMIN_YOK olarak kaydedilir. İzinli fikstür kaynağı olmayan ligde aday maç oluşmaz."),
+    "uygunluk": [
+        "Kayıt anı < hedef karar anı (maç günü 00:00 Europe/Istanbul).",
+        "Maç günü > v2 protokol dondurma günü (İstanbul tarihi).",
+        "Maçın sonucu hesaplama anında veri deposunda yok.",
+        ("Ortak veri uygunluk kontrolü (politika veri-uygunluk-v1, bahis_tahmin/eligibility.py) bu maç ve pazar "
+         "için tahmine izin veriyor: güncellik VERIFIED_CURRENT (kaynağın tam sezon takvimi ↔ veri deposu ↔ modelin "
+         "kullandığı lig/takım durumu; takım düzeyinde ve bilgi kesimiyle sınırlı), takım eşlemesi, gerekli model "
+         "girdileri, son 365 günde ligde en az 10 maç ve kaynak erişim izni. UNKNOWN uygun sayılmaz."),
+        "Olasılık sonlu ve (0, 1) aralığında.",
+    ],
+    "zaman_alanlari": ("hesaplama_ani (tahminin ve uygunluğun fiilen hesaplandığı an), created_at (kaydın yazıldığı "
+                       "an), hedef_karar_ani, baslama_utc_kayitta (o anda bilinen başlama zamanı) ve bilgi_kesimi "
+                       "(hesaplama anının İstanbul tarihi; bu günden önceki sonuçlar erişilebilir sayılır, aynı günün "
+                       "sonuçları kullanılmaz) ayrı alanlardır."),
+    "veri_uygunluk_politikasi": "veri-uygunluk-v1",
+    "veri_haklari": ("Ölçüm kayıtları bahis adayı değildir (stake 0) ve yerel kişisel analiz kapsamındadır; tahmin "
+                     "için kaynak erişim izni gerekir. Model eğitim verisinin (football-data.co.uk / xgabora yedeği) "
+                     "sonuç kullanımı ve model eğitimi hakları belgeyle doğrulanmadı; bu kodlar her kayıtta "
+                     "veri_uygunlugu alanında görünür ve bahis adayı üretimini engeller."),
+}
+# Dondurma: gerçek sistem saatinden alınan an ve gövde özeti (reports/s3_gate_01/ altındaki JSON ile aynı).
+PROTOCOL_V2_FROZEN = {
+    "dondurma_zamani_utc": "2026-10-10T16:28:32+00:00",
+    "govde_sha256": "56c41f57c2a49610f072f0016e653a33ca70f98d1212fb5effdb6fee7d333063",
+}
+ACTIVE_PROTOCOL = PROTOCOL_V2_VERSION
+PROTOCOLS = {PROTOCOL_VERSION: (PROTOCOL_BODY, PROTOCOL_FROZEN), PROTOCOL_V2_VERSION: (PROTOCOL_V2_BODY,
+                                                                                      PROTOCOL_V2_FROZEN)}
+
 LEAGUE_STALE_DAYS = 21
 MIN_TEAM_MATCHES = 10
 REFERENCE_SEASONS = 3
@@ -130,14 +182,15 @@ def protocol_sha256(body: dict | None = None) -> str:
     return hashlib.sha256(json.dumps(body, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
 
 
-def protocol_document() -> dict:
+def protocol_document(version: str = PROTOCOL_VERSION) -> dict:
     """Depoya yazılan dondurulmuş protokol belgesi (gövde + özet + dondurma anı)."""
-    return {"protokol": PROTOCOL_BODY, "govde_sha256": protocol_sha256(), **{k: v for k, v in PROTOCOL_FROZEN.items()
-                                                                              if k != "govde_sha256"}}
+    body, frozen = PROTOCOLS[version]
+    return {"protokol": body, "govde_sha256": protocol_sha256(body),
+            **{k: v for k, v in frozen.items() if k != "govde_sha256"}}
 
 
-def freeze_time() -> dt.datetime:
-    return dt.datetime.fromisoformat(PROTOCOL_FROZEN["dondurma_zamani_utc"])
+def freeze_time(version: str = PROTOCOL_VERSION) -> dt.datetime:
+    return dt.datetime.fromisoformat(PROTOCOLS[version][1]["dondurma_zamani_utc"])
 
 
 def decision_target(match_date) -> dt.datetime:
@@ -196,7 +249,9 @@ class FreshnessCheck:
 
 
 def check_freshness(matches: pd.DataFrame, league: str, match_date, missing_played: int | None = None) -> FreshnessCheck:
-    """Geçmiş verinin karar anına göre güncelliği.
+    """Geçmiş verinin karar anına göre güncelliği — YALNIZCA dondurulmuş v1 protokolünün kuralı (yeniden üretilebilirlik
+    için korunur). Etkin kayıt yolu (v2) bunun yerine ortak veri uygunluk kontrolünü kullanır; bu fonksiyon tek başına
+    eksiksiz veri kanıtı değildir.
 
     ``missing_played``: fikstür kaynağı oynanmış maçları da listeliyorsa, bu ligde veri deposunun son tarihinden sonra
     oynanmış ama depoda olmayan maç sayısı. Verilmezse ligin son kayıtlı maçı ile karar günü arasındaki gün sayısına
@@ -219,7 +274,8 @@ def check_freshness(matches: pd.DataFrame, league: str, match_date, missing_play
 
 
 def missing_played_openfootball(data: bytes, matches: pd.DataFrame, league: str) -> int | None:
-    """openfootball sezon dosyasında, veri deposundaki son lig maçından SONRA oynanmış (skoru olan) maç sayısı.
+    """[v1 kuralı; etkin yol kullanmaz] openfootball sezon dosyasında, veri deposundaki son lig maçından SONRA
+    oynanmış (skoru olan) maç sayısı.
 
     Bu maçlar tanım gereği veride yoktur → geçmiş veri güncel değildir. Dosya okunamazsa None (gün kuralına düşülür).
     """
@@ -241,28 +297,36 @@ def missing_played_openfootball(data: bytes, matches: pd.DataFrame, league: str)
     return n
 
 
-def _base_record(r, target: dt.datetime, cohort: dict, source_rights: str) -> dict:
+def _base_record(r, target: dt.datetime, cohort: dict, source_rights: str, now: dt.datetime | None = None,
+                 eid: str | None = None, canonical: bool = True) -> dict:
     lg = LEAGUES.get(r.league)
     ko = kickoff_utc(r.date, getattr(r, "time", "") or "", getattr(r, "source", "") or "", lg.country if lg else "")
+    now = now or _now()
     return {
-        "kayit_turu": RECORD_FORECAST, "protokol": PROTOCOL_VERSION, "protokol_sha256": protocol_sha256(),
-        "event_id": event_id(r.league, r.date, r.home, r.away), "league": r.league, "home": r.home, "away": r.away,
-        "mac_tarihi": str(pd.Timestamp(r.date).date()),
+        "kayit_turu": RECORD_FORECAST, "protokol": ACTIVE_PROTOCOL,
+        "protokol_sha256": protocol_sha256(PROTOCOLS[ACTIVE_PROTOCOL][0]),
+        "event_id": eid or event_id(r.league, r.date, r.home, r.away), "kanonik_kimlik": bool(canonical),
+        "league": r.league, "home": r.home, "away": r.away, "mac_tarihi": str(pd.Timestamp(r.date).date()),
         "baslama_utc_kayitta": ko.isoformat() if ko else None, "baslama_saati_biliniyor": ko is not None,
         "decision_time": target.isoformat(), "hedef_karar_ani": target.isoformat(),
+        "hesaplama_ani": now.astimezone(dt.timezone.utc).isoformat(),
         "fikstur_kaynagi": getattr(r, "source", "") or "", "fikstur_kaynak_hak_durumu": source_rights,
         "model_version": cohort["model_version"], "feature_version": cohort["feature_version"],
         "model_kohort": cohort["kohort"], "model_egitim_zamani": cohort["trained_at"],
         "model_veri_sha256": cohort["data_sha256"], "data_cutoff": cohort["data_cutoff"],
-        "stake_units": 0.0, "strategy_version": PROTOCOL_VERSION,
+        "stake_units": 0.0, "strategy_version": ACTIVE_PROTOCOL,
     }
 
 
-def _no_forecast(base: dict, market: str, code: str, detail: str = "") -> dict:
-    return {**base, "market_key": market, "p": None, "p_low": None, "p_high": None, "referans_p": None,
-            "decision_status": STATUS_NO_FORECAST, "uygun": False,
-            "reasons": [code] + ([detail] if detail else []), "veri_kalitesi": code, "oran": None,
-            "ekonomik_statu": "TAHMIN_YOK"}
+def _no_forecast(base: dict, market: str, code: str, detail: str = "", eligibility=None) -> dict:
+    rec = {**base, "market_key": market, "p": None, "p_low": None, "p_high": None, "referans_p": None,
+           "decision_status": STATUS_NO_FORECAST, "uygun": False,
+           "reasons": [code] + ([detail] if detail else []), "veri_kalitesi": code, "oran": None,
+           "ekonomik_statu": "TAHMIN_YOK"}
+    if eligibility is not None:
+        rec["veri_uygunlugu"] = eligibility.compact()
+        rec["bilgi_kesimi"] = eligibility.info_cutoff
+    return rec
 
 
 def _quote_block(ledger: Ledger | None, eid: str, market: str, target: dt.datetime) -> tuple[dict | None, str]:
@@ -281,17 +345,21 @@ def _quote_block(ledger: Ledger | None, eid: str, market: str, target: dt.dateti
 
 
 def build_forecast_records(engine, fixtures: pd.DataFrame, matches: pd.DataFrame, ledger: Ledger | None = None,
-                           now: dt.datetime | None = None, missing_played: dict | None = None,
+                           now: dt.datetime | None = None, ctx=None, unmatched: pd.DataFrame | None = None,
                            source_rights: dict | None = None) -> list[dict]:
-    """Fikstürdeki her maç × A/B/C için kayıt sözlükleri üretir (yazmaz).
+    """Fikstürdeki her maç × A/B/C için ``ileriye-donuk-olcum-v2`` kayıt sözlükleri üretir (yazmaz).
 
-    ``missing_played``: {lig: eksik oynanmış maç sayısı} (fikstür kaynağı oynanmış maçları listeliyorsa).
+    ``ctx``: ortak veri uygunluk bağlamı (``eligibility.EligibilityContext``; veri deposu + bu motorun durumu +
+    kaynak takvimi + haklar). Verilmezse hiçbir maç uygun sayılmaz (``BAGLAM_YOK``).
+    ``unmatched``: takım adı eşleşmeyen fikstürler (``raw_home``/``raw_away``); aday kimlikle nedenli kayıt alır.
     ``source_rights``: {fikstür kaynağı: hak durumu metni}.
     """
-    if fixtures is None or fixtures.empty:
+    from .service import gated_goal_predictions
+
+    fixtures = fixtures if fixtures is not None else pd.DataFrame()
+    if fixtures.empty and (unmatched is None or unmatched.empty):
         return []
     now = now or _now()
-    missing_played = missing_played or {}
     source_rights = source_rights or {}
     cohort = model_cohort(engine) if engine is not None else {"model_version": "-", "feature_version": FEATURE_VERSION,
                                                               "data_sha256": "", "trained_at": "", "data_cutoff": "",
@@ -300,11 +368,11 @@ def build_forecast_records(engine, fixtures: pd.DataFrame, matches: pd.DataFrame
     if matches is not None and not matches.empty:
         played = {event_id(a, b, c, d) for a, b, c, d in zip(matches["league"], matches["date"], matches["home"],
                                                              matches["away"])}
-    freeze_day = freeze_time().astimezone(ISTANBUL).date()
+    freeze_day = freeze_time(ACTIVE_PROTOCOL).astimezone(ISTANBUL).date()
     out: list[dict] = []
     for r in fixtures.itertuples(index=False):
         target = decision_target(r.date)
-        base = _base_record(r, target, cohort, source_rights.get(getattr(r, "source", "") or "", "belirtilmedi"))
+        base = _base_record(r, target, cohort, source_rights.get(getattr(r, "source", "") or "", "belirtilmedi"), now)
         code, detail = None, ""
         if now >= target:
             code = "PENCERE_KACIRILDI"
@@ -313,38 +381,45 @@ def build_forecast_records(engine, fixtures: pd.DataFrame, matches: pd.DataFrame
             code = "MAC_SONUCU_BILINIYOR"
         elif pd.Timestamp(r.date).date() <= freeze_day:
             code = "PROTOKOLDEN_ONCE"
-        elif engine is None or not getattr(engine, "trained", False):
-            code = "MODEL_YOK"
-        elif r.league not in getattr(engine, "states", {}):
-            code = "LIG_MODEL_KAPSAMI_DISI"
-        else:
-            fr = check_freshness(matches, r.league, r.date, missing_played.get(r.league))
-            base["veri_guncellik"] = fr.detail
-            if fr.stale:
-                code, detail = "VERI_GUNCEL_DEGIL", fr.detail
         if code is not None:
             out.extend(_no_forecast(base, k, code, detail) for k in PRIMARY_YES)
             continue
-        pred = engine.predict_fixtures(pd.DataFrame([r._asdict()]), with_interval=True)
-        if not pred:
-            out.extend(_no_forecast(base, k, "LIG_MODEL_KAPSAMI_DISI") for k in PRIMARY_YES)
-            continue
-        pr = pred[0]
-        if any("hesaplanamadı" in n or "son 365 günde" in n for n in pr.data_notes):
-            out.extend(_no_forecast(base, k, "TAKIM_GECMISI_YETERSIZ", "; ".join(pr.data_notes)) for k in PRIMARY_YES)
-            continue
-        ref = league_reference(matches, r.league, pd.Timestamp(r.date))
+        verdict = gated_goal_predictions(engine, ctx, pd.DataFrame([r._asdict()]), now)[0]
+        pr = verdict.prediction
+        ref = league_reference(matches, r.league, pd.Timestamp(r.date)) if pr is not None else None
         for k in PRIMARY_YES:
+            e = verdict.get(k)
+            if e is None or not e.forecast_ok or pr is None:
+                lead = (e.lead_code if e is not None else None) or "BAGLAM_YOK"
+                out.append(_no_forecast(base, k, lead, e.primary_text if e is not None else "", e))
+                continue
             p = pr.p(k)
             if not (isinstance(p, float) and math.isfinite(p) and 0.0 < p < 1.0):
-                out.append(_no_forecast(base, k, "OLASILIK_GECERSIZ"))
+                out.append(_no_forecast(base, k, "OLASILIK_GECERSIZ", "", e))
                 continue
             lo, hi = pr.interval(k)
             quote, econ = _quote_block(ledger, base["event_id"], k, target)
             out.append({**base, "market_key": k, "p": float(p), "p_low": lo, "p_high": hi,
                         "referans_p": ref[k]["p"], "referans_n": ref[k]["n"], "decision_status": STATUS_FORECAST,
                         "uygun": True, "reasons": [], "veri_kalitesi": "UYGUN", "veri_notlari": list(pr.data_notes),
+                        "veri_uygunlugu": e.compact(), "bilgi_kesimi": e.info_cutoff,
                         "oran": quote, "ekonomik_statu": econ})
+    for r in (unmatched if unmatched is not None else pd.DataFrame()).itertuples(index=False):
+        verdict = gated_goal_predictions(None, ctx, None, now, unmatched=pd.DataFrame([r._asdict()]))[0]
+        row = type("R", (), {"league": r.league, "date": r.date, "time": getattr(r, "time", "") or "",
+                             "home": r.raw_home, "away": r.raw_away, "source": getattr(r, "source", "") or ""})
+        target = decision_target(r.date)
+        base = _base_record(row, target, cohort, source_rights.get(getattr(r, "source", "") or "", "belirtilmedi"),
+                            now, eid=verdict.candidate_id, canonical=False)
+        # Zaman kuralları eşleşen fikstürlerle aynı sırada uygulanır; eşleşmeme ikinci neden olarak kalır
+        lead = ("PENCERE_KACIRILDI" if now >= target else
+                "PROTOKOLDEN_ONCE" if pd.Timestamp(r.date).date() <= freeze_day else "TAKIM_ESLESMEDI")
+        for k in PRIMARY_YES:
+            e = verdict.get(k)
+            rec = _no_forecast(base, k, lead, e.primary_text if e is not None else "", e)
+            if lead != "TAKIM_ESLESMEDI":
+                rec["reasons"] = [lead, "TAKIM_ESLESMEDI"] + rec["reasons"][1:]
+            out.append(rec)
     return out
 
 
@@ -391,8 +466,8 @@ def invalidate_forecast(ledger: Ledger, forecast_id: str, reason: str) -> str:
         "event_id": target["event_id"], "market_key": target["market_key"], "decision_time": target["decision_time"],
         "model_version": target["model_version"], "feature_version": target["feature_version"],
         "data_cutoff": target["data_cutoff"], "p": None, "decision_status": "GECERSIZ_ILAN", "reasons": [reason],
-        "stake_units": 0.0, "strategy_version": PROTOCOL_VERSION, "protokol": target.get("protokol"),
-        "model_kohort": target.get("model_kohort"),
+        "stake_units": 0.0, "strategy_version": target.get("strategy_version") or target.get("protokol"),
+        "protokol": target.get("protokol"), "model_kohort": target.get("model_kohort"),
     })
 
 
@@ -416,26 +491,29 @@ def _cluster_boot(diff: np.ndarray, clusters: np.ndarray, reps: int = N_BOOT, se
 
 
 def evaluate_forecasts(ledger: Ledger) -> dict:
-    """Sonuçlanmış FORECAST_RECORD kayıtlarının kohort × pazar değerlendirmesi ve kapsam sayıları."""
+    """Sonuçlanmış FORECAST_RECORD kayıtlarının protokol × kohort × pazar değerlendirmesi ve kapsam sayıları.
+
+    Protokol sürümleri (v1 / v2) birleştirilmez; kapsam ve satırlar sürüm başına ayrı raporlanır."""
     recs = ledger.predictions()
     invalid = {r["gecersiz_ilan_edilen"] for r in recs if r.get("kayit_turu") == RECORD_INVALIDATION}
     fc = [r for r in recs if r.get("kayit_turu") == RECORD_FORECAST]
-    coverage: dict[str, int] = {}
+    coverage: dict[str, dict[str, int]] = {}
     for r in fc:
         k = STATUS_FORECAST if r.get("decision_status") == STATUS_FORECAST else (r.get("reasons") or ["?"])[0]
-        coverage[k] = coverage.get(k, 0) + 1
+        cov = coverage.setdefault(str(r.get("protokol")), {})
+        cov[k] = cov.get(k, 0) + 1
     groups: dict[tuple, list] = {}
     for r in fc:
         if r.get("decision_status") != STATUS_FORECAST or r.get("p") is None:
             continue
-        groups.setdefault((r.get("model_kohort"), r["market_key"]), []).append(r)
+        groups.setdefault((str(r.get("protokol")), r.get("model_kohort"), r["market_key"]), []).append(r)
     out = []
-    for (cohort, market), rows in sorted(groups.items()):
+    for (proto, cohort, market), rows in sorted(groups.items()):
         for excl in (False, True):
             use = [r for r in rows if not (excl and r["id"] in invalid)]
             settled = [r for r in use if r.get("outcome") and r["outcome"].get("label") in ("TRUE", "FALSE")]
-            rec = {"kohort": cohort, "pazar": market, "gecersiz_ilanlar_haric": excl, "kayit": len(use),
-                   "sonuclanan": len(settled)}
+            rec = {"protokol": proto, "kohort": cohort, "pazar": market, "gecersiz_ilanlar_haric": excl,
+                   "kayit": len(use), "sonuclanan": len(settled)}
             if settled:
                 y = np.array([1.0 if r["outcome"]["label"] == "TRUE" else 0.0 for r in settled])
                 p = np.array([r["p"] for r in settled], dtype=float)
@@ -446,7 +524,7 @@ def evaluate_forecasts(ledger: Ledger) -> dict:
                     pr = np.array([r["referans_p"] for r in settled if r.get("referans_p") is not None], dtype=float)
                     d = _ll(y[ref_ok], p[ref_ok]) - _ll(y[ref_ok], pr)
                     days = np.array([r["mac_tarihi"] for r in settled if r.get("referans_p") is not None])
-                    lo, hi = _cluster_boot(d, days) if len(np.unique(days)) > 1 else (float("nan"), float("nan"))
+                    lo, hi = _cluster_boot(d, days) if len(np.unique(days)) > 1 else (None, None)  # NaN yazılmaz
                     rec.update({"delta_ll_model_eksi_referans": float(d.mean()), "delta_ll_alt": lo, "delta_ll_ust": hi,
                                 "delta_ll_tanimi": "model − referans (negatif model lehine)"})
                 verified = [r for r in settled if (r.get("oran") or {}).get("zaman_dogrulandi")]
@@ -456,6 +534,6 @@ def evaluate_forecasts(ledger: Ledger) -> dict:
             else:
                 rec["resmi_degerlendirme_esigi"] = False
             out.append(rec)
-    return {"protokol": PROTOCOL_VERSION, "kapsam": coverage, "kohort_pazar": out,
-            "not": ("Kohortlar birleştirilmez. Eşik karşılanmadan yapılan sayımlar yalnızca tanımlayıcıdır. Oran zamanı "
-                    "doğrulanmamış kayıtlar ekonomik doğrulamaya girmez.")}
+    return {"etkin_protokol": ACTIVE_PROTOCOL, "kapsam": coverage, "kohort_pazar": out,
+            "not": ("Protokol sürümleri ve kohortlar birleştirilmez. Eşik karşılanmadan yapılan sayımlar yalnızca "
+                    "tanımlayıcıdır. Oran zamanı doğrulanmamış kayıtlar ekonomik doğrulamaya girmez.")}

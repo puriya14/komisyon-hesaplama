@@ -78,6 +78,8 @@ class DashboardPage(Page):
         self.btn_retrain.setEnabled(not busy and self.ctl.store.has_data)
 
     def refresh(self) -> None:
+        if self.ctl.check_day():  # gün değişti: yeniden değerlendirme sinyali bu sayfayı yeniden çizer
+            return
         st = self.ctl.store
         eng = self.ctl.engine
         self.first_run.setVisible(not st.has_data)
@@ -112,10 +114,15 @@ class DashboardPage(Page):
             self.c_acc.set("-", "Model henüz eğitilmedi")
             self.c_likely.set("-", "")
         preds = self.ctl.predictions
-        if preds:
-            n_val = sum(1 for p in preds if p.best_value(self.ctl.settings))
-            leagues = sorted({p.league for p in preds})
-            self.c_fix.set(str(len(preds)), f"{n_val} değerli bahis fırsatı · {len(leagues)} lig")
+        unpred = self.ctl.match_unpredicted
+        if preds or unpred:
+            now = self.ctl.now()
+            n_ok = sum(1 for p in preds if p.forecast_ok_at(now))
+            n_val = sum(1 for p in preds if p.forecast_ok_at(now) and p.best_value(self.ctl.settings, now=now))
+            leagues = sorted({p.league for p in preds} | {v.league for v in unpred})
+            self.c_fix.set(str(len(preds) + len(unpred)),
+                           f"veri uygun {n_ok} · tahmin yok {len(preds) + len(unpred) - n_ok} · "
+                           f"{n_val} değerli bahis fırsatı · {len(leagues)} lig")
             self.c_fix.setToolTip("\n".join(league_name(lg) for lg in leagues))
         else:
             self.c_fix.set("0", "Fikstür verisi yok (güncellemeyi deneyin)")

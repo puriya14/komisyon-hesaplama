@@ -104,6 +104,25 @@ SOURCES: dict[str, SourceInfo] = {
 # Uygulamanın gerçekten kullandığı (adaptörü olan) kaynaklar
 IMPLEMENTED = ("football-data", "github-mirror", "openfootball")
 
+# Veri deposundaki ``source`` etiketi -> kaynak anahtarı
+SOURCE_LABELS = {"football-data.co.uk": "football-data", "github-yedek": "github-mirror", "openfootball": "openfootball"}
+
+# Kullanım kapsamının yapılandırılmış hâli (veri uygunluk kontrolü bunu okur; S3-GATE-01). Değerler yukarıdaki
+# SOURCES metinlerinin aynısıdır, YENİ HAK VERMEZ: belge yoksa "DOGRULANAMADI" kalır. Erişim (kullanıcı onayı),
+# sonuç verisini kullanma, model eğitimi ve yeniden dağıtım ayrı alanlardır; kullanıcının uygulamadaki onayı yalnızca
+# erişimi (indirme ve yerel kişisel analiz) kapsar, diğer alanları doğrulanmış yapmaz.
+#   IZINLI_BELGELI   : lisans belgesi kayıtlı (``belge``)
+#   DOGRULANAMADI    : açık izin belgesi bulunamadı
+#   IZIN_VARSAYILMAZ : izin varsayılmıyor (uygulama bu kullanımı yapmaz)
+USE_RIGHTS: dict[str, dict[str, str]] = {
+    "football-data": {"sonuc_kullanimi": "DOGRULANAMADI", "model_egitimi": "DOGRULANAMADI",
+                      "yeniden_dagitim": "IZIN_VARSAYILMAZ", "belge": ""},
+    "github-mirror": {"sonuc_kullanimi": "DOGRULANAMADI", "model_egitimi": "DOGRULANAMADI",
+                      "yeniden_dagitim": "IZIN_VARSAYILMAZ", "belge": ""},
+    "openfootball": {"sonuc_kullanimi": "IZINLI_BELGELI", "model_egitimi": "IZINLI_BELGELI",
+                     "yeniden_dagitim": "IZINLI_BELGELI", "belge": SOURCES["openfootball"].terms_url},
+}
+
 
 def allowed_sources(consent: dict[str, str] | None) -> set[str]:
     """Kullanılmasına izin verilen kaynaklar: onay gerektirmeyenler + kullanıcının onayladıkları."""

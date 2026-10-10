@@ -141,10 +141,21 @@ def _quote(event, key, odds, at):
     return OddsQuote(event, key, m.period, m.line, m.selection, "manuel", "test", odds, at, at)
 
 
+def _synthetic_ok(pred, now):
+    """Karar mantığı testleri için açıkça SENTETİK "veri uygun" sonucu (aynı model durumuna bağlı; S3-GATE-01)."""
+    from bahis_tahmin.goals.markets import PRIMARY_YES
+    from uygunluk_yardim import verified
+
+    return {k: verified(pred.event_id, k, now, state_digest=pred.state_digest) for k in PRIMARY_YES}
+
+
 def test_decisions_require_validation_and_real_odds(goal_engine, fixtures, tmp_path):
     pred = goal_engine.predict_fixtures(fixtures)[0]
     now = dt.datetime(2026, 10, 11, 12, 0, tzinfo=UTC)
-    decs = decisions_for(pred, goal_engine, None, now)
+    # Uygunluk bağlamı verilmeden: hiçbir seçim aday olamaz ve olasılık taşınmaz
+    assert all(d.status == "DATA_NOT_ELIGIBLE" and d.p != d.p for d in decisions_for(pred, goal_engine, None, now))
+    elig = _synthetic_ok(pred, now)
+    decs = decisions_for(pred, goal_engine, None, now, eligibility=elig)
     assert [d.market_key for d in decs] == list(SELECTIONS)
     assert all(d.status != "VALUE_CANDIDATE" for d in decs)
     assert all(d.odds is None and d.ev is None for d in decs)  # gerçek oran yoksa EV de yok
@@ -153,17 +164,18 @@ def test_decisions_require_validation_and_real_odds(goal_engine, fixtures, tmp_p
     p_over = pred.p("FT_OVER_3_5")
     odds = round(1.15 / max(pred.interval("FT_OVER_3_5")[0], 0.05), 2)  # belirsizlik alt sınırıyla da +%15
     ledger.add_odds([_quote(pred.event_id, "FT_OVER_3_5", odds, now - dt.timedelta(minutes=5))])
-    by = {d.market_key: d for d in decisions_for(pred, goal_engine, ledger, now)}
+    by = {d.market_key: d for d in decisions_for(pred, goal_engine, ledger, now, eligibility=elig)}
     d = by["FT_OVER_3_5"]
     assert d.odds == pytest.approx(odds) and d.ev == pytest.approx(p_over * odds - 1)
     assert d.status != "VALUE_CANDIDATE"  # model doğrulanmadı
 
     goal_engine.validated["FT_OVER_3_5"] = True
     try:
-        by = {d.market_key: d for d in decisions_for(pred, goal_engine, ledger, now)}
+        by = {d.market_key: d for d in decisions_for(pred, goal_engine, ledger, now, eligibility=elig)}
         assert by["FT_OVER_3_5"].status in ("VALUE_CANDIDATE", "HIGH_UNCERTAINTY", "SUSPICIOUS_EDGE", "INSUFFICIENT_DATA")
         # Karar anından SONRA girilen oran kullanılamaz
-        by_early = {d.market_key: d for d in decisions_for(pred, goal_engine, ledger, now - dt.timedelta(hours=1))}
+        by_early = {d.market_key: d for d in decisions_for(pred, goal_engine, ledger, now - dt.timedelta(hours=1),
+                                                           eligibility=elig)}
         assert by_early["FT_OVER_3_5"].status == "ODDS_UNAVAILABLE" or by_early["FT_OVER_3_5"].odds is None
     finally:
         goal_engine.validated["FT_OVER_3_5"] = False
@@ -174,7 +186,7 @@ def test_record_and_settle_is_idempotent(goal_engine, fixtures, tmp_path):
     pred = goal_engine.predict_fixtures(fixtures)[0]
     now = dt.datetime(2026, 10, 11, 12, 0, tzinfo=UTC)
     ledger = Ledger(tmp_path / "l.sqlite")
-    decs = decisions_for(pred, goal_engine, ledger, now)
+    decs = decisions_for(pred, goal_engine, ledger, now, eligibility=_synthetic_ok(pred, now))
     ids = record_decisions(ledger, pred, decs, goal_engine)
     assert len(ids) == len(SELECTIONS)
     assert all(r["stake_units"] == 0 for r in ledger.predictions())  # aday yoksa sanal stake yok

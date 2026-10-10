@@ -1,7 +1,9 @@
 """Karar motoru: her maç ve pazar için makine tarafından okunabilir karar.
 
 "Öneri yok" geçerli bir sonuçtur. VALUE_CANDIDATE ancak aşağıdaki kontrollerin TAMAMI
-geçildiğinde oluşur; eşikler önceden belirlenmiş ve sürümlenmiştir (sonuçlara bakılarak
+geçildiğinde oluşur. Bunlardan ilki ortak veri uygunluk kontrolüdür (``bahis_tahmin.eligibility``): değerlendirmeye
+bu maç, pazar, karar günü ve model durumu için üretilmiş bir uygunluk sonucu verilmemişse veya sonuç bahis için uygun
+değilse durum ``DATA_NOT_ELIGIBLE`` olur (bağlamsız çağrı korumayı aşmaz; S3-GATE-01); eşikler önceden belirlenmiş ve sürümlenmiştir (sonuçlara bakılarak
 ayarlanmamıştır — bu pazarlar için geçmiş gerçek oran verisi olmadığından eşikler veriyle
 ayarlanamaz).
 """
@@ -28,10 +30,11 @@ from .value import (
 STATUSES = (
     "VALUE_CANDIDATE", "NO_VALUE", "INSUFFICIENT_DATA", "ODDS_UNAVAILABLE", "STALE_ODDS",
     "MARKET_UNSUPPORTED", "MODEL_NOT_VALIDATED", "HIGH_UNCERTAINTY", "SETTLEMENT_AMBIGUOUS", "SUSPICIOUS_EDGE",
+    "DATA_NOT_ELIGIBLE",
 )
 # Birden çok engel varsa gösterilecek birincil durum sırası
-_PRIORITY = ("MARKET_UNSUPPORTED", "SETTLEMENT_AMBIGUOUS", "INSUFFICIENT_DATA", "MODEL_NOT_VALIDATED",
-             "ODDS_UNAVAILABLE", "STALE_ODDS", "HIGH_UNCERTAINTY", "SUSPICIOUS_EDGE")
+_PRIORITY = ("MARKET_UNSUPPORTED", "DATA_NOT_ELIGIBLE", "SETTLEMENT_AMBIGUOUS", "INSUFFICIENT_DATA",
+             "MODEL_NOT_VALIDATED", "ODDS_UNAVAILABLE", "STALE_ODDS", "HIGH_UNCERTAINTY", "SUSPICIOUS_EDGE")
 
 STATUS_TR = {
     "VALUE_CANDIDATE": "Avantaj adayı (sanal takip için)",
@@ -44,6 +47,7 @@ STATUS_TR = {
     "HIGH_UNCERTAINTY": "Belirsizlik yüksek",
     "SETTLEMENT_AMBIGUOUS": "Sonuçlandırma kuralı belirsiz",
     "SUSPICIOUS_EDGE": "Olağan dışı avantaj – karantina",
+    "DATA_NOT_ELIGIBLE": "Veri uygun değil (güncel/eksiksiz olduğu doğrulanmadı)",
 }
 
 
@@ -83,6 +87,9 @@ class Assessment:
     opposite_quote: OddsQuote | None = None
     kickoff: dt.datetime | None = None
     match_date: dt.date | None = None  # başlama saati bilinmiyorsa ihtiyatlı kural için
+    # Ortak veri uygunluk sonucu (bahis_tahmin.eligibility.Eligibility). None = kontrol yapılmadı -> uygun değil.
+    eligibility: object | None = None
+    state_digest: str | None = None  # tahminde kullanılan lig durumunun özeti (uygunlukla bağlamak için)
 
 
 @dataclass
@@ -102,23 +109,38 @@ class Decision:
     no_vig: float | None
     policy_version: str
     decision_time: str
+    data_eligibility: dict | None = None  # uygunluk sonucunun kısa özeti (kayıtlara geriye uyumlu ek alan)
 
     def to_dict(self) -> dict:
         return asdict(self)
 
 
 def decide(a: Assessment, decision_time: dt.datetime, policy: DecisionPolicy = DecisionPolicy()) -> Decision:
+    from ..eligibility import REASONS as DATA_REASONS
+    from ..eligibility import check_for_decision
+
     reasons: list[str] = []
     blockers: set[str] = set()
     m = MARKETS.get(a.market_key)
     if m is None or not m.primary:
         blockers.add("MARKET_UNSUPPORTED")
         reasons.append("Bu pazar öneri motoruna açık değil (yalnızca araştırma).")
+    # Ortak veri uygunluk kontrolü (varsayılan: uygun değil). Uygunluk birincil (Evet/Üst) pazar için üretilir;
+    # tamamlayıcı Hayır/Alt seçimi aynı sonucu kullanır.
+    primary_key = a.market_key if (m is None or m.selection in ("YES", "OVER")) else m.complement
+    data_block = check_for_decision(a.eligibility, a.event_id, primary_key, decision_time, a.state_digest)
+    forecast_ok = bool(getattr(a.eligibility, "forecast_ok", False)) and not (
+        data_block and data_block[0] in ("BAGLAM_YOK", "BAGLAM_UYUSMUYOR"))
+    if data_block:
+        blockers.add("DATA_NOT_ELIGIBLE")
+        reasons.extend(f"Veri uygunluğu: {c} — {DATA_REASONS[c].text}" for c in data_block if c in DATA_REASONS)
     p = a.p
     if p is None or not math.isfinite(p) or not 0 <= p <= 1:
         blockers.add("INSUFFICIENT_DATA")
         reasons.append("Model olasılığı üretilemedi.")
         p = float("nan")
+    elif not forecast_ok:
+        p = float("nan")  # veri uygun değilse olasılık güvenilir tahmin gibi taşınmaz (sıfırla da doldurulmaz)
     if a.data_notes:
         blockers.add("INSUFFICIENT_DATA")
         reasons.extend(a.data_notes)
@@ -128,16 +150,18 @@ def decide(a: Assessment, decision_time: dt.datetime, policy: DecisionPolicy = D
     elif a.kickoff is None and a.match_date is not None and decision_time.astimezone(ISTANBUL).date() >= a.match_date:
         blockers.add("INSUFFICIENT_DATA")
         reasons.append("Başlama saati bilinmiyor: ihtiyat gereği maç günü ve sonrasında karar üretilmez.")
-    p_safe = a.p_low if (a.p_low is not None and math.isfinite(a.p_low)) else None
+    # Veri tahmine uygun değilse olasılıktan türetilen hiçbir değer (aralık, güvenli olasılık, gereken oran) taşınmaz
+    p_low, p_high = (a.p_low, a.p_high) if forecast_ok else (None, None)
+    p_safe = p_low if (p_low is not None and math.isfinite(p_low)) else None
     fair = fair_odds(p) if math.isfinite(p) and p > 0 else None
     d_min = min_required_odds(p_safe, policy.min_edge_safe, policy.commission) if p_safe else None
     if not a.model_validated:
         blockers.add("MODEL_NOT_VALIDATED")
         reasons.append("Model bu pazar için zaman sıralı testte doğrulama ölçütlerini geçmedi.")
-    if (a.p_low is not None and a.p_high is not None and math.isfinite(a.p_low) and math.isfinite(a.p_high)
-            and a.p_high - a.p_low > policy.max_interval_width):
+    if (p_low is not None and p_high is not None and math.isfinite(p_low) and math.isfinite(p_high)
+            and p_high - p_low > policy.max_interval_width):
         blockers.add("HIGH_UNCERTAINTY")
-        reasons.append(f"Belirsizlik aralığı geniş ({a.p_low:.2f}–{a.p_high:.2f}).")
+        reasons.append(f"Belirsizlik aralığı geniş ({p_low:.2f}–{p_high:.2f}).")
 
     odds = ev = ev_safe = be = nv = None
     q = a.quote
@@ -173,7 +197,7 @@ def decide(a: Assessment, decision_time: dt.datetime, policy: DecisionPolicy = D
                     reasons.append(f"Beklenen değer olağan dışı yüksek (%{100 * ev:.0f}); yanlış eşleşme/eski oran/veri hatası olabilir.")
             nv = no_vig_probability(q, a.opposite_quote) if a.opposite_quote is not None else None
 
-    near = _near_threshold(odds, ev, ev_safe, a.p_low, a.p_high, policy)
+    near = _near_threshold(odds, ev, ev_safe, p_low, p_high, policy)
     if near:
         reasons.append(f"{NEAR_THRESHOLD}: {', '.join(near)} — olasılıktaki ±{NUMERIC_TOLERANCE:g} sayısal fark bu kararı "
                        "değiştirebilir; durum ve eşikler değiştirilmedi.")
@@ -191,10 +215,14 @@ def decide(a: Assessment, decision_time: dt.datetime, policy: DecisionPolicy = D
             f"Oran yetersiz: belirsizlik dahil beklenen getiri %{100 * ev_safe:.1f}"
             + (f"; gereken en düşük oran {d_min:.2f}." if d_min else ".")
         )
+    elig = a.eligibility.compact() if hasattr(a.eligibility, "compact") else None
+    if data_block and elig is not None:
+        elig = dict(elig, karar_engeli=list(data_block))
     return Decision(
         event_id=a.event_id, market_key=a.market_key, status=status, reasons=reasons, p=p, p_safe=p_safe,
         fair_odds=fair, odds=odds, breakeven=be, ev=ev, ev_safe=ev_safe, min_odds=d_min, no_vig=nv,
         policy_version=policy.version, decision_time=decision_time.isoformat(),
+        data_eligibility=elig if elig is not None else {"politika": None, "karar_engeli": list(data_block)},
     )
 
 

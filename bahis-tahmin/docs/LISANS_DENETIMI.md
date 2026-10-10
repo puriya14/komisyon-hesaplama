@@ -27,6 +27,11 @@ kişisel ve ticari olmayan analiz için kullanılır.
   KG oranı içermez. Bu oranlar başka pazarlardan türetilmez; kullanıcı kendi gördüğü oranı girer veya
   şemaya uygun CSV ile içe aktarır.
 
+- Kullanım kapsamı yapılandırılmış olarak `source_registry.USE_RIGHTS`'ta tutulur (erişim, sonuç kullanımı, model
+  eğitimi ve yeniden dağıtım ayrı) ve ortak veri uygunluk kontrolü karar verirken bunu okur: belgelenmemiş sonuç
+  kullanımı/model eğitimi hakkıyla eğitilen modelden **bahis adayı üretilmez**; kullanıcı onayı yalnızca erişimi
+  kapsar (S3-GATE-01, [`VERI_UYGUNLUK.md`](VERI_UYGUNLUK.md)).
+
 ## Açık konular (kullanıcı kararı gerekir)
 
 1. football-data.co.uk koşullarının site üzerinden okunması ve kişisel kullanımın uygun olduğunun teyidi.

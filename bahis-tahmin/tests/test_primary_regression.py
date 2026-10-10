@@ -98,6 +98,10 @@ def test_decisions_unchanged_outside_numeric_band(current, shift):
     keys = {"A": "BTTS_BOTH_HALVES_YES", "B": "FT_OVER_3_5", "C": "FH_OVER_1_5"}
     grid = np.round(np.arange(1.01, 12.0, 0.01), 2)
     changed = flagged = 0
+    from uygunluk_yardim import verified
+
+    # Karar etkisi testi veri uygunluğundan bağımsızdır: açıkça SENTETİK "uygun" sonuç verilir (S3-GATE-01)
+    elig = {mk: verified("E", mk, t) for mk in keys.values()}
     for short, mk in keys.items():
         m = MARKETS[mk]
         lo_c, hi_c = current["interval"][mk]
@@ -114,7 +118,7 @@ def test_decisions_unchanged_outside_numeric_band(current, shift):
                 out = {}
                 for name, (p, lo, hi) in src.items():
                     a = Assessment("E", "T1", "Ev", "Dep", mk, float(p), float(lo), float(hi), model_validated=True,
-                                   quote=q, kickoff=t + dt.timedelta(days=1))
+                                   quote=q, kickoff=t + dt.timedelta(days=1), eligibility=elig[mk])
                     out[name] = decide(a, t)
                 g, c = out["altin"], out["guncel"]
                 near = any(r.startswith(NEAR_THRESHOLD) for r in g.reasons + c.reasons)

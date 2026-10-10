@@ -8,7 +8,7 @@ import traceback
 from typing import Callable
 
 import pandas as pd
-from PySide6.QtCore import QObject, QThread, Signal
+from PySide6.QtCore import QObject, QThread, QTimer, Signal
 
 from ..config import Settings, app_home
 from ..data.store import DataStore
@@ -95,6 +95,20 @@ class AppController(QObject):
         self.goal_engine: GoalEngine | None = None
         self.goal_load_error: str | None = None
         self.goal_predictions: list[GoalPrediction] = []
+        # Ortak veri uygunluk kontrolünden geçmiş sonuçlar (S3-GATE-01): her fikstür için tahmin (varsa) + pazar başına
+        # uygunluk. Modelde olmayan lig ve eşleşmeyen takım da nedenli sonuç olarak burada yer alır.
+        self.goal_verdicts: list = []
+        self.match_unpredicted: list = []  # 1X2: tahmini olmayan fikstürlerin nedenli sonuçları
+        self._ctx_cache: dict = {}
+        # Tek zaman kaynağı: uygunluk değerlendirmesi ve karar anı aynı saatten alınır (testlerde sabitlenebilir)
+        self.clock: Callable[[], dt.datetime] = lambda: dt.datetime.now(dt.timezone.utc)
+        self._match_day: dt.date | None = None  # uygunluğun son değerlendirildiği İstanbul günü (1X2 / gol)
+        self._goal_day: dt.date | None = None
+        # Uygulama açıkken gün değişirse uygunluk yeniden değerlendirilir (önceki günün sonucu gösterilmez)
+        self._day_timer = QTimer(self)
+        self._day_timer.setInterval(60_000)
+        self._day_timer.timeout.connect(self.check_day)
+        self._day_timer.start()
         self._ledger: Ledger | None = None
         self.seq_table: pd.DataFrame | None = None  # dizi araştırması: takım-maç tablosu (istek üzerine kurulur)
         self.seq_results: dict | None = None  # son araştırma çalıştırmasının sonuçları (varsa)
@@ -328,12 +342,78 @@ class AppController(QObject):
 
         return self._run(work, done, "Gol pazarları modeli eğitiliyor...")
 
+    # ------------------------------------------------------- veri uygunluğu
+    def now(self) -> dt.datetime:
+        return self.clock()
+
+    def today(self) -> dt.date:
+        """Bilgi kesimiyle aynı takvim: İstanbul günü."""
+        from ..timeutil import ISTANBUL
+
+        return self.now().astimezone(ISTANBUL).date()
+
+    def match_day_stale(self) -> bool:
+        """1X2 uygunluğu başka bir gün değerlendirildiyse yeniden değerlendirilmelidir."""
+        return self._match_day is not None and self._match_day != self.today()
+
+    def goal_day_stale(self) -> bool:
+        return self._goal_day is not None and self._goal_day != self.today()
+
+    def check_day(self) -> bool:
+        """Gün değiştiyse uygunluğu yeniden değerlendirir. Yeniden değerlendirme başlatıldıysa True."""
+        changed = False
+        if self.match_day_stale():
+            self.refresh_predictions()
+            changed = True
+        if self.goal_day_stale():
+            self.refresh_goal_predictions()
+            changed = True
+        return changed
+
+    def eligibility_context(self, engine):
+        """Ortak veri uygunluk bağlamı (veri deposu + bu motorun durumu + önbellekteki kaynak takvimleri + haklar).
+
+        Önbellek anahtarı; veri deposu, motor durumu, kaynak dosyaları ve onaylar değişince değişir (eski "uygun"
+        sonucu yeni veri/durum/kapsamla kullanılmaz). Bağlam kurulamazsa None döner: tahminler uygun sayılmaz."""
+        from ..eligibility import build_context
+
+        raw = self.store.raw_dir / "openfootball"
+        try:
+            files = tuple(sorted((str(p), p.stat().st_mtime_ns, p.stat().st_size) for p in raw.rglob("*.json"))) \
+                if raw.exists() else ()
+        except OSError:
+            files = ()
+        m = self.store.matches
+        key = (id(engine), getattr(engine, "state_available_since", None), id(m), len(m),
+               self.store.meta.get("updated_at"), files, tuple(sorted(self.settings.source_consent)),
+               self.today())
+        ctx = self._ctx_cache.get(key)
+        if ctx is None:
+            try:
+                ctx = build_context(self.store, engine, self.settings.source_consent, today=self.today())
+            except Exception:
+                log.exception("Veri uygunluk bağlamı kurulamadı")
+                return None
+            if len(self._ctx_cache) >= 2:  # gol ve 1X2 motoru için birer güncel bağlam
+                self._ctx_cache.pop(next(iter(self._ctx_cache)))
+            self._ctx_cache[key] = ctx
+        return ctx
+
     def refresh_predictions(self) -> None:
-        if self.engine is None or not self.engine.trained or self.store.fixtures.empty:
+        from ..eligibility import gated_match_predictions
+
+        self.match_unpredicted = []
+        self._match_day = self.today()
+        if self.store.fixtures.empty and self.store.unmatched_fixtures.empty:
             self.predictions = []
         else:
+            # Model yoksa da fikstürler nedenli "tahmin yok" satırı olarak listelenir (sessizce düşürülmez)
+            eng = self.engine if (self.engine is not None and self.engine.trained) else None
             try:
-                self.predictions = self.engine.predict_fixtures(self.store.fixtures, self.settings.odds_type)
+                ctx = self.eligibility_context(eng)
+                self.predictions, self.match_unpredicted = gated_match_predictions(
+                    eng, ctx, self.store.fixtures, self.now(), self.settings.odds_type,
+                    self.store.unmatched_fixtures)
             except Exception as e:
                 log.exception("Tahminler hesaplanamadı")
                 self.predictions = []
@@ -418,18 +498,29 @@ class AppController(QObject):
 
     def refresh_goal_predictions(self) -> None:
         eng = self.goal_engine
-        if eng is None or not eng.trained or self.store.fixtures.empty:
+        stale = self.goal_day_stale()
+        self._goal_day = self.today()  # her dalda önce işaretlenir (yeniden giriş/sonsuz döngü olmaz)
+        if eng is None or not eng.trained or (self.store.fixtures.empty and self.store.unmatched_fixtures.empty):
             self.goal_predictions = []
+            self.goal_verdicts = []
             self.goalPredictionsChanged.emit()
             return
-        fixtures = self.store.fixtures
+        fixtures, unmatched = self.store.fixtures, self.store.unmatched_fixtures
+        if stale:  # yeni değerlendirme bitene kadar önceki günün sonucu gösterilmez
+            self.goal_predictions = []
+            self.goal_verdicts = []
+            self.goalPredictionsChanged.emit()
 
         def work(progress):
-            progress(10, "Gol pazarları tahminleri ve belirsizlik aralıkları hesaplanıyor...")
-            return eng.predict_fixtures(fixtures, with_interval=True)
+            from ..goals.service import gated_goal_predictions
 
-        def done(preds):
-            self.goal_predictions = preds
+            progress(10, "Gol pazarları: veri uygunluğu, tahminler ve belirsizlik aralıkları hesaplanıyor...")
+            ctx = self.eligibility_context(eng)
+            return gated_goal_predictions(eng, ctx, fixtures, self.now(), unmatched=unmatched)
+
+        def done(verdicts):
+            self.goal_verdicts = verdicts
+            self.goal_predictions = [v.prediction for v in verdicts if v.prediction is not None]
             self.goalPredictionsChanged.emit()
 
         if self.busy:  # başka iş bitince sessizce sıraya al
@@ -454,11 +545,22 @@ class AppController(QObject):
 
     # ------------------------------------------------------------ queries
     def prediction_frame(self) -> pd.DataFrame:
-        """Tahmin listesini tabloya uygun DataFrame'e çevirir."""
+        """Tahmin listesini tabloya uygun DataFrame'e çevirir.
+
+        Veri uygunluğu doğrulanmayan maçlarda olasılıklar gösterilmez (boş; sıfır değil), değer önerisi yoktur ve
+        durum metinle yazılır. Tahmini hiç üretilemeyen fikstürler (modelde olmayan lig, eşleşmeyen takım) de
+        nedenleriyle listelenir (``_i`` = -1)."""
+        from ..eligibility import display_label
+
         rows = []
         s = self.settings
+        nan = float("nan")
+        now = self.now()
         for i, p in enumerate(self.predictions):
-            best = p.best_value(s)
+            codes = p.display_codes(now)  # gün/kimlik/model durumu eşleşmesi dahil
+            ok = not codes
+            label, text = display_label(p.eligibility, codes)
+            best = p.best_value(s, now=now) if ok else None
             xg = p.exp_goals
             pick_idx = int(p.p_final.argmax())
             rows.append({
@@ -468,16 +570,26 @@ class AppController(QObject):
                 "league": p.league,
                 "home": p.home,
                 "away": p.away,
-                "p1": float(p.p_final[0]),
-                "px": float(p.p_final[1]),
-                "p2": float(p.p_final[2]),
-                "pick": ("1", "X", "2")[pick_idx],
-                "o25": float(p.markets["O2.5"]),
-                "btts": float(p.markets["BTTS_Y"]),
-                "xg": f"{xg[0]:.1f} - {xg[1]:.1f}",
+                "p1": float(p.p_final[0]) if ok else nan,
+                "px": float(p.p_final[1]) if ok else nan,
+                "p2": float(p.p_final[2]) if ok else nan,
+                "pick": ("1", "X", "2")[pick_idx] if ok else "-",
+                "o25": float(p.markets["O2.5"]) if ok else nan,
+                "btts": float(p.markets["BTTS_Y"]) if ok else nan,
+                "xg": f"{xg[0]:.1f} - {xg[1]:.1f}" if ok else "-",
                 "odds": " / ".join(f"{p.odds[k]:.2f}" for k in ("1", "X", "2") if k in p.odds) or "-",
                 "value": f"{best['label']} @{best['odds']:.2f} ({100 * best['ev']:+.0f}%)" if best else "",
-                "value_ev": float(best["ev"]) if best else float("nan"),
+                "value_ev": float(best["ev"]) if best else nan,
                 "has_market": p.p_market is not None,
+                "veri": label,
+                "veri_neden": text,
+            })
+        for v in self.match_unpredicted:
+            label, text = display_label(v.first(), v.display_codes("1X2", now))
+            rows.append({
+                "_i": -1, "date": v.date, "when": v.date.strftime("%d.%m.%Y") + (f" {v.time}" if v.time else ""),
+                "league": v.league, "home": v.home, "away": v.away + ("" if v.canonical_id else " (eşleşmedi)"),
+                "p1": nan, "px": nan, "p2": nan, "pick": "-", "o25": nan, "btts": nan, "xg": "-", "odds": "-",
+                "value": "", "value_ev": nan, "has_market": False, "veri": label, "veri_neden": text,
             })
         return pd.DataFrame(rows)

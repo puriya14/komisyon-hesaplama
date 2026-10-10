@@ -84,10 +84,14 @@ def test_mirror_fallback_and_openfootball_fixtures(tmp_home):
     assert rep.used_mirror
     assert rep.leagues["T1"] == "GitHub yedek veri seti"
     assert len(st.matches) == 12
-    assert len(st.fixtures) == 1  # eşleşmeyen takımlı maç atılır
+    assert len(st.fixtures) == 1  # eşleşmeyen takımlı maç fikstür tablosuna girmez…
     fx = st.fixtures.iloc[0]
     assert (fx["home"], fx["away"]) == ("Galatasaray", "Fenerbahce")
     assert any("eşleştirilemedi" in w for w in rep.warnings)
+    # …ama sessizce düşürülmez: ham adlarıyla saklanır ve diskten yeniden yüklenir (S3-GATE-01)
+    st2 = DataStore(tmp_home)
+    assert st2.load()
+    assert st2.unmatched_fixtures[["raw_home", "raw_away"]].values.tolist() == [["Foo FC", "Bar FC"]]
 
 
 def test_no_data_keeps_previous(tmp_home):

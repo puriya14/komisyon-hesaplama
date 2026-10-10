@@ -6,10 +6,15 @@ getiri iddiası değildir; gerçek para kullanılmaz.
 
 ## Protokol
 
-- Sürüm `ileriye-donuk-olcum-v1`; gerçek sistem saatinde **2026-10-10T11:52:58Z** donduruldu; gövde SHA-256
-  `3946a6e2865f4ea5386156e20cb5ccb7ccd8a4c1520c3dc65fdd4e2a6814fddf`. Tam metin:
-  [`reports/kabul_s2_01/ileriye_donuk_protokol_v1.json`](../reports/kabul_s2_01/ileriye_donuk_protokol_v1.json)
-  (`python -m bahis_tahmin gol-olcum-degerlendir --protokol` aynı belgeyi yazdırır). Kod: `bahis_tahmin/goals/forecast_log.py`.
+- **Etkin sürüm `ileriye-donuk-olcum-v2`** (S3-GATE-01): veri uygunluğu ortak kontrolden gelir
+  ([`VERI_UYGUNLUK.md`](VERI_UYGUNLUK.md), politika `veri-uygunluk-v1`). Gerçek sistem saatinde
+  **2026-10-10T16:28:32Z** donduruldu; gövde SHA-256 `56c41f57c2a49610f072f0016e653a33ca70f98d1212fb5effdb6fee7d333063`.
+  Tam metin: [`reports/s3_gate_01/ileriye_donuk_protokol_v2.json`](../reports/s3_gate_01/ileriye_donuk_protokol_v2.json).
+- Önceki sürüm `ileriye-donuk-olcum-v1` **değiştirilmedi**: 2026-10-10T11:52:58Z, gövde SHA-256
+  `3946a6e2865f4ea5386156e20cb5ccb7ccd8a4c1520c3dc65fdd4e2a6814fddf`,
+  [`reports/kabul_s2_01/ileriye_donuk_protokol_v1.json`](../reports/kabul_s2_01/ileriye_donuk_protokol_v1.json).
+  v1 ve v2 kayıtları değerlendirmede ayrı raporlanır ve birleştirilmez
+  (`python -m bahis_tahmin gol-olcum-degerlendir --protokol` iki belgeyi de yazdırır). Kod: `bahis_tahmin/goals/forecast_log.py`.
 - Hedef karar anı: **maç günü 00:00 Europe/Istanbul**. Kayıt anı (defterin `created_at`'i) bundan önce olmalı; değilse
   olasılık yazılmaz (`PENCERE_KACIRILDI`). Kaçırılan pencere sonradan doldurulmaz.
 - Dondurma gününden önceki veya sonucu bilinen maçlar ileriye dönük örnekleme girmez.
@@ -32,10 +37,13 @@ getiri iddiası değildir; gerçek para kullanılmaz.
 | `KARAR_KAYDI` | Karar motorunun diğer kararları |
 | `FORECAST_GECERSIZ_ILAN` | Bir tahmini gerekçeyle geçersiz ilan eden ayrı kayıt (orijinal değişmez; değerlendirme dahil/hariç iki sayım verir) |
 
-Neden kodları: `PENCERE_KACIRILDI`, `MAC_SONUCU_BILINIYOR`, `PROTOKOLDEN_ONCE`, `MODEL_YOK`,
-`LIG_MODEL_KAPSAMI_DISI`, `VERI_GUNCEL_DEGIL`, `TAKIM_GECMISI_YETERSIZ`, `OLASILIK_GECERSIZ`.
-`VERI_GUNCEL_DEGIL`: fikstür kaynağı (openfootball) ligde veri deposundaki son maçtan sonra oynanmış maç listeliyorsa
-veya bu doğrulanamıyor ve ligin son kayıtlı maçı 21 günden eskiyse.
+Neden kodları (v2): zaman kodları `PENCERE_KACIRILDI`, `MAC_SONUCU_BILINIYOR`, `PROTOKOLDEN_ONCE` ve ortak
+uygunluk kontrolünün kodları (birincil neden `reasons[0]`; tamamı `veri_uygunlugu.nedenler`), ör. `DEPODA_EKSIK_MAC`,
+`DURUM_DEPODAN_GERIDE`, `KAYNAK_KAPSAMI_YOK`, `TAKIM_ESLESMEDI`, `GEREKLI_ALAN_EKSIK`, `TAKIM_GECMISI_YETERSIZ`,
+`OLASILIK_GECERSIZ`. Takım adı eşleşmeyen fikstür, aday kimlikle (`aday:…`, `kanonik_kimlik: false`) üç pazar için
+`TAKIM_ESLESMEDI` kaydı alır. v1'in `VERI_GUNCEL_DEGIL` kuralı (son kayıtlı lig maçından sonra oynanmış maç veya 21 gün)
+yalnızca eski kayıtların anlamı için belgede kalır. Kayıtlarda ayrıca `hesaplama_ani`, `bilgi_kesimi` ve
+`veri_uygunlugu` (güncellik, tahmin/bahis uygunluğu, nedenler, veri kesimi, durum özeti) alanları vardır.
 
 ## Elle günlük akış (otomatik zamanlayıcı yok)
 
@@ -53,8 +61,9 @@ veya bu doğrulanamıyor ve ligin son kayıtlı maçı 21 günden eskiyse.
 
 ## Bilinen sınırlar
 
-- Fikstür kaynağı olmayan liglerde aday maç oluşmaz (openfootball 2026-27'de 22 ligin 8'i için dosya var).
-- Takım adı eşleşmeyen fikstür deftere girmez; sayısı güncelleme uyarısında görünür.
+- Fikstür kaynağı olmayan liglerde aday maç oluşmaz (openfootball 2026-27'de 22 ligin 8'i için dosya var); tam sezon
+  takvimi olmayan liglerde güncellik doğrulanamaz (`KAYNAK_KAPSAMI_YOK`) ve tahmin yazılmaz.
+- Takım adı eşleşmeyen fikstür v2'de aday kimlikli `TAHMIN_YOK` kaydı alır (v1'de deftere girmiyordu).
 - Başlama saati olmayan fikstürlerde karar anı yine maç günü 00:00 İstanbul'dur.
 - Model eğitim verisinin (football-data.co.uk / GitHub yedeği) kullanım hakları belgeyle doğrulanmadı; ölçüm kişisel
   analiz kapsamındadır.

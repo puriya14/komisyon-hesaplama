@@ -88,6 +88,7 @@ class SequencesPage(Page):
         self.refresh_all()
 
     def on_show(self) -> None:
+        super().on_show()
         self.ctl.ensure_sequence_table()
 
     def _data_changed(self) -> None:

@@ -64,6 +64,9 @@ Veriler, modeller ve sanal takip dosyası yalnızca bilgisayarınızda tutulur:
 - "Avantaj adayı" yalnızca model o pazar için zaman sıralı testte doğrulanmışsa, güncel gerçek oran
   varsa ve belirsizlik dahil beklenen değer eşiği geçiyorsa oluşur. Çoğu durumda doğru sonuç "aday yok"tur.
 - "Sanal takibe kaydet" kararları değiştirilemez biçimde saklar; gerçek para kullanılmaz.
+- Bütün tahmin ve karar yolları ortak **veri uygunluk kontrolünden** geçer: güncelliği kanıtla doğrulanamayan veya
+  eksikliği bilinen veriyle olasılık gösterilmez, avantaj adayı ve sanal stake üretilmez; neden, veri kesimi ve
+  gereken düzeltme yazılır ([`docs/VERI_UYGUNLUK.md`](docs/VERI_UYGUNLUK.md)).
 
 ## Testler
 
@@ -88,6 +91,8 @@ dokunmaz (`tests/conftest.py`: `BAHIS_TAHMIN_HOME` geçici dizine yönlendirilir
 - [`docs/DIZI_ARASTIRMA_SONUCLARI.md`](docs/DIZI_ARASTIRMA_SONUCLARI.md) — dizi araştırması sonuçları ve zorunlu test eşlemesi
 - [`docs/DIZI_ARASTIRMA_DUZELTMELER.md`](docs/DIZI_ARASTIRMA_DUZELTMELER.md) — sonuç belgesinin kanıt denetimi: düzeltme ve daraltma kaydı (S2-KABUL-01)
 - [`docs/ILERIYE_DONUK_OLCUM.md`](docs/ILERIYE_DONUK_OLCUM.md) — A/B/C için ileriye dönük ölçüm protokolü ve elle günlük akış
+- [`docs/VERI_UYGUNLUK.md`](docs/VERI_UYGUNLUK.md) — ortak veri uygunluk kontrolü (güncellik, kapsam, zaman, haklar; S3-GATE-01)
+- `reports/s3_gate_01/` — S3-GATE-01 raporu ve dondurulmuş ileriye dönük ölçüm protokolü v2
 - `reports/kabul_s2_01/` — S2-KABUL-01 kabul raporu, denetim kanıtları, kontroller ve dondurulmuş protokol
 - `reports/` — deney günlüğü (`experiments.jsonl`) ve doğrulama sonuçları (JSON)
 

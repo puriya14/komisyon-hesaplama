@@ -58,6 +58,10 @@ class GoalPrediction:
     base_rates: dict
     data_notes: list[str]
     info: dict = field(default_factory=dict)
+    # Yapılandırılmış veri kodları (veri uygunluk kontrolü bunları okur; metin aranmaz) ve tahminde kullanılan lig
+    # durumunun özeti (uygunluk sonucunun AYNI durumdan geldiğini bağlamak için). Olasılık hesabını etkilemez.
+    data_codes: tuple = ()
+    state_digest: str = ""
 
     def p(self, market_key: str) -> float:
         """Seçim olasılığı (Hayır/Alt tarafı için tümleyen)."""
@@ -94,6 +98,7 @@ class GoalEngine:
         self.data_cutoff = ""
         self.manifest: dict = {}
         self.league_ht_share: dict[str, float] = {}
+        self.state_available_since: dt.datetime | None = None  # eğitim/yükleme anı; köken bilgisi yoksa None
 
     @property
     def trained(self) -> bool:
@@ -137,6 +142,15 @@ class GoalEngine:
         self.trained_at = dt.datetime.now().isoformat(timespec="seconds")
         self.data_cutoff = str(pd.Timestamp(matches["date"].max()).date())
         self.manifest = data_manifest(matches)
+        # Durumun (ve içindeki bilginin) en geç bu anda var olduğu kesin (veri uygunluk kontrolünün zaman kuralı)
+        self.state_available_since = dt.datetime.now(dt.timezone.utc)
+        # Köken bilgisi (olasılık hesabını etkilemez): her lig durumunun kurulduğu (karantinada olmayan) maç kümesi
+        from ..eligibility import rows_digest
+
+        ing = feat[(feat["issues"] == "") & feat["fthg"].notna() & feat["ftag"].notna()]
+        for lg, st in self.states.items():
+            g = ing[ing["league"] == lg]
+            st.row_digest = rows_digest(g, "gol")
         ok = (feat["issues"] == "") & feat["hthg"].notna()
         self.league_ht_share = feat.assign(ok=ok).groupby("league")["ok"].mean().to_dict()
         progress(100, "Gol pazarları modeli hazır.")
@@ -161,6 +175,9 @@ class GoalEngine:
             return None, err
         if not isinstance(eng, GoalEngine):
             return None, "Beklenmeyen model nesnesi."
+        # Dosyadan yüklenen durum en geç yükleme anında vardı: dosyadaki değer kullanılmaz, yükleme anıyla değiştirilir
+        # (dosya güncellenmez; köken bilgisi uydurulmaz)
+        eng.state_available_since = dt.datetime.now(dt.timezone.utc)
         return eng, None
 
     # ---------------------------------------------------------------- tahmin
@@ -199,18 +216,23 @@ class GoalEngine:
         probs = self.model.predict(X)
         ivals = self.model.interval(X) if with_interval else None
         usable = usable_rows(X)
+        from ..eligibility import league_state_digest
+
         out = []
         for i, (r, snap) in enumerate(metas):
-            notes = []
+            notes, codes = [], []
             if not usable[i]:
                 notes.append("Takım güçleri hesaplanamadı (ilk yarı skoru verisi yok veya yetersiz).")
+                codes.append("TAKIM_GUCU_YOK")
             share = self.league_ht_share.get(r.league, 0.0)
             if share < 0.8:
                 notes.append(f"Bu ligde geçerli ilk yarı skoru oranı düşük (%{100 * share:.0f}).")
+                codes.append("LIG_IY_ORANI_DUSUK")
             for side, team in (("h", r.home), ("a", r.away)):
                 n365 = X.loc[i, f"{side}_n365"]
                 if not (n365 >= MIN_TEAM_MATCHES):
                     notes.append(f"{team}: son 365 günde bu ligde yalnızca {int(n365 or 0)} maç (lig önbilgisi ağırlıklı).")
+                    codes.append("TAKIM_N365_AZ")
             lg = LEAGUES.get(r.league)
             ko = kickoff_utc(r.date, getattr(r, "time", "") or "", getattr(r, "source", ""), lg.country if lg else "")
             p = {k: float(v[i]) for k, v in probs.items() if np.ndim(v) and len(v) > i}
@@ -226,6 +248,7 @@ class GoalEngine:
                 kickoff_text=fmt_istanbul(ko, r.date), probs=p, intervals=iv,
                 base_rates={"A": float(X.loc[i, "bA"]), "B": float(X.loc[i, "bB"]), "C": float(X.loc[i, "bC"])},
                 data_notes=notes, info={k: float(X.loc[i, k]) for k in ("h_n365", "a_n365", "l1h", "l1a", "l2h", "l2a", "lh", "la")},
+                data_codes=tuple(sorted(set(codes))), state_digest=league_state_digest(self.states.get(r.league)),
             ))
         return out
 

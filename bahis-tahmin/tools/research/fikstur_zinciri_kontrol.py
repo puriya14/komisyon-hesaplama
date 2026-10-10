@@ -4,7 +4,8 @@ A/B/C kaydı → değişmez defter.
 * Fikstür kaynağı yalnızca openfootball (CC0); en fazla lig sayısı kadar ağ isteği. football-data.co.uk kullanılmaz.
 * Geçmiş veri ve model dosyası yalnızca bu görevde üretilmiş, kaynağı bilinen dosyalardan okunur (CSV + kendi
   eğittiğimiz motor). Uygulamanın gerçek ana klasörüne dokunulmaz; yazma yalnızca ``--ev`` altındadır.
-* Veri güncel değilse tahmin ÜRETİLMEZ; kayıtlar olasılıksız ``TAHMIN_YOK`` + gerekçe olarak yazılır. Motorun teknik
+* Veri güncel değilse tahmin ÜRETİLMEZ; kayıtlar olasılıksız ``TAHMIN_YOK`` + gerekçe olarak yazılır. Uygunluk ortak
+  kontrolden gelir (``bahis_tahmin.eligibility``, protokol ``ileriye-donuk-olcum-v2``; S3-GATE-01). Motorun teknik
   olarak sonlu olasılık üretip üretmediği ayrıca sayılır; değerler rapora veya deftere yazılmaz.
 
 Kullanım: python -I fikstur_zinciri_kontrol.py --ev <izole_klasör> --motor <goal_engine.joblib> --maclar <csv.gz>
@@ -27,6 +28,7 @@ import pandas as pd  # noqa: E402
 from bahis_tahmin.data.leagues import LEAGUES, openfootball_season  # noqa: E402
 from bahis_tahmin.data.sources import Downloader  # noqa: E402
 from bahis_tahmin.data.store import DataStore, UpdateReport  # noqa: E402
+from bahis_tahmin.eligibility import build_context  # noqa: E402
 from bahis_tahmin.goals import forecast_log as F  # noqa: E402
 from bahis_tahmin.goals.engine import GoalEngine  # noqa: E402
 from bahis_tahmin.goals.ledger import Ledger  # noqa: E402
@@ -75,7 +77,10 @@ def main() -> int:
     ko = [kickoff_utc(r.date, r.time or "", r.source or "", LEAGUES[r.league].country) for r in fx.itertuples()]
     rights = {"openfootball": "CC0 (openfootball/football.json)"}
     led = Ledger(home / "gol_pazarlari.sqlite") if a.uygula else None
-    recs = F.build_forecast_records(eng, fx, m, ledger=led, missing_played=missing, source_rights=rights)
+    st.meta["eslesmeyen_fikstur"] = list(st._last_unmatched)
+    ctx = build_context(st, eng, {}, today=today)  # yalnızca onay gerektirmeyen kaynaklar (openfootball, CC0)
+    recs = F.build_forecast_records(eng, fx, m, ledger=led, ctx=ctx, unmatched=st.unmatched_fixtures,
+                                    source_rights=rights)
     reasons = {}
     for r in recs:
         k = r["decision_status"] if r["decision_status"] == F.STATUS_FORECAST else r["reasons"][0]
@@ -103,8 +108,10 @@ def main() -> int:
         "baslama_saati_bilinen": int(sum(k is not None for k in ko)),
         "motor": {"yuklendi": eng is not None, "hata": err, "kohort": F.model_cohort(eng) if eng else None},
         "veri_son_tarih_lig": last, "eksik_oynanmis_mac_lig": missing,
-        "protokol": {"surum": F.PROTOCOL_VERSION, "govde_sha256": F.protocol_sha256(),
-                     "dondurma_zamani_utc": F.PROTOCOL_FROZEN["dondurma_zamani_utc"]},
+        "protokol": {"surum": F.ACTIVE_PROTOCOL, "govde_sha256": F.protocol_sha256(F.PROTOCOL_V2_BODY),
+                     "dondurma_zamani_utc": F.PROTOCOL_V2_FROZEN["dondurma_zamani_utc"],
+                     "veri_uygunluk_politikasi": F.PROTOCOL_V2_BODY["veri_uygunluk_politikasi"]},
+        "eksik_oynanmis_mac_lig_v1_bilgi": "v1 kuralı yalnızca bilgi; uygunluk kararını vermez",
         "kayit_adaylari": len(recs), "neden_dagilimi": reasons,
         "teknik_yol_sonlu_olasilik_mac": finite,
         "teknik_yol_notu": "Olasılık değerleri rapora/deftere yazılmadı; veri güncel değilse tahmin sayılmaz.",

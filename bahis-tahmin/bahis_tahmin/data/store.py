@@ -69,6 +69,7 @@ class DataStore:
         self.matches = pd.DataFrame(columns=MATCH_COLUMNS)
         self.fixtures = pd.DataFrame(columns=FIXTURE_COLUMNS)
         self.meta: dict = {}
+        self._last_unmatched: list[dict] = []
 
     # ------------------------------------------------------------------ disk
     @property
@@ -106,6 +107,16 @@ class DataStore:
     @property
     def has_data(self) -> bool:
         return not self.matches.empty
+
+    @property
+    def unmatched_fixtures(self) -> pd.DataFrame:
+        """Takım adı eşleşmeyen yaklaşan maçlar (ham adlarla; kanonik maç kimliği yok)."""
+        cols = ["league", "date", "time", "raw_home", "raw_away", "source"]
+        rows = self.meta.get("eslesmeyen_fikstur") or []
+        df = pd.DataFrame(rows, columns=cols)
+        if not df.empty:
+            df["date"] = pd.to_datetime(df["date"])
+        return df
 
     # ---------------------------------------------------------------- update
     def update(
@@ -219,6 +230,7 @@ class DataStore:
             matches = self.matches[self.matches["league"].isin(leagues)]
 
         progress(92, "Yaklaşan maçlar (fikstür) alınıyor...")
+        self._last_unmatched = []
         fixtures = self._update_fixtures(dl, leagues, matches, today, fixture_days, report, force, allowed)
 
         self.matches = matches.reset_index(drop=True)
@@ -228,6 +240,9 @@ class DataStore:
             "leagues": leagues,
             "years_back": years_back,
             "sources": report.leagues,
+            # Takım adı eşleşmeyen fikstürler sessizce düşürülmez: ham adlarıyla saklanır; uygulama bunlar için
+            # aday kimlikli, nedenli "tahmin yok" sonucu gösterir (S3-GATE-01).
+            "eslesmeyen_fikstur": list(self._last_unmatched),
         })
         report.n_matches = len(self.matches)
         report.n_fixtures = len(self.fixtures)
@@ -286,13 +301,20 @@ class DataStore:
             if of.empty:
                 continue
             of = of.copy()
+            raw_home, raw_away = of["home"].copy(), of["away"].copy()
             of["home"] = [match_team(t, known) for t in of["home"]]
             of["away"] = [match_team(t, known) for t in of["away"]]
             unmatched = of["home"].isna() | of["away"].isna()
             if unmatched.any():
                 report.warnings.append(
-                    f"{lg.label}: {int(unmatched.sum())} fikstür maçında takım adı eşleştirilemedi."
+                    f"{lg.label}: {int(unmatched.sum())} fikstür maçında takım adı eşleştirilemedi "
+                    "(nedenli 'tahmin yok' olarak gösterilir)."
                 )
+                for i in of.index[unmatched]:
+                    self._last_unmatched.append({
+                        "league": code, "date": str(pd.Timestamp(of.at[i, "date"]).date()),
+                        "time": str(of.at[i, "time"] or "") if "time" in of else "",
+                        "raw_home": str(raw_home[i]), "raw_away": str(raw_away[i]), "source": "openfootball"})
             extra.append(of[~unmatched])
         fx = pd.concat([fd] + extra, ignore_index=True) if extra else fd
         if fx.empty:

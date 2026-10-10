@@ -126,6 +126,25 @@ class MatchDetail(QWidget):
         when = p.date.strftime("%d.%m.%Y") + (f" {p.time}" if p.time else "")
         self.title.setText(f"{p.home}  –  {p.away}")
         self.sub.setText(f"{league_name(p.league)} · {when}")
+        from ..eligibility import display_label
+
+        e = p.eligibility
+        codes = p.display_codes(self.ctl.now())
+        if codes:
+            # Veri uygunluğu doğrulanmadı (veya sonuç bugüne/bu modele ait değil): olasılık, skor ve değer tablosu
+            # güvenilir tahmin gibi gösterilmez.
+            label, text = display_label(e, codes)
+            self.bar.hide()
+            self.summary.setText("<b>Tahmin gösterilmiyor.</b> " + text)
+            self.note.setText(f"Veri durumu: {label}. Olasılıklar, skor dağılımı ve değer önerisi ancak veri "
+                              "uygunluğu doğrulanınca gösterilir.")
+            self.note.show()
+            self.mk_model.set_frame(pd.DataFrame())
+            self.heat.set_matrix(None)
+            self.scores.setText("")
+            self._show_teams(p)
+            return
+        self.bar.show()
         self.bar.set_probs(p.p_final, (f"1 {p.home}", "X", f"2 {p.away}") if len(p.home) < 14 else ("1", "X", "2"))
         xg = p.exp_goals
         parts = [
@@ -140,16 +159,22 @@ class MatchDetail(QWidget):
                 f"{fmt_pct(p.p_market[2])}</span>"
             )
         self.summary.setText("<br>".join(parts))
+        notes = []
         if p.p_market is None:
-            self.note.setText(
+            notes.append(
                 "Bu maç için piyasa oranı yok; olasılıklar yalnızca modelden gelir (model tek başına piyasadan "
                 "biraz daha az isabetlidir). Maç Analizi sayfasında oranları girerseniz sonuç iyileşir."
             )
+        block = p.data_block(self.ctl.now())
+        if block:
+            notes.append("Bahis/değer önerisi yok (stake 0): " + (e.short_text() if e is not None else ", ".join(block)))
+        if notes:
+            self.note.setText(" ".join(notes))
             self.note.show()
         else:
             self.note.hide()
 
-        rows = p.value_rows(s, odds)
+        rows = p.value_rows(s, odds, now=self.ctl.now())
         df = pd.DataFrame(rows)
         df["need"] = df["fair"] * (1 + s.min_ev)
         df = df[["market", "group", "label", "prob", "fair", "need", "odds", "ev", "stake", "kelly", "value"]]
@@ -160,7 +185,9 @@ class MatchDetail(QWidget):
         self.heat.set_matrix(p.matrix)
         ts = top_scores(p.matrix, 6)
         self.scores.setText("En olası skorlar: " + ", ".join(f"{i}-{j} (%{100 * v:.1f})" for i, j, v in ts))
+        self._show_teams(p)
 
+    def _show_teams(self, p: MatchPrediction) -> None:
         while self.compare.count():
             w = self.compare.takeAt(0).widget()
             if w is not None:

@@ -95,10 +95,25 @@ def test_kelly_capped_and_nonnegative():
 
 # --------------------------------------------------------------- karar
 def assess(**kw):
+    """Karar motoru birim testleri: veri uygunluğu açıkça SENTETİK olarak "geçti" verilir (S3-GATE-01). Uygunluk
+    olmadan karar alınamadığı ayrı testlerde (test_eligibility.py) doğrulanır."""
+    from bahis_tahmin.goals.markets import MARKETS
+    from uygunluk_yardim import verified
+
     base = dict(event_id="T1|2026-10-17|A|B", league="T1", home="A", away="B", market_key="FT_OVER_3_5",
                 p=0.40, p_low=0.36, p_high=0.44, model_validated=True, quote=quote(odds=3.2))
     base.update(kw)
+    m = MARKETS.get(base["market_key"])
+    primary = base["market_key"] if (m is None or m.selection in ("YES", "OVER")) else m.complement
+    base.setdefault("eligibility", verified(base["event_id"], primary, NOW))
     return Assessment(**base)
+
+
+def test_decision_without_eligibility_is_never_a_candidate():
+    """Bağlamsız (uygunluk sonucu verilmemiş) karar çağrısı korumayı aşmaz."""
+    d = decide(assess(eligibility=None), NOW)
+    assert d.status == "DATA_NOT_ELIGIBLE" and d.p != d.p  # olasılık güvenilir tahmin gibi taşınmaz (NaN, 0 değil)
+    assert any("BAGLAM_YOK" in r for r in d.reasons)
 
 
 def test_value_candidate_only_when_all_checks_pass():

@@ -2,10 +2,6 @@
 
 from __future__ import annotations
 
-import csv
-import datetime as dt
-import io
-
 import numpy as np
 import pandas as pd
 from PySide6.QtCore import Qt
@@ -26,14 +22,22 @@ from PySide6.QtWidgets import (
 )
 
 from ...data.leagues import LEAGUES, league_name
+from ...eligibility import display_label
 from ...data.source_registry import SOURCES
 from ...goals.coverage import coverage_matrix, coverage_summary, quarantine
 from ...goals.decision import STATUS_TR, DecisionPolicy
 from ...goals.markets import MARKETS, PRIMARY_YES, RULE_VERSION
 from ...goals.model import FEATURE_VERSION, MODEL_VERSION
-from ...goals.service import SELECTIONS, decisions_for, record_decisions, settle_pending
-from ...goals.value import OddsQuote, safe_csv_cell
-from ...timeutil import ISTANBUL, now_utc
+from ...goals.service import (
+    SELECTIONS,
+    decisions_for,
+    gated_goal_match,
+    ledger_csv,
+    ledger_rows,
+    record_decisions,
+    settle_pending,
+)
+from ...goals.value import OddsQuote
 from .. import theme
 from ..charts import ChartCanvas
 from ..widgets import Card, DataFrameModel, banner, fmt_num, fmt_pct, fmt_signed_pct, make_table, section
@@ -45,7 +49,29 @@ STATUS_SHORT = {
     "VALUE_CANDIDATE": "ADAY", "NO_VALUE": "YOK", "INSUFFICIENT_DATA": "VERİ", "ODDS_UNAVAILABLE": "ORAN YOK",
     "STALE_ODDS": "ESKİ ORAN", "MARKET_UNSUPPORTED": "EŞLEŞME", "MODEL_NOT_VALIDATED": "DOĞRULANMADI",
     "HIGH_UNCERTAINTY": "BELİRSİZ", "SETTLEMENT_AMBIGUOUS": "KURAL", "SUSPICIOUS_EDGE": "KARANTİNA",
+    "DATA_NOT_ELIGIBLE": "VERİ UYGUN DEĞİL",
 }
+
+
+def _shown(verdict, now):
+    """(sonuç, gösterim engeli): bu anda gösterilemeyen ilk pazar, yoksa bahsi engellenen, yoksa ilki. Gösterim
+    denetimi gün, kimlik ve model durumu eşleşmesini de içerir (gün değişince eski sonuç kullanılmaz)."""
+    items = [(e, verdict.display_codes(mk, now)) for mk, e in verdict.by_market.items()]
+    for e, codes in items:
+        if codes:
+            return e, codes
+    for e, codes in items:
+        if not e.bet_ok:
+            return e, codes
+    return items[0] if items else (None, ["BAGLAM_YOK"])
+
+
+def _data_label(verdict, now) -> str:
+    return display_label(*_shown(verdict, now))[0]
+
+
+def _data_text(verdict, now) -> str:
+    return display_label(*_shown(verdict, now))[1]
 
 
 def _fin(v) -> float | None:
@@ -87,8 +113,10 @@ class GoalsPage(Page):
         self.body.addWidget(self.tabs)
         self.body.addWidget(QLabel("18+ · Bahis bağımlılık yapabilir. Bu ekran analiz amaçlıdır; kazanç garantisi vermez. "
                                    "Destek: YEDAM 115."))
+        controller.goalModelChanged.connect(self._reset_panel)
         controller.goalModelChanged.connect(self.refresh_all)
         controller.goalPredictionsChanged.connect(self.refresh_scan)
+        controller.dataChanged.connect(self._reset_panel)
         controller.dataChanged.connect(self.refresh_coverage)
         controller.busyChanged.connect(lambda b: self.btn_train.setEnabled(not b and self.ctl.store.has_data))
         self.refresh_all()
@@ -115,8 +143,10 @@ class GoalsPage(Page):
         self.scan_model.headers = {
             "when": "Tarih (İstanbul)", "league": "Lig", "match": "Maç",
             "A": "A: İki yarı KG", "A_iv": "A aralık", "B": "B: 3,5 Üst", "B_iv": "B aralık",
-            "C": "C: İY 1,5 Üst", "C_iv": "C aralık", "data": "Veri", "decision": "Karar (A/B/C)",
+            "C": "C: İY 1,5 Üst", "C_iv": "C aralık", "data": "Veri durumu", "decision": "Karar (A/B/C)",
+            "neden": "Veri ayrıntısı (neden · veri kesimi · gereken)",
         }
+        self.scan_model.tooltips = {"neden": lambda v, r: v, "data": lambda v, r: r["neden"]}
         self.scan_model.formatters = {"A": fmt_pct, "B": fmt_pct, "C": fmt_pct,
                                       "league": lambda v: LEAGUES[v].name if v in LEAGUES else v}
         for c in ("A", "B", "C"):
@@ -134,10 +164,21 @@ class GoalsPage(Page):
         return w
 
     def refresh_scan(self) -> None:
+        if getattr(self, "_in_scan", False):  # sinyal üzerinden yeniden giriş koruması
+            return
+        self._in_scan = True
+        try:
+            self._refresh_scan()
+        finally:
+            self._in_scan = False
+
+    def _refresh_scan(self) -> None:
+        if self.ctl.goal_day_stale():  # gün değişti: uygunluk yeniden değerlendirilir (bu arada eski sonuç gösterilmez)
+            self.ctl.refresh_goal_predictions()
         eng = self.ctl.goal_engine
-        preds = self.ctl.goal_predictions
+        verdicts = self.ctl.goal_verdicts
         self._decisions = {}
-        if eng is None or not preds:
+        if eng is None or not verdicts:
             self.scan_model.set_frame(pd.DataFrame())
             self.scan_note.setText(
                 "Gol modeli henüz eğitilmedi." if eng is None else
@@ -146,22 +187,35 @@ class GoalsPage(Page):
             return
         mode = self.cb_mode.currentData()
         msel = self.cb_market.currentData()
-        now = now_utc()
+        now = self.ctl.now()
         rows = []
-        for i, p in enumerate(preds):
-            decs = decisions_for(p, eng, self.ctl.ledger_if_exists(), now)
-            self._decisions[p.event_id] = decs
+        n_blocked = 0
+        for i, v in enumerate(verdicts):
+            p = v.prediction
+            # Kararlar aynı uygunluk sonucuyla üretilir; uygunluk yoksa karar motoru DATA_NOT_ELIGIBLE döndürür.
+            decs = decisions_for(p, eng, self.ctl.ledger_if_exists(), now, eligibility=v) if p is not None else []
+            self._decisions[v.candidate_id] = decs
             by = {d.market_key: d for d in decs}
             if mode == "value" and not any(d.status == "VALUE_CANDIDATE" for d in decs):
                 continue
+            probs, ivs = {}, {}
+            for s, key in KEY_OF.items():
+                ok = v.usable(key, now)
+                probs[s] = p.probs.get(s, np.nan) if ok else np.nan  # uygun değilse olasılık gösterilmez (0 değil)
+                ivs[s] = _iv(p, key) if ok else "-"
+            usable = any(np.isfinite(x) for x in probs.values())
+            n_blocked += not usable
+            sel = probs.get(msel, np.nan)
             rows.append({
-                "_i": i, "_sort": -(p.probs.get(msel, 0) or 0), "when": p.kickoff_text, "league": p.league,
-                "match": f"{p.home} - {p.away}",
-                "A": p.probs.get("A", np.nan), "A_iv": _iv(p, "BTTS_BOTH_HALVES_YES"),
-                "B": p.probs.get("B", np.nan), "B_iv": _iv(p, "FT_OVER_3_5"),
-                "C": p.probs.get("C", np.nan), "C_iv": _iv(p, "FH_OVER_1_5"),
-                "data": "Eksik/uyarı" if p.data_notes else "Yeterli",
-                "decision": " / ".join(STATUS_SHORT.get(by[k].status, by[k].status) for k in PRIMARY_YES),
+                # Uygun olmayan maçlar olasılık sırasında en sona düşer ("en iyi" gibi üste taşınmaz)
+                "_i": i, "_sort": -sel if np.isfinite(sel) else np.inf,
+                "when": p.kickoff_text if p is not None else f"{v.date:%d.%m.%Y}", "league": v.league,
+                "match": f"{v.home} - {v.away}" + ("" if v.canonical_id else " (takım eşleşmedi)"),
+                "A": probs["A"], "A_iv": ivs["A"], "B": probs["B"], "B_iv": ivs["B"], "C": probs["C"],
+                "C_iv": ivs["C"], "data": _data_label(v, now),
+                "decision": (" / ".join(STATUS_SHORT.get(by[k].status, by[k].status) for k in PRIMARY_YES)
+                             if decs else "TAHMİN YOK"),
+                "neden": _data_text(v, now),
             })
         df = pd.DataFrame(rows)
         if not df.empty:
@@ -171,7 +225,8 @@ class GoalsPage(Page):
         self.scan_note.setText(
             ("Uygun aday yok: hiçbir maçta önceden tanımlı kontrollerin tamamı geçilmedi. Bu geçerli bir sonuçtur. "
              if mode == "value" and df.empty else "")
-            + f"{len(preds)} maç · {n_val} avantaj adayı · karar politikası: {DecisionPolicy().version}. "
+            + f"{len(verdicts)} maç · veri uygunluğu doğrulanamayan {n_blocked} maçta olasılık gösterilmez · "
+            f"{n_val} avantaj adayı · karar politikası: {DecisionPolicy().version}. "
             "'En olası' görünümü avantaj göstermez; yüksek olasılık düşük oranla birlikte gelir. "
             "Bu pazarlar için veri setinde gerçek oran yoktur: oranları Maç analizi sekmesinde siz girersiniz.")
         self._fill_match_combo()
@@ -273,6 +328,8 @@ class GoalsPage(Page):
         self.cb_fixture.currentIndexChanged.connect(self._analyze_fixture)
         self.cb_league.currentIndexChanged.connect(self._fill_teams)
         self._current = None
+        self._current_verdict = None
+        self._current_decisions = []
         return w
 
     def _fill_match_combo(self) -> None:
@@ -280,8 +337,11 @@ class GoalsPage(Page):
         cur = self.cb_fixture.currentIndex()
         self.cb_fixture.clear()
         self.cb_fixture.addItem("— seçin —", None)
-        for p in self.ctl.goal_predictions:
-            self.cb_fixture.addItem(f"{p.kickoff_text} · {league_name(p.league)} · {p.home} - {p.away}", p.event_id)
+        now = self.ctl.now()
+        for v in self.ctl.goal_verdicts:
+            when = v.prediction.kickoff_text if v.prediction is not None else f"{v.date:%d.%m.%Y}"
+            tag = "" if v.any_usable(now) else f" · {_data_label(v, now)}"
+            self.cb_fixture.addItem(f"{when} · {league_name(v.league)} · {v.home} - {v.away}{tag}", v.candidate_id)
         self.cb_fixture.setCurrentIndex(cur if 0 <= cur < self.cb_fixture.count() else 0)
         self.cb_fixture.blockSignals(False)
         eng = self.ctl.goal_engine
@@ -305,29 +365,118 @@ class GoalsPage(Page):
 
     def _analyze_fixture(self) -> None:
         i = self.cb_fixture.currentIndex() - 1
-        if 0 <= i < len(self.ctl.goal_predictions):
-            self._show(self.ctl.goal_predictions[i])
+        if 0 <= i < len(self.ctl.goal_verdicts):
+            self._show(self.ctl.goal_verdicts[i])
 
     def _analyze_manual(self) -> None:
         eng = self.ctl.goal_engine
         lg, h, a = self.cb_league.currentData(), self.cb_home.currentText(), self.cb_away.currentText()
         if eng is None or not lg or not h or not a or h == a:
             return
-        self._show(eng.predict_match(lg, h, a, pd.Timestamp.today().normalize()))
+        # Elle seçim de aynı uygunluk kontrolünden geçer (bağlam kurulamazsa sonuç uygun değildir)
+        ctx = self.ctl.eligibility_context(eng)
+        self._show(gated_goal_match(eng, ctx, lg, h, a, pd.Timestamp.today().normalize(), self.ctl.now()))
 
-    def _show(self, p) -> None:
+    def _reset_panel(self) -> None:
+        """Model veya veri değişti: maç analizi paneli eski tahmin/uygunlukla kalmaz (kayıt kapalı)."""
+        self._current = None
+        self._current_verdict = None
+        self._current_decisions = []
+        self.btn_record.setEnabled(False)
+        for s in ("A", "B", "C"):
+            self.cards[s].set("—", "Maç seçin (model veya veri değişti).")
+        self.rel.setText("")
+        self.cond_model.set_frame(pd.DataFrame())
+        self.dec_model.set_frame(pd.DataFrame())
+        self.sec_model.set_frame(pd.DataFrame())
+
+    def _panel_valid(self) -> bool:
+        """Paneldeki tahmin hâlâ GÜNCEL motorun aynı lig durumundan mı geliyor?"""
+        from ...eligibility import league_state_digest
+
+        eng, p = self.ctl.goal_engine, getattr(self, "_current", None)
+        if eng is None or not eng.trained or p is None or getattr(self, "_current_verdict", None) is None:
+            return False
+        return bool(p.state_digest) and p.state_digest == league_state_digest(eng.states.get(p.league))
+
+    def _show_blocked(self, v) -> None:
+        """Tahmin üretilemeyen/gösterilemeyen maç: olasılık yerine somut neden, veri kesimi ve gereken düzeltme."""
+        now = self.ctl.now()
+        for s in ("A", "B", "C"):
+            e = v.get(KEY_OF[s])
+            label, text = display_label(e, v.display_codes(KEY_OF[s], now))
+            self.cards[s].set("—", f"Tahmin yok · {label} · {text}")
+        label, text = display_label(*_shown(v, now))
+        self.rel.setText(
+            f"<b>Veri durumu: {label}</b> — {text}"
+            + ("" if v.canonical_id else f"<br>Takım adı eşleşmedi; aday kimlik {v.candidate_id} (kanonik maç "
+                                          "kimliği değildir). Sahte takım veya olasılık atanmadı."))
+        self.cond_model.set_frame(pd.DataFrame())
+        self.sec_model.set_frame(pd.DataFrame())
+        self._blocked_decision_table(v)
+        self.used.setHtml(self._eligibility_html(v))
+
+    def _blocked_decision_table(self, v) -> None:
+        """Karar tablosu: olasılıktan türetilen hiçbir değer (aralık, gereken oran) gösterilmez; kayıt kapalı."""
+        now = self.ctl.now()
+        self._current_decisions = []
+        self.dec_model.set_frame(pd.DataFrame([{
+            "secim": MARKETS[k].name_tr, "durum": STATUS_TR["DATA_NOT_ELIGIBLE"],
+            "gerekce": display_label(v.get(k), v.display_codes(k, now))[1]} for k in PRIMARY_YES]))
+        self.btn_record.setEnabled(False)
+
+    @staticmethod
+    def _eligibility_html(v) -> str:
+        e = v.first()
+        if e is None:
+            return "<b>Veri uygunluğu:</b> değerlendirilmedi (uygun değil)."
+        st = e.state_scope or {}
+        ev = (e.data_scope or {}).get("kapsam_kanitlari") or []
+        kan = ", ".join(f"{x['kaynak']} {x['sezon']} ({'tam' if x['tam'] else 'kısmi'}, alınma {x['alinma'][:16]})"
+                        for x in ev) or "yok"
+        rows = "".join(f"<br>· {k}: {x.status_label} — {', '.join(x.reasons) or 'neden yok'}"
+                       for k, x in v.by_market.items())
+        return (f"<b>Veri uygunluğu</b> (politika {e.policy_version}; değerlendirme {e.evaluated_at[:16]} UTC; "
+                f"bilgi kesimi {e.info_cutoff} öncesi; veri kesimi {e.data_cutoff or '-'}):{rows}<br>"
+                f"<b>Kullanılan model durumu:</b> lig durumu son maç {st.get('lig_durum_son_mac', '-')}, takımlar "
+                f"{st.get('takim_durum_son_mac', '-')}, model eğitim kesimi {st.get('model_egitim_kesimi', '-')}<br>"
+                f"<b>Kaynak kapsam kanıtı:</b> {kan}<br><b>Takım eşleme:</b> {e.team_mapping} · "
+                f"<b>Gerekli alanlar:</b> {e.required_fields} · <b>Kimlik:</b> {e.candidate_id}"
+                + ("" if e.canonical_id else " (aday kimlik, kanonik değil)"))
+
+    def _show(self, v) -> None:
+        self._current_verdict = v
+        p = v.prediction
         self._current = p
         eng = self.ctl.goal_engine
+        now = self.ctl.now()
+        self.btn_record.setEnabled(True)
+        if p is None or eng is None or not v.any_usable(now):
+            self._show_blocked(v)
+            return
         for s in ("A", "B", "C"):
             key = KEY_OF[s]
+            e = v.get(key)
+            if not v.usable(key, now):
+                label, text = display_label(e, v.display_codes(key, now))
+                self.cards[s].set("—", f"Tahmin yok · {label} · {text}")
+                continue
             prob = p.probs.get(s, np.nan)
             status = eng.status_text(key)
             self.cards[s].set(
                 fmt_pct(prob),
                 f"Belirsizlik (%80): {_iv(p, key)} · adil oran {fmt_num(1 / prob) if prob == prob and prob > 0 else '-'} · "
                 f"lig taban oranı {fmt_pct(p.base_rates.get(s))} · model: "
-                + ("sanal takip için doğrulandı" if status == "VALIDATED_FOR_PAPER_TRADING" else "DOĞRULANMADI"),
+                + ("sanal takip için doğrulandı" if status == "VALIDATED_FOR_PAPER_TRADING" else "DOĞRULANMADI")
+                + f" · veri: {e.status_label}" + ("" if e.bet_ok else f" (bahis adayı değil: {e.lead_code})"),
             )
+        if not v.all_usable(now):  # pazarlardan biri engelli: ortak olasılık ilişkileri gösterilmez
+            self.rel.setText(f"<b>Veri durumu:</b> {_data_label(v, now)} — {_data_text(v, now)}")
+            self.cond_model.set_frame(pd.DataFrame())
+            self.sec_model.set_frame(pd.DataFrame())
+            self._refresh_decisions()
+            self.used.setHtml(self._eligibility_html(v))
+            return
         a, bc = p.probs.get("A", np.nan), p.probs.get("BC", np.nan)
         cond = (a / bc) if bc and bc == bc and bc > 0 else np.nan
         self.rel.setText(
@@ -358,7 +507,7 @@ class GoalsPage(Page):
             f"{p.intervals.get('meta', {}).get('draws', '-')} çekiliş, tohum {p.intervals.get('meta', {}).get('seed', '-')}. "
             "Bu aralık gerçek olasılığın kesin sınırı değildir.<br>"
             "<b>Zaman doğrulaması:</b> geçmiş özellikler yeniden oluşturulmuştur (yalnızca maç tarihi bilinir; o anda "
-            "yayımlanmış olduğu doğrulanamaz).")
+            "yayımlanmış olduğu doğrulanamaz).<br>" + self._eligibility_html(v))
         sec = [("Maç sonu KG Var", "FT_BTTS"), ("İlk yarı KG Var", "FH_BTTS"), ("İkinci yarı 1,5 Üst", "SH_O15"),
                ("Maç sonu 2,5 Üst", "FT_O25"), ("Maç sonu 4,5 Üst", "FT_O45")]
         self.sec_model.set_frame(pd.DataFrame([
@@ -368,13 +517,25 @@ class GoalsPage(Page):
     def _refresh_decisions(self) -> None:
         p = self._current
         eng = self.ctl.goal_engine
+        v = getattr(self, "_current_verdict", None)
         if p is None or eng is None:
             return
-        decs = decisions_for(p, eng, self.ctl.ledger_if_exists(), now_utc())
+        now = self.ctl.now()
+        if not self._panel_valid():  # model değişmiş: eski tahmin gösterilmez
+            self._reset_panel()
+            return
+        if v is None or not v.any_usable(now):  # gün değişmiş veya veri uygun değil: türetilmiş değer gösterilmez
+            if v is not None:
+                self._blocked_decision_table(v)
+            else:
+                self.dec_model.set_frame(pd.DataFrame())
+            return
+        decs = decisions_for(p, eng, self.ctl.ledger_if_exists(), now, eligibility=v)
         self._current_decisions = decs
+        self.btn_record.setEnabled(True)
         rows = []
         for d in decs:
-            lo, hi = p.interval(d.market_key)
+            lo, hi = p.interval(d.market_key) if np.isfinite(d.p) else (None, None)
             rows.append({
                 "secim": MARKETS[d.market_key].name_tr, "p": d.p,
                 "aralik": f"%{100 * lo:.0f}–%{100 * hi:.0f}" if lo is not None else "-",
@@ -387,7 +548,7 @@ class GoalsPage(Page):
         p = self._current
         if p is None:
             return
-        now = now_utc()
+        now = self.ctl.now()
         quotes = []
         for key, sp in self.odds_spin.items():
             if sp.value() > 1.0:
@@ -403,7 +564,14 @@ class GoalsPage(Page):
         p = self._current
         if p is None or not getattr(self, "_current_decisions", None):
             return
-        record_decisions(self.ctl.ledger, p, self._current_decisions, self.ctl.goal_engine)
+        if not self._panel_valid():  # model/veri değişti veya model yok: eski tahminle kayıt yapılmaz
+            self._reset_panel()
+            return
+        # Kararlar kayıt anında aynı uygunluk sonucuyla YENİDEN üretilir (önceden hesaplanmış karar doğrudan yazılmaz)
+        now = self.ctl.now()
+        decs = decisions_for(p, self.ctl.goal_engine, self.ctl.ledger, now,
+                             eligibility=getattr(self, "_current_verdict", None))
+        record_decisions(self.ctl.ledger, p, decs, self.ctl.goal_engine, record_time=now)
         self.refresh_ledger()
         self.tabs.setCurrentIndex(4)
 
@@ -619,30 +787,7 @@ class GoalsPage(Page):
         return w
 
     def _ledger_frame(self) -> pd.DataFrame:
-        led = self.ctl.ledger_if_exists()
-        if led is None:
-            return pd.DataFrame()
-        rows = []
-        for r in led.predictions():
-            o = r.get("outcome") or {}
-            t = dt.datetime.fromisoformat(r["decision_time"])
-            status = r["decision_status"]
-            if status == "TAHMIN":
-                karar = "Tahmin kaydı (ölçüm; bahis değil)"
-            elif status == "TAHMIN_YOK":
-                karar = "Tahmin yok: " + ", ".join((r.get("reasons") or ["?"])[:1])
-            else:
-                karar = STATUS_TR.get(status, status)
-            rows.append({
-                "Kayıt türü": r.get("kayit_turu", "KARAR_KAYDI"),
-                "Karar zamanı (İstanbul)": t.astimezone(ISTANBUL).strftime("%d.%m.%Y %H:%M"),
-                "Kayıt anı (UTC)": r.get("created_at", ""),
-                "Maç": f"{r.get('home', '')} - {r.get('away', '')}", "Lig": r.get("league", ""),
-                "Pazar": MARKETS[r["market_key"]].name_tr, "Olasılık": r.get("p"), "Oran": r.get("odds"),
-                "Karar": karar, "Sanal birim": r["stake_units"],
-                "Sonuç": o.get("settlement", "PENDING" if r.get("p") is not None else "-"), "Model": r["model_version"],
-            })
-        return pd.DataFrame(rows)
+        return pd.DataFrame(ledger_rows(self.ctl.ledger_if_exists()))
 
     def refresh_ledger(self) -> None:
         df = self._ledger_frame()
@@ -674,19 +819,14 @@ class GoalsPage(Page):
         self.led_sum.setText(("✔ " if ok else "✘ ") + msg)
 
     def _export(self) -> None:
-        df = self._ledger_frame()
-        if df.empty:
+        rows = ledger_rows(self.ctl.ledger_if_exists())
+        if not rows:
             return
         path, _ = QFileDialog.getSaveFileName(self, "CSV kaydet", "sanal_takip.csv", "CSV (*.csv)")
         if not path:
             return
-        buf = io.StringIO()
-        wr = csv.writer(buf)
-        wr.writerow([safe_csv_cell(c) for c in df.columns])
-        for row in df.itertuples(index=False):
-            wr.writerow([safe_csv_cell(v) for v in row])
         with open(path, "w", encoding="utf-8-sig", newline="") as fh:
-            fh.write(buf.getvalue())
+            fh.write(ledger_csv(rows))
 
     # ================================================================== genel
     def refresh_all(self) -> None:

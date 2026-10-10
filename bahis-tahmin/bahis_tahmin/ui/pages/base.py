@@ -30,4 +30,7 @@ class Page(QWidget):
         outer.addWidget(scroll)
 
     def on_show(self) -> None:
-        """Sayfa görünür olduğunda çağrılır."""
+        """Sayfa görünür olduğunda çağrılır: gün değiştiyse veri uygunluğu yeniden değerlendirilir."""
+        check = getattr(self.ctl, "check_day", None)
+        if check is not None:
+            check()
