@@ -25,6 +25,7 @@ from .pages.likely import LikelyPage
 from .pages.dashboard import DashboardPage
 from .pages.data import DataPage
 from .pages.goals import GoalsPage
+from .pages.sequences import SequencesPage
 from .pages.match import MatchPage
 from .pages.predictions import PredictionsPage
 from .pages.ratings import RatingsPage
@@ -36,6 +37,7 @@ NAV = [
     ("En Olası Seçimler", LikelyPage),
     ("Maç Analizi", MatchPage),
     ("Gol Pazarları", GoalsPage),
+    ("Dizi Araştırması", SequencesPage),
     ("Güç Sıralaması", RatingsPage),
     ("Geriye Dönük Test", BacktestPage),
     ("Veri", DataPage),
@@ -136,7 +138,11 @@ class MainWindow(QMainWindow):
             self.status.setToolTip(text)
 
     def closeEvent(self, ev) -> None:
-        if self.ctl.busy:
+        if self.ctl.busy and not self.ctl.busy_critical:
+            # salt okuma işi (ör. dizi tablosu): sormadan, iş parçacığı bitene kadar gizlenip beklenir
+            self.hide()
+            self.ctl.wait()
+        elif self.ctl.busy:
             ans = QMessageBox.question(
                 self, APP_TITLE, "Bir işlem sürüyor. Yine de çıkmak istiyor musunuz?",
                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No,

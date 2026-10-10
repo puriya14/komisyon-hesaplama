@@ -32,7 +32,10 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
 
-from .joint import N_STATES, OUTPUT_KEYS, joint_probs, joint_regions, loglik_nb, loglik_params, loglik_rates, tilt_to_targets
+from .joint import (
+    N_STATES, OUTPUT_KEYS, htft_regions, joint_probs, joint_regions, loglik_nb, loglik_params, loglik_rates,
+    tilt_to_targets,
+)
 from .markets import PRIMARY_YES
 
 VARIANTS = ("M0_taban", "M1_ft_bolme", "M2_yari_dc", "M3_kosullu", "M4_kirilgan", "M5_kalibre", "M6_kalibre_form",
@@ -343,6 +346,47 @@ class GoalModel:
         for k in ("A", "B", "C", "BC", "h1_home", "h1_away", "h2_home", "h2_away"):
             out[k] = np.where(bad | ~np.isfinite(cal["B"]) | ~np.isfinite(cal["C"]), np.nan, tilted[k])
         out["structural_A"], out["structural_B"], out["structural_C"] = reg["A"], reg["BC"] + reg["BnC"], reg["BC"] + reg["nBC"]
+        return out
+
+    def htft_probs(self, df: pd.DataFrame) -> dict[str, np.ndarray]:
+        """9 İY/MS olasılığı, A/B/C ile AYNI dağılımdan (``predict`` çıktısını değiştirmez).
+
+        Yapısal dağılımın İY sonucu × MS sonucu × bölge kütleleri (``joint.htft_regions``), ``predict``'in
+        kullandığı ağırlıklarla yeniden ağırlıklandırılır: IPF varyantlarında B/C bölge eğimleri, M10'da ek
+        olarak B∩C içindeki A payının kalibrasyonu (A ve (B∩C)∖A bölgelerine ayrı çarpan). Böylece İY/MS
+        hücrelerinin bölge toplamları ``predict``'in A, B, C değerleriyle tutarlıdır. İY ızgarası dışındaki
+        kuyruk kütlesinin İY/MS dağılımı bilinmediği için ``HTFT_KUYRUK`` olarak ayrı raporlanır (9 hücre +
+        kuyruk = 1); yeniden ölçekleme yapılmaz.
+        """
+        if self.variant not in IPF_VARIANTS and not (self.variant in CALIBRATED and self.alpha1 == 0 and self.alpha2 == 0):
+            raise NotImplementedError(f"{self.variant} için İY/MS türetimi tanımlı değil")
+        m = self.base if self.variant in IPF_VARIANTS else self
+        if m is None or m.coef is None:
+            raise RuntimeError("Model eğitilmedi")
+        lam, bad = self.structural_rates(df)
+        H = htft_regions(lam[:, 0], lam[:, 1], lam[:, 2], lam[:, 3], m.mult_h, m.mult_a, m.phi)
+        n = len(df)
+        if self.variant in IPF_VARIANTS:
+            reg = joint_regions(lam[:, 0], lam[:, 1], lam[:, 2], lam[:, 3], m.mult_h, m.mult_a, m.phi)
+            cal = self.calibrator.predict(df)
+            t_b = np.clip(np.nan_to_num(cal["B"], nan=0.5), 1e-4, 1 - 1e-4)
+            t_c = np.clip(np.nan_to_num(cal["C"], nan=0.5), 1e-4, 1 - 1e-4)
+            til = tilt_to_targets(reg, t_b, t_c)
+            w = til["weights"]
+            w_a = w_bcna = w["BC"]
+            if self.variant == "M10_ipf_kosullu" and self.qcal is not None:
+                q = reg["A"] / np.maximum(reg["BC"], 1e-300)
+                qc = self._q_cal(til["A"], til["BC"])
+                w_a = w["BC"] * qc / np.maximum(q, 1e-300)
+                w_bcna = w["BC"] * (1 - qc) / np.maximum(1 - q, 1e-300)
+            w5 = np.stack([w_a, w_bcna, w["BnC"], w["nBC"], w["nn"]], axis=1)
+            bad = bad | ~np.isfinite(cal["B"]) | ~np.isfinite(cal["C"])
+        else:
+            w5 = np.ones((n, 5))
+        T = (H * w5[:, None, None, :]).sum(axis=3)  # (n, 3, 3)
+        codes = ("1", "X", "2")
+        out = {f"HTFT_{codes[i]}_{codes[j]}": np.where(bad, np.nan, T[:, i, j]) for i in range(3) for j in range(3)}
+        out["HTFT_KUYRUK"] = np.where(bad, np.nan, 1.0 - T.sum(axis=(1, 2)))
         return out
 
     def interval(self, df: pd.DataFrame, draws: int = 200, seed: int = 20261010, level: float = 0.8):

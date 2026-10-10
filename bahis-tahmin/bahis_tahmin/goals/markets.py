@@ -106,6 +106,101 @@ _add(
 PRIMARY_YES = ("BTTS_BOTH_HALVES_YES", "FT_OVER_3_5", "FH_OVER_1_5")
 SHORT = {"BTTS_BOTH_HALVES_YES": "A", "FT_OVER_3_5": "B", "FH_OVER_1_5": "C"}
 
+# ----------------------------------------------------------------------------
+# İY/MS (ilk yarı / maç sonu) — 9 sonuçlu pazar ailesi
+# ----------------------------------------------------------------------------
+# İki seçenekli MARKETS kaydından AYRI tutulur: 9 sonuçlu pazarda "tümleyen" ve YES/OVER yön kuralı
+# tanımlı değildir. Sonuç kodları merkezi olarak 1 / X / 2'ye normalize edilir.
+RESULT_CODES = ("1", "X", "2")
+_RESULT_ALIASES = {
+    "1": "1", "H": "1", "HOME": "1", "EV": "1",
+    "X": "X", "0": "X", "D": "X", "DRAW": "X", "B": "X", "BERABERE": "X",
+    "2": "2", "A": "2", "AWAY": "2", "DEP": "2",
+}
+HTFT_KEYS = tuple(f"HTFT_{h}_{f}" for h in RESULT_CODES for f in RESULT_CODES)
+_RES_NAME = {"1": "ev sahibi", "X": "beraberlik", "2": "deplasman"}
+HTFT_MARKETS: dict[str, MarketDef] = {
+    f"HTFT_{h}_{f}": MarketDef(
+        f"HTFT_{h}_{f}", f"İY/MS {h}/{f}", "HTFT", None, f"{h}/{f}", "", _HT_FT,
+        f"İlk yarı {_RES_NAME[h]}, maç sonu (normal süre) {_RES_NAME[f]}; 9 sonuçlu pazar, tümleyeni yok",
+    )
+    for h in RESULT_CODES for f in RESULT_CODES
+}
+
+
+def get_market(key: str) -> MarketDef | None:
+    """İki seçenekli pazarlar ve İY/MS ailesi için ortak arama (bulunamazsa None)."""
+    return MARKETS.get(key) or HTFT_MARKETS.get(key)
+
+
+def normalize_result_code(v) -> str | None:
+    """Sağlayıcı sonuç gösterimini (H/D/A, 0, D, X, 1, 2 ...) 1 / X / 2'ye çevirir; tanınmazsa None."""
+    if v is None:
+        return None
+    s = str(v).strip().upper()
+    return _RESULT_ALIASES.get(s)
+
+
+def parse_htft(v) -> str | None:
+    """'2/1', '2-1', '21', 'X/1', '0/1', 'D/H', 'HTFT_2_1' gibi gösterimlerden HTFT anahtarı; tanınmazsa None.
+
+    Not: '0/1' İY/MS gösterimidir (ilk yarı berabere); 0-0 skoruyla karıştırılmaz.
+    """
+    if v is None:
+        return None
+    s = str(v).strip().upper()
+    if s.startswith("HTFT_"):
+        parts = s[5:].split("_")
+    else:
+        for sep in ("/", "-", " "):
+            if sep in s:
+                parts = s.split(sep)
+                break
+        else:
+            parts = list(s) if len(s) == 2 else []
+    if len(parts) != 2:
+        return None
+    h, f = normalize_result_code(parts[0]), normalize_result_code(parts[1])
+    return f"HTFT_{h}_{f}" if h and f else None
+
+
+def _sign_code(home: float, away: float) -> str:
+    return "1" if home > away else ("X" if home == away else "2")
+
+
+# Takım perspektifi: aynı ham İY/MS kodu ev sahibi ve deplasman için farklı takım davranışıdır.
+_TEAM_RES = {True: {"1": "G", "X": "B", "2": "M"}, False: {"1": "M", "X": "B", "2": "G"}}  # G/B/M = galip/berabere/mağlup
+TEAM_TARGETS = {  # takım perspektifinde (İY sonucu, MS sonucu)
+    "IY_GERIDE_MS_GALIP": ("M", "G"),  # ilk yarıyı geride kapatıp maçı kazanma (maç içi geri dönüş DEĞİL)
+    "IY_ONDE_MS_MAGLUP": ("G", "M"),  # ilk yarıyı önde kapatıp maçı kaybetme
+    "IY_BERABERE_MS_GALIP": ("B", "G"),
+    "IY_ONDE_MS_BERABERE": ("G", "B"),
+    "IY_GERIDE_MS_BERABERE": ("M", "B"),
+    "IY_BERABERE_MS_MAGLUP": ("B", "M"),
+    "IY_ONDE_MS_GALIP": ("G", "G"),
+    "IY_BERABERE_MS_BERABERE": ("B", "B"),
+    "IY_GERIDE_MS_MAGLUP": ("M", "M"),
+}
+
+
+def team_htft(htft_key: str | None, is_home: bool) -> tuple[str, str] | None:
+    """Ham İY/MS anahtarını takım perspektifine çevirir: (İY sonucu, MS sonucu) ∈ {G, B, M}².
+
+    Örn. 'HTFT_2_1' ev sahibi için ('M', 'G') = İY geride MS galip; deplasman için ('G', 'M') = İY önde MS mağlup.
+    """
+    if not htft_key or htft_key not in HTFT_MARKETS:
+        return None
+    _, h, f = htft_key.split("_")
+    m = _TEAM_RES[bool(is_home)]
+    return m[h], m[f]
+
+
+def htft_key_for_team(target: str, is_home: bool) -> str:
+    """Takım hedefinin o maçtaki ham İY/MS anahtarı (ör. IY_GERIDE_MS_GALIP + ev → HTFT_2_1)."""
+    ht, ft = TEAM_TARGETS[target]
+    inv = {v: k for k, v in _TEAM_RES[bool(is_home)].items()}
+    return f"HTFT_{inv[ht]}_{inv[ft]}"
+
 
 @dataclass
 class PeriodScore:
@@ -171,8 +266,23 @@ def _yes_condition(key: str, hthg, htag, fthg, ftag) -> bool:
     raise KeyError(key)
 
 
+def htft_outcome(ps: PeriodScore) -> str | None:
+    """Gerçekleşen İY/MS anahtarı (ör. 'HTFT_2_1'); maç bitmemiş, kayıt çelişkili veya İY skoru eksikse None.
+
+    Normal süre kuralı: ``fthg/ftag`` normal süre sonu skorudur; uzatma (``aet_*``) kullanılmaz.
+    """
+    if ps.status not in FINISHED_STATES or validate(ps) or not _fields_known(ps, _HT_FT):
+        return None
+    return f"HTFT_{_sign_code(ps.hthg, ps.htag)}_{_sign_code(ps.fthg, ps.ftag)}"
+
+
 def label(key: str, ps: PeriodScore) -> Label:
     """Pazarın istatistiksel sonucu (normal süre kuralına göre)."""
+    if key in HTFT_MARKETS:
+        code = htft_outcome(ps)
+        if code is None:
+            return Label.UNKNOWN
+        return Label.TRUE if code == key else Label.FALSE
     m = MARKETS[key]
     if ps.status not in FINISHED_STATES:
         return Label.UNKNOWN
@@ -202,7 +312,7 @@ def settle(key: str, ps: PeriodScore, rule_version: str = RULE_VERSION) -> Settl
     """
     if rule_version != RULE_VERSION:
         raise ValueError(f"Bilinmeyen sonuçlandırma kuralı: {rule_version}")
-    if key not in MARKETS:
+    if get_market(key) is None:
         raise KeyError(key)
     if ps.status in (MatchStatus.SCHEDULED, MatchStatus.IN_PLAY):
         return Settlement.PENDING
@@ -237,6 +347,21 @@ def frame_issues(df: pd.DataFrame) -> pd.Series:
     return issues
 
 
+def htft_frame(df: pd.DataFrame) -> pd.Series:
+    """Geçmiş maçlar için gerçekleşen İY/MS anahtarı ('HTFT_2_1' ...) veya None (= UNKNOWN).
+
+    İlk yarı skoru eksik ya da kayıt çelişkiliyse None; ham sütunlara dokunmaz.
+    """
+    issues = frame_issues(df)
+    hh, ha, fh, fa = (pd.to_numeric(df[c], errors="coerce").to_numpy(dtype=float) for c in ("hthg", "htag", "fthg", "ftag"))
+    known = (issues == "").to_numpy() & np.isfinite(hh) & np.isfinite(ha) & np.isfinite(fh) & np.isfinite(fa)
+    ht = np.where(hh > ha, "1", np.where(hh == ha, "X", "2"))
+    ft = np.where(fh > fa, "1", np.where(fh == fa, "X", "2"))
+    codes = np.char.add(np.char.add(np.char.add("HTFT_", ht), "_"), ft).astype(object)
+    codes[~known] = None
+    return pd.Series(codes, index=df.index, dtype=object)
+
+
 def label_frame(df: pd.DataFrame, keys=PRIMARY_YES) -> pd.DataFrame:
     """Geçmiş maçlar için etiketler: 1.0 / 0.0 / NaN (= UNKNOWN). Ham sütunlara dokunmaz."""
     issues = frame_issues(df)
@@ -248,7 +373,13 @@ def label_frame(df: pd.DataFrame, keys=PRIMARY_YES) -> pd.DataFrame:
     ft_known = clean & fthg.notna() & ftag.notna()
     ht_known = ft_known & hthg.notna() & htag.notna()
     out = pd.DataFrame(index=df.index)
+    htft = None
     for key in keys:
+        if key in HTFT_MARKETS:  # 9 sonuçlu aile: YES/OVER yön kuralı uygulanmaz
+            htft = htft_frame(df) if htft is None else htft
+            known = htft.notna().to_numpy()
+            out[key] = np.where(known, (htft.to_numpy() == key).astype(float), np.nan)
+            continue
         m = MARKETS[key]
         need_ht = any(f in m.required for f in ("hthg", "htag"))
         known = (ht_known if need_ht else ft_known).to_numpy()

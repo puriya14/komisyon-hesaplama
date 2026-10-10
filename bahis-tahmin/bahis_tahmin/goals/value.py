@@ -17,7 +17,7 @@ import io
 import math
 from dataclasses import asdict, dataclass
 
-from .markets import MARKETS, RULE_VERSION
+from .markets import MARKETS, RULE_VERSION, get_market, parse_htft
 
 MAX_PAIR_GAP = dt.timedelta(minutes=10)
 
@@ -51,14 +51,17 @@ class OddsQuote:
 def validate_quote(q: OddsQuote) -> list[str]:
     """Oran kaydının pazar tanımıyla uyumu ve geçerliliği. Boş liste = geçerli."""
     errs = []
-    m = MARKETS.get(q.market_key)
+    m = get_market(q.market_key)
     if m is None:
         return [f"BILINMEYEN_PAZAR:{q.market_key}"]
     if q.period != m.period:
         errs.append(f"DONEM_UYUSMAZ:{q.period}!={m.period}")
     if (q.line is None) != (m.line is None) or (q.line is not None and abs(q.line - m.line) > 1e-9):
         errs.append(f"CIZGI_UYUSMAZ:{q.line}!={m.line}")
-    if q.selection != m.selection:
+    if m.period == "HTFT":  # İY/MS: '0/1', 'D/H', 'X-1' gibi gösterimler merkezi olarak normalize edilir
+        if parse_htft(q.selection) != m.key:
+            errs.append(f"SECIM_UYUSMAZ:{q.selection}!={m.selection}")
+    elif q.selection != m.selection:
         errs.append(f"SECIM_UYUSMAZ:{q.selection}!={m.selection}")
     if not (isinstance(q.decimal_odds, (int, float)) and math.isfinite(q.decimal_odds) and q.decimal_odds > 1.0):
         errs.append("GECERSIZ_ORAN")
@@ -117,7 +120,8 @@ def no_vig_probability(yes: OddsQuote | None, no: OddsQuote | None) -> float | N
     en fazla 10 dk arayla yoksa None (tek taraftan uydurulmaz)."""
     if yes is None or no is None:
         return None
-    if MARKETS[yes.market_key].complement != no.market_key:
+    m = MARKETS.get(yes.market_key)  # yalnızca iki seçenekli pazarlar (İY/MS'in tümleyeni yok)
+    if m is None or m.complement != no.market_key:
         return None
     if (yes.provider, yes.bookmaker) != (no.provider, no.bookmaker):
         return None

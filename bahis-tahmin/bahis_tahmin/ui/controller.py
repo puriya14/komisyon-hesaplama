@@ -44,6 +44,23 @@ class Task(QThread):
         self.done.emit(res)
 
 
+SEQ_DIR = "dizi_arastirma"
+
+
+def load_sequence_results(home) -> dict | None:
+    """Uygulama klasöründeki son dizi araştırması sonuçları (``dizi_arastirma/son_sonuclar.json``); yoksa None."""
+    import json
+
+    path = home / SEQ_DIR / "son_sonuclar.json"
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        log.exception("Dizi araştırması sonuçları okunamadı")
+        return None
+
+
 def _train_goal(matches: pd.DataFrame, home, progress) -> tuple[GoalEngine | None, str | None]:
     """Gol pazarları modelini eğitip kaydeder. Veri yetersizse (ör. ilk yarı skoru yok) hata metni döner."""
     goal = GoalEngine()
@@ -62,6 +79,7 @@ class AppController(QObject):
     goalModelChanged = Signal()
     goalPredictionsChanged = Signal()
     ledgerChanged = Signal()
+    sequenceChanged = Signal()
     settingsChanged = Signal()
     busyChanged = Signal(bool)
     progress = Signal(int, str)
@@ -78,6 +96,9 @@ class AppController(QObject):
         self.goal_load_error: str | None = None
         self.goal_predictions: list[GoalPrediction] = []
         self._ledger: Ledger | None = None
+        self.seq_table: pd.DataFrame | None = None  # dizi araştırması: takım-maç tablosu (istek üzerine kurulur)
+        self.seq_results: dict | None = None  # son araştırma çalıştırmasının sonuçları (varsa)
+        self.seq_error: str | None = None  # takım-maç tablosu kurulamadıysa kullanıcıya gösterilecek neden
         self.last_report_text = ""
         self._task: Task | None = None
         self._queue: list[Callable[[], None]] = []
@@ -87,11 +108,17 @@ class AppController(QObject):
     def busy(self) -> bool:
         return self._task is not None
 
-    def _run(self, fn: Callable, on_done: Callable[[object], None], label: str) -> bool:
+    @property
+    def busy_critical(self) -> bool:
+        """Kapanışta kullanıcıya sorulması gereken (yazma yapan) bir iş sürüyor mu?"""
+        return self._task is not None and getattr(self._task, "critical", True)
+
+    def _run(self, fn: Callable, on_done: Callable[[object], None], label: str, critical: bool = True) -> bool:
         if self._task is not None:
             self.message.emit("warn", "Başka bir işlem sürüyor, lütfen bekleyin.")
             return False
         task = Task(fn, self)
+        task.critical = critical  # False: salt okuma (kapanışta onay sorulmaz, yalnızca beklenir)
         task.progress.connect(self.progress)
         task.done.connect(lambda res: self._finish(task, on_done, res))
         task.failed.connect(lambda err: self._fail(task, err))
@@ -144,6 +171,8 @@ class AppController(QObject):
         def done(res):
             store, engine, goal, gerr = res
             self.store = store
+            self.seq_table = None  # veri değişti: dizi tablosu yeniden kurulacak
+            self.seq_error = None
             self.engine = engine
             self.goal_engine = goal
             self.goal_load_error = gerr
@@ -236,6 +265,8 @@ class AppController(QObject):
         def done(res):
             store, engine, report, (goal, gerr) = res
             self.store = store
+            self.seq_table = None  # veri değişti: dizi tablosu yeniden kurulacak
+            self.seq_error = None
             self.engine = engine
             if goal is not None or gerr:
                 self.goal_engine = goal
@@ -311,6 +342,36 @@ class AppController(QObject):
         if self._ledger is None:
             self._ledger = Ledger(self.home / LEDGER_FILE)
         return self._ledger
+
+    # ------------------------------------------------------------ dizi araştırması
+    def ensure_sequence_table(self) -> None:
+        """Takım-maç tablosunu (dizi araştırması) arka planda kurar; veri değişmediyse yeniden kurmaz."""
+        if self.seq_table is not None or not self.store.has_data:
+            return
+        matches = self.store.matches
+
+        def work(progress):
+            from ..sequences.timeline import build_team_matches
+
+            progress(20, "Dizi araştırması: takım-maç tablosu kuruluyor...")
+            try:
+                return build_team_matches(matches), None
+            except ValueError as exc:  # veri sıralaması belirsiz vb.: sayfada açıklanır, modal hata açılmaz
+                return None, str(exc)
+
+        def done(res):
+            tm, err = res
+            self.seq_table = tm
+            self.seq_error = err
+            self.seq_results = load_sequence_results(self.home) if tm is not None else None
+            self.sequenceChanged.emit()
+
+        if self.seq_error is not None:
+            return
+        if self.busy:
+            self._queue.append(self.ensure_sequence_table)
+            return
+        self._run(work, done, "Dizi araştırması hazırlanıyor...", critical=False)
 
     def ledger_if_exists(self) -> Ledger | None:
         """Okuma amaçlı: sanal takip dosyası henüz yoksa oluşturmadan None döner."""

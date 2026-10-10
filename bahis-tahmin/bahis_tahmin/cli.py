@@ -14,6 +14,7 @@
     python -m bahis_tahmin gol-sanal                # sanal takip özeti ve kayıt zinciri doğrulaması
     python -m bahis_tahmin gol-oran-ice-aktar --csv oranlar.csv            # yalnızca doğrulama
     python -m bahis_tahmin gol-oran-ice-aktar --csv oranlar.csv --uygula   # doğrulananları ekle
+    python -m bahis_tahmin dizi-olay --takim "PSV Eindhoven" --iyms 2/1    # geçmiş inceleme (olay seçimli)
 """
 
 from __future__ import annotations
@@ -288,6 +289,71 @@ def cmd_goal_odds_import(a) -> int:
     return 0
 
 
+def _seq_table():
+    from .sequences.timeline import build_team_matches
+
+    st = _store()
+    if not st.has_data:
+        print("Veri yok. Önce 'update' çalıştırın.", file=sys.stderr)
+        sys.exit(2)
+    return build_team_matches(st.matches), st
+
+
+def cmd_seq_events(a) -> int:
+    """Mod A (tanımlayıcı, olay seçimli): bir takımın olayları ve isteğe bağlı olay kartı."""
+    from .goals.markets import parse_htft
+    from .sequences.timeline import event_card, team_events
+
+    tm, st = _seq_table()
+    teams = sorted(tm["team"].unique())
+    if a.takim not in teams:
+        near = [t for t in teams if a.takim.lower() in t.lower()]
+        print(f"Takım bulunamadı: {a.takim}. Benzer: {', '.join(near[:10]) or '-'}", file=sys.stderr)
+        return 2
+    key = parse_htft(a.iyms) if a.iyms else None
+    if a.iyms and key is None:
+        print(f"İY/MS kodu anlaşılamadı: {a.iyms} (ör. 2/1, X/1, 0/2)", file=sys.stderr)
+        return 2
+    ev = team_events(tm, a.takim, target=None if key else a.hedef, htft_key=key)
+    print("GEÇMİŞ İNCELEME — olay seçimli, tahmin değil (olay sonrası bilgi içerir).")
+    print(f"{a.takim} · {key or a.hedef}: {len(ev)} olay")
+    for _, r in ev.iterrows():
+        h = bool(r["is_home"])
+        iy = f"{int(r['gf_ht'] if h else r['ga_ht'])}-{int(r['ga_ht'] if h else r['gf_ht'])}" if r["htft"] else "?"
+        ms = f"{int(r['gf_ft'] if h else r['ga_ft'])}-{int(r['ga_ft'] if h else r['gf_ft'])}"
+        gap = "" if r["onceki_olaydan_mac"] != r["onceki_olaydan_mac"] else f"  (önceki olaydan {int(r['onceki_olaydan_mac'])} maç / {int(r['onceki_olaydan_gun'])} gün)"
+        print(f"  {r['date']:%d.%m.%Y} {r['season']} {'Ev ' if h else 'Dep'} {r['opponent']:<22s} İY {iy}  MS {ms}{gap}")
+    tail = ev.attrs.get("censored_tail")
+    if tail:
+        print(f"Açık (sansürlü) aralık: {tail['acik_aralik_mac']} maç (son maç {tail['son_mac_tarihi']}, neden {tail['bitis_nedeni']}). "
+              "'Olmayacak' anlamına gelmez.")
+    if a.kart is not None and 0 <= a.kart < len(ev):
+        card = event_card(tm, int(ev.index[a.kart]), data_meta=st.meta)
+        print(f"\nOlay kartı #{a.kart}: {card['kimlik']}")
+        print(f"  EVENT_OUTCOME: {card['EVENT_OUTCOME']}")
+        for blk in ("PRE_EVENT", "POST_EVENT", "RAKIP_PRE_EVENT"):
+            for name, w in card[blk].items():
+                res = " ".join(f"{(m['ht_res'] or '?')}{(m['ft_res'] or '?')}" for m in w["maclar"])
+                print(f"  {blk} {name}: {w['durum']}  {res}")
+    return 0
+
+
+def cmd_seq_coverage(a) -> int:
+    from .sequences import config as SC
+    from .sequences.timeline import coverage_report
+
+    tm, _ = _seq_table()
+    cov = coverage_report(tm)
+    inc = cov[~cov["tam"]]
+    print(f"{len(cov)} lig-sezon; {len(inc)} tanesinde veri boşluğu var (bu sezonlara dokunan pencereler tanımsızdır):")
+    print(inc.to_string(index=False))
+    print("\nİncelenemeyenler (DATA_QUALITY_BLOCKED):")
+    for k, v in SC.DATA_QUALITY_BLOCKED_ITEMS.items():
+        print(f"  {k}: {v}")
+    print(f"Hükmen olabilir satır: {tm.attrs.get('n_awarded')} · sezon ortası ad ayrılmaları: {tm.attrs.get('intra_season_splits')}")
+    return 0
+
+
 def cmd_self_test(a) -> int:
     from .selftest import run_self_test
 
@@ -335,5 +401,12 @@ def main(argv: list[str] | None = None) -> int:
     go.add_argument("--csv", required=True)
     go.add_argument("--uygula", action="store_true", help="doğrulanan kayıtları sanal takip veritabanına yaz")
     go.set_defaults(fn=cmd_goal_odds_import)
+    so = sub.add_parser("dizi-olay", help="Mod A: takımın İY/MS olayları, aralıklar ve olay kartı (geçmiş inceleme)")
+    so.add_argument("--takim", required=True)
+    so.add_argument("--hedef", default="IY_GERIDE_MS_GALIP", help="takım hedefi, ör. IY_GERIDE_MS_GALIP, IY_ONDE_MS_MAGLUP")
+    so.add_argument("--iyms", help="ham İY/MS kodu, ör. 2/1 (verilirse --hedef yok sayılır)")
+    so.add_argument("--kart", type=int, help="olay kartı gösterilecek olay sırası (0'dan)")
+    so.set_defaults(fn=cmd_seq_events)
+    sub.add_parser("dizi-kapsam", help="dizi araştırması veri kapsamı ve incelenemeyen alanlar").set_defaults(fn=cmd_seq_coverage)
     a = p.parse_args(argv)
     return a.fn(a)

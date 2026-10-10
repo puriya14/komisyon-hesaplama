@@ -372,3 +372,101 @@ def tilt_to_targets(reg: dict, t_b, t_c, iters: int = 200, tol: float = 1e-12) -
         out[cond] = sum(reg[f"{cond}:{r}"] * w[r] for r in REGIONS)
     out["weights"] = w
     return out
+
+
+# ----------------------------------------------------------------------------
+# İY/MS (ilk yarı / maç sonu sonucu) — aynı ortak dağılımdan
+# ----------------------------------------------------------------------------
+
+HTFT_REGIONS = ("A", "BCnA", "BnC", "nBC", "nn")  # A, (B∧C)∖A, B∧¬C, ¬B∧C, ¬B∧¬C
+_HT_IDX = np.where(FLAT_I > FLAT_J, 0, np.where(FLAT_I == FLAT_J, 1, 2))  # İY sonucu: 0='1', 1='X', 2='2'
+_C_CELL = TOTAL_H1 >= 2
+_A_CELL = (FLAT_I >= 1) & (FLAT_J >= 1)
+_SMALL = [(x, y) for x in range(4) for y in range(4) if x + y <= 3]
+
+
+def _pois_k(mu: np.ndarray, kmax: int) -> np.ndarray:
+    out = np.empty(mu.shape + (kmax + 1,))
+    t = np.exp(-mu)
+    for k in range(kmax + 1):
+        out[..., k] = t
+        t = t * mu / (k + 1)
+    return out
+
+
+def htft_regions(l1h, l1a, l2h, l2a, mult_h=None, mult_a=None, phi: float = 0.0, chunk: int = 4000,
+                 kmax2: int = 20) -> np.ndarray:
+    """İY sonucu × MS sonucu × B/C/A bölgesi olasılık kütleleri, şekil (n, 3, 3, 5).
+
+    Eksenler: İY sonucu (1, X, 2), MS sonucu (1, X, 2), bölge ``HTFT_REGIONS``. Yapı ``joint_regions`` ile
+    aynıdır (İY ızgarası × İY durumuna koşullu 2Y Poisson'ları × gama kırılganlığı); bölge toplamları
+    ``joint_regions`` ile birebir uyuşur. İY ızgarası dışındaki kuyruk kütlesi (``joint_regions['tail']``)
+    bu diziye DAHİL DEĞİLDİR: toplam = 1 − kuyruk. 2Y gol farkı dağılımı takım başına ``kmax2`` gole kadar
+    hesaplanır (kesme hatası ihmal edilebilir düzeydedir).
+    """
+    l1h, l1a, l2h, l2a = (np.asarray(v, dtype=float) for v in (l1h, l1a, l2h, l2a))
+    n = len(l1h)
+    mh = np.ones(N_STATES) if mult_h is None else np.asarray(mult_h, dtype=float)
+    ma = np.ones(N_STATES) if mult_a is None else np.asarray(mult_a, dtype=float)
+    out = np.zeros((n, 3, 3, 5))
+    nodes, weights = frailty_nodes(phi)
+    K = kmax2
+    d = FLAT_I - FLAT_J
+    idx0 = K - d  # P(X−Y = −d) dizini
+    for s in range(0, n, chunk):
+        e = min(n, s + chunk)
+        m = e - s
+        for g, wg in zip(nodes, weights):
+            P = (_poisson_grid(g * l1h[s:e])[:, :, None] * _poisson_grid(g * l1a[s:e])[:, None, :]).reshape(m, -1)
+            ph = _pois_k((g * l2h[s:e])[:, None] * mh[None, :], K)  # (m, 9, K+1)
+            pa = _pois_k((g * l2a[s:e])[:, None] * ma[None, :], K)
+            D = np.zeros((m, N_STATES, 2 * K + 1))  # P(X − Y = j − K)
+            for j in range(-K, K + 1):
+                if j >= 0:
+                    D[..., j + K] = (ph[..., j:] * pa[..., :K + 1 - j]).sum(-1)
+                else:
+                    D[..., j + K] = (ph[..., :K + 1 + j] * pa[..., -j:]).sum(-1)
+            F = np.cumsum(D, axis=-1)
+            pX = D[:, STATE, idx0]
+            p2 = F[:, STATE, idx0 - 1]
+            p1 = 1.0 - F[:, STATE, idx0]
+            ft = np.stack([p1, pX, p2], axis=-1)  # (m, 121, 3) P(MS = k | İY hücresi)
+            phc, pac = ph[:, STATE, :], pa[:, STATE, :]
+            notb = np.zeros_like(ft)  # 2Y toplamı ≤ 3 − İY toplamı (B gerçekleşmez)
+            for x, y in _SMALL:
+                ok = (x + y) <= (3 - TOTAL_H1)
+                if not ok.any():
+                    continue
+                fd = d + x - y
+                kk = np.where(fd > 0, 0, np.where(fd == 0, 1, 2))
+                pr = phc[:, :, x] * pac[:, :, y] * ok
+                for k in range(3):
+                    notb[:, :, k] += pr * (kk == k)
+            withb = ft - notb
+            # A hücreleri (İY'de iki takım da gol attı): P(MS = k ∧ 2Y ev ≥ 1 ∧ 2Y dep ≥ 1), içerme-dışlama
+            cy, cx = np.cumsum(pac, axis=-1), np.cumsum(phc, axis=-1)
+
+            def cdf(c, t):
+                t = np.broadcast_to(t, d.shape)
+                idx = np.broadcast_to(np.clip(t, 0, K)[None, :, None], (c.shape[0], d.size, 1))
+                v = np.take_along_axis(c, idx, axis=-1)[..., 0]
+                return np.where(t[None, :] < 0, 0.0, v)
+
+            e_h, e_a = phc[:, :, 0], pac[:, :, 0]
+            y_dm1, y_d = cdf(cy, d - 1), cdf(cy, d)
+            x0 = np.stack([y_dm1, y_d - y_dm1, 1.0 - y_d], -1) * e_h[..., None]  # 2Y ev golü yok
+            x_md, x_mdm1 = cdf(cx, -d), cdf(cx, -d - 1)
+            y0 = np.stack([1.0 - x_md, x_md - x_mdm1, x_mdm1], -1) * e_a[..., None]  # 2Y dep golü yok
+            s0 = np.stack([d > 0, d == 0, d < 0], -1)[None].astype(float) * (e_h * e_a)[..., None]
+            apart = (ft - x0 - y0 + s0) * _A_CELL[None, :, None]
+            reg5 = np.stack([
+                apart * _C_CELL[None, :, None],
+                (withb - apart) * _C_CELL[None, :, None],
+                withb * ~_C_CELL[None, :, None],
+                notb * _C_CELL[None, :, None],
+                notb * ~_C_CELL[None, :, None],
+            ], axis=-1)  # (m, 121, 3, 5)
+            contrib = (wg * P)[:, :, None, None] * reg5
+            for h in range(3):
+                out[s:e, h] += contrib[:, _HT_IDX == h].sum(axis=1)
+    return out

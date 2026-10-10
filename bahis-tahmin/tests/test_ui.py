@@ -135,3 +135,34 @@ def test_goals_page(app, window, goal_setup):
     assert page.led_model.rowCount() == 6
     page.refresh_coverage()
     assert page.cov_model.rowCount() > 0 and page.src_model.rowCount() == 4
+
+
+def test_sequences_page_historical_view(app, window):
+    from bahis_tahmin.sequences.synthetic import synthetic_matches
+    from bahis_tahmin.ui.pages.sequences import SequencesPage
+
+    m, _ = synthetic_matches(n_leagues=1, n_seasons=8, n_teams=8, seed=2)
+    ctl = window.ctl
+    ctl.store.matches = m
+    ctl.seq_table = None
+    ctl.ensure_sequence_table()
+    ctl.wait()
+    app.processEvents()
+    for _ in range(50):
+        if ctl.seq_table is not None:
+            break
+        app.processEvents()
+    page = window.page(SequencesPage)
+    assert ctl.seq_table is not None
+    page.refresh_all()
+    assert page.cb_team.count() == 8
+    assert not page.rb_all.isEnabled() and "DATA_QUALITY_BLOCKED" in page.rb_all.toolTip()
+    page.cb_target.setCurrentIndex(0)  # İY geride → MS galip
+    page.refresh_events()
+    if page.ev_model.rowCount():
+        page._show_card(page.ev_proxy.index(0, 0))
+        assert "Kaynak" in page.card_event.toPlainText()
+        assert page.card_models["POST_EVENT"][0].text()  # pencere durumları yazılı
+    # Araştırma sonucu yoksa örnek/uydurma sonuç gösterilmez
+    assert page.pat_model.rowCount() == 0 and "çalıştırılmadı" in page.pat_text.text()
+    assert "DATA_QUALITY_BLOCKED" in page.meth_text.toPlainText()
