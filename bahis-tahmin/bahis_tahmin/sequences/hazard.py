@@ -49,6 +49,7 @@ _BIN_LOWS = np.array([lo for lo, _ in C.HAZARD_BINS], dtype=float)
 
 GAP_KINDS = ("COMPLETED", "CENSORED", "LEFT_TRUNCATED", "LEFT_TRUNCATED_CENSORED")
 MKT_COLS = ("mkt_galip_logit", "mkt_maglup_logit")  # 7b/5 piyasa kontrolü ortak değişkenleri
+MKT_EXTRA = ("s0_logit",) + MKT_COLS  # 7b/5: S0 sıcaklığı (serbest katsayı) + piyasa logitleri
 
 
 def _check_event(event: str) -> None:
@@ -112,7 +113,7 @@ def _event_state(fr: ResearchFrame, event: str) -> _EventState:
     idx = np.arange(len(rows))
     cm = pd.Series(np.where(ev, idx, -1)).groupby(b).cummax().to_numpy() if len(rows) else np.zeros(0)
     same = np.r_[False, b[1:] == b[:-1]] if len(rows) else np.zeros(0, dtype=bool)
-    prev = np.where(same, cm, -1)
+    prev = np.where(same, np.r_[-1, cm[:-1]] if len(rows) else cm, -1)
     since = np.where(prev >= 0, idx - prev, np.nan).astype(float)
     return _EventState(rows=rows, block=b, reasons=reasons, ev=ev, known=known, since=since)
 
@@ -614,18 +615,20 @@ def _falsification(te: pd.DataFrame, diff: np.ndarray, reps: int, seed: int, top
 def _market_check(tr: pd.DataFrame, te: pd.DataFrame, reps: int, seed: int) -> dict:
     """7b/5: piyasa (marjsız Bet365 1X2 logitleri) ortak değişken olarak eklendiğinde kategori katkısı sürmeli.
 
-    Aynı dönem planı (eğitim ``tr``, dondurulmuş değerlendirme ``te``), yalnızca oranlı satırlar. Geçme: fark < 0 ve
-    lig-sezon kümeli bootstrap üst sınırı < 0. Oran yoksa uyum yapılamaz → geçmedi (``durum`` = VERI_YOK).
+    S0 logitine serbest bir katsayı da eklenir (``s0_logit``; offset ile birlikte etkin katsayı 1 + γ = S0 "sıcaklığı"),
+    böylece piyasa S0'ın ağırlığını azaltabilir (models.p0_market ile aynı ilke). Aynı dönem planı (eğitim ``tr``,
+    dondurulmuş değerlendirme ``te``), yalnızca oranlı satırlar. Geçme: fark < 0 ve lig-sezon kümeli bootstrap üst
+    sınırı < 0. Oran yoksa uyum yapılamaz → geçmedi (``durum`` = VERI_YOK).
     """
     cols = list(MKT_COLS)
-    trm = tr[np.isfinite(tr[cols].to_numpy(dtype=float)).all(axis=1)]
-    tem = te[np.isfinite(te[cols].to_numpy(dtype=float)).all(axis=1)]
+    trm = tr[np.isfinite(tr[cols].to_numpy(dtype=float)).all(axis=1)].assign(s0_logit=lambda d: d["offset"])
+    tem = te[np.isfinite(te[cols].to_numpy(dtype=float)).all(axis=1)].assign(s0_logit=lambda d: d["offset"])
     base = {"n": int(len(tem)), "n_dislanan": int(len(te) - len(tem)), "train_n": int(len(trm))}
     if len(tem) == 0:
         return {"gecti": False, "durum": "VERI_YOK", "neden": "Değerlendirme döneminde oranlı satır yok.", **base}
     try:
-        fb = fit_hazard(trm, bins=True, extra=MKT_COLS)
-        f0 = fit_hazard(trm, bins=False, extra=MKT_COLS)
+        fb = fit_hazard(trm, bins=True, extra=MKT_EXTRA)
+        f0 = fit_hazard(trm, bins=False, extra=MKT_EXTRA)
     except ValueError as exc:
         return {"gecti": False, "durum": "VERI_YOK", "neden": str(exc), **base}
     yv = tem["y"].to_numpy(dtype=float)
@@ -755,10 +758,13 @@ def _status(oos: dict, p_param_holm: float, p_test_holm: float) -> tuple[str, st
     if par_ok and te_ok:
         if par_pass and te_pass:
             failed = _failed_checks(oos)
-            if not failed:
+            done = all(r.get("falsification", {}).get("gecti") is True for r in (par, te))
+            if done and not failed:
                 return "OUT_OF_SAMPLE_SUPPORTED", ("Parametre ve test dönemlerinde tek yönlü Holm geçti; test log-kaybı "
                                                    "bootstrap üst sınırı < 0; 7b uyarlaması (1, 2, 3, 5) iki dönemde "
                                                    "geçti. " + _HONESTY)
+            if not failed:
+                return "NO_ADDED_VALUE", "7b yanlışlama uyarlaması değerlendirilmedi; destek statüsü verilmez."
             if all(f.endswith("5_piyasa") for f in failed):
                 return "NO_ADDED_VALUE", "Piyasa kontrolünde katkı sürmedi (piyasa/temel model bilgisi)."
             return "NO_ADDED_VALUE", "Holm ve bootstrap geçti; 7b yanlışlama uyarlaması geçmedi: " + ", ".join(failed)

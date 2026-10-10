@@ -171,7 +171,9 @@ class OfficialRegistry:
         """``at`` anında olay için en güncel bilinen karar; yoksa ``KAYIT_YOK`` (asla "temiz" değildir).
 
         Düzeltme zinciri izlenir: bilinen bir düzeltmeyle yerine geçilmiş karar, zincirin en son bilinen kaydıyla
-        temsil edilir. Birden çok aday varsa karar tarihi ve ekleme sırasına göre en sonuncusu döner.
+        temsil edilir. Birden çok aday varsa karar tarihi ve ekleme sırasına göre en sonuncusu döner. Düzeltme olayı
+        kapsamdan çıkarmışsa da zincirin son kararı döner (olayın önceki kararı geri alınmıştır); çağıran
+        ``scope_event_ids`` alanını kontrol etmelidir.
         """
         _nonempty("event_id", event_id)
         known = self.decisions_known_at(at)

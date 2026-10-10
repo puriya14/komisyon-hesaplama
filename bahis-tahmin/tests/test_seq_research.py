@@ -40,7 +40,7 @@ def _s0_table(m: pd.DataFrame, probs: pd.DataFrame) -> pd.DataFrame:
 
 @pytest.fixture(scope="module")
 def synth():
-    m, probs = synthetic_matches(n_leagues=2, n_seasons=27, n_teams=10, seed=11)
+    m, probs = synthetic_matches(n_leagues=2, n_seasons=27, n_teams=16, seed=11)  # 240 maçlık lig-sezonlar
     return m, probs, _s0_table(m, probs)
 
 
@@ -133,6 +133,9 @@ def test_outputs_keep_anomalies_local_and_unaggregated(run):
     text = json.dumps(summ, ensure_ascii=False).lower()
     assert "şike olasılığı" not in text.replace("suç/şike olasılığı değildir", "")
     ui = json.loads((base / "out" / "son_sonuclar.json").read_text(encoding="utf-8"))
+    assert ui["anomaliler"], "anomali listesi boş olmamalı (kontrol boşa geçmesin)"
+    local = json.loads((base / "out" / "anomaliler.json").read_text(encoding="utf-8"))
+    assert len(local) == len(ui["anomaliler"]) == summ["toplam"]
     for r in ui["anomaliler"]:
         assert "team" not in r and "opponent" not in r and "referee" not in r
 
@@ -227,3 +230,13 @@ def test_prematch_examples_only_use_labels_known_before_decision(prematch):
         for e in s["ornekler_isabet"] + s["ornekler_iska"]:
             assert pd.Timestamp(e["tarih"]) + pd.Timedelta(days=1) < dec
     assert (tm.loc[pf["upcoming"], "source"] == FIXTURE_SOURCE).all()
+
+
+def test_previously_seen_families_cannot_be_supported():
+    # YALNIZCA TEST: elle kurulmuş statü kayıtları
+    results = {"aileler": {"F3": {"holm": [{"statu": "OUT_OF_SAMPLE_SUPPORTED"}, {"statu": "NO_ADDED_VALUE"}]},
+                           "F5": {"pazarlar": {"A": {"statu": "OUT_OF_SAMPLE_SUPPORTED"}}}}}
+    RS._downgrade_seen(results)
+    assert [r["statu"] for r in results["aileler"]["F3"]["holm"]] == ["EXPLORATORY", "NO_ADDED_VALUE"]
+    assert results["aileler"]["F5"]["pazarlar"]["A"]["statu"] == "EXPLORATORY"
+    assert set(RS.SEEN_FAMILIES) == {"F3", "F5", "F6"}

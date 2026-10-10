@@ -63,6 +63,11 @@ def _local_date(t: dt.datetime) -> dt.date:
     return t.astimezone(ISTANBUL).date()
 
 
+def _is_local_midnight(t: dt.datetime) -> bool:
+    loc = t.astimezone(ISTANBUL)
+    return (loc.hour, loc.minute, loc.second, loc.microsecond) == (0, 0, 0, 0)
+
+
 def _season_year(d: dt.date) -> int:
     return d.year if d.month >= 7 else d.year - 1
 
@@ -154,8 +159,7 @@ class ResearchLedger:
             raise ValueError("is_home True/False olmalı")
         created_at = _aware("created_at", created_at)
         decision_time = _aware("decision_time", decision_time)
-        loc = decision_time.astimezone(ISTANBUL)
-        if (loc.hour, loc.minute, loc.second, loc.microsecond) != (0, 0, 0, 0):
+        if not _is_local_midnight(decision_time):
             raise ValueError("decision_time maç günü 00:00 (Europe/Istanbul) olmalı")
         if contract_version != C.CONTRACT_VERSION or config_hash != C.config_hash():
             raise ValueError("Sözleşme sürümü veya parametre özeti güncel değil; yeni deney kaydı gerekir")
@@ -166,12 +170,12 @@ class ResearchLedger:
             raise ValueError("Geç kayıt reddedildi: kayıt anı karar zamanından sonra (geriye tarihleme yapılamaz)")
         if created_at > now:
             raise ValueError("created_at gelecekte olamaz")
-        match_date = loc.date()
+        match_date = _local_date(decision_time)
         if match_date <= _forward_from():
             raise ValueError(f"İleriye dönük takip yalnızca {C.FORWARD_FROM} sonrasında oynanan maçlar içindir")
         p0f, ppf = _prob("p0", p0), _prob("p_pattern", p_pattern)
         key = (pattern_id, event_id, target, bool(is_home))
-        if any((r["pattern_id"], r["event_id"], r["target"], bool(r["is_home"])) == key for r in self._forecasts()):
+        if any((r["pattern_id"], r["event_id"], r["target"], bool(r["is_home"])) == key for r in self._payloads()):
             raise ValueError("Bu örüntü/olay/hedef/taraf için tahmin zaten kayıtlı (değiştirilemez)")
         record = {
             "kind": LEDGER_KIND, "event_id": event_id, "market_key": f"DIZI:{target}",
@@ -193,7 +197,7 @@ class ResearchLedger:
     def record_outcome(self, forecast_id: str, y, source: str, note: str = "") -> None:
         """Gerçekleşen hedef (1/0; bilinmiyorsa None). Yalnızca label_known_at (maç günü + 1) sonrasında."""
         _text("source", source)
-        rec = next((r for r in self._forecasts() if r["id"] == forecast_id), None)
+        rec = self._payload(forecast_id)
         if rec is None:
             raise KeyError(forecast_id)
         known_at = dt.datetime.fromisoformat(rec["decision_time"]) + LABEL_DELAY
@@ -209,6 +213,16 @@ class ResearchLedger:
         self._ledger.record_outcome(forecast_id, settlement, label, source, note)
 
     # ------------------------------------------------------------- okuma
+    def _payloads(self) -> list[dict]:
+        """Araştırma tahmin kayıtları (sonuç sorgusu olmadan; tekrar denetimi için hafif okuma)."""
+        rows = self._ledger.conn.execute("SELECT payload FROM predictions ORDER BY seq")
+        return [r for r in (json.loads(p) for (p,) in rows) if r.get("kind") == LEDGER_KIND]
+
+    def _payload(self, forecast_id: str) -> dict | None:
+        row = self._ledger.conn.execute("SELECT payload FROM predictions WHERE id=?", (str(forecast_id),)).fetchone()
+        rec = json.loads(row[0]) if row else None
+        return rec if rec is not None and rec.get("kind") == LEDGER_KIND else None
+
     def _forecasts(self) -> list[dict]:
         return [r for r in self._ledger.predictions() if r.get("kind") == LEDGER_KIND]
 
@@ -232,6 +246,9 @@ class ResearchLedger:
         return out
 
     def evaluate(self, pattern_id: str, start_season, **kw) -> dict:
+        """Defterdeki kayıtlarla ``paper_evaluation``. Sezon sınırı için ``as_of`` verilmezse defter saati (şimdi)
+        kullanılır: kayıt gelmese bile süre dolunca değerlendirme yapılır (sessiz uzatma olmaz)."""
+        kw.setdefault("as_of", self._now())
         return paper_evaluation(self.records_with_outcomes(pattern_id), start_season, pattern_id=pattern_id, **kw)
 
 
@@ -260,6 +277,8 @@ def _classify(rec: dict, start: int, seen: set) -> tuple[str, dict | None]:
         fca = _aware("forecast_created_at", rec["forecast_created_at"])
         lca = _aware("created_at", rec["created_at"]) if rec.get("created_at") else None
     except (KeyError, ValueError):
+        return "gecersiz_zaman", None
+    if not _is_local_midnight(dtime):  # karar zamanı maç günü 00:00 (İstanbul) olmalı (sözleşme §4)
         return "gecersiz_zaman", None
     mdate = _local_date(dtime)
     info = {"decision_time": dtime, "match_date": mdate, "season_year": _season_year(mdate)}

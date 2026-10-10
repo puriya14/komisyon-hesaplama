@@ -29,7 +29,8 @@ GROUP_WORDS = ("team", "takim", "takım", "opponent", "rakip", "league", "lig", 
 
 @pytest.fixture(scope="module")
 def syn():
-    fr, _, _ = synthetic_frame(seed=0, n_leagues=2, n_seasons=10, n_teams=10)
+    # 20 takım → lig-sezon başına 380 maç (gerçek liglere benzer havuz); 2004–2009 → ısınma + keşif dönemleri
+    fr, _, _ = synthetic_frame(seed=0, n_leagues=2, n_seasons=6, n_teams=20, start_year=2004)
     return fr
 
 
@@ -78,6 +79,32 @@ def _rows_of(fr, pair_id):
     return home, int(tm["mirror_row"].to_numpy()[home])
 
 
+def _brute_top(values: np.ndarray, top: float) -> np.ndarray:
+    """Kaba kuvvet orta-sıra üst pay kuralı: (daha büyük + eşitlerin yarısı, kendisi dahil) / n < top."""
+    v = np.asarray(values, dtype=float)
+    ok = ~np.isnan(v)
+    out = np.zeros(len(v), dtype=bool)
+    w = v[ok]
+    greater = (w[None, :] > w[:, None]).sum(axis=1)
+    equal = (w[None, :] == w[:, None]).sum(axis=1)
+    out[ok] = (greater + 0.5 * equal) / len(w) < top - 1e-12
+    return out
+
+
+def _surprise_pairs(recs) -> set:
+    return {r["pair_id"] for r in recs if A.TYPE_SURPRISE in r["flags"]}
+
+
+def _set_realised_p(fr, pairs, p):
+    """Verilen maçların gerçekleşen hücre olasılığını ``p`` yapar (iki satırda da)."""
+    raw = fr.raw_probs.copy()
+    cell = fr.tm["raw_cell"].to_numpy()
+    for pid in pairs:
+        for r in _rows_of(fr, pid):
+            raw[r, cell[r]] = p
+    return dataclasses.replace(fr, raw_probs=raw)
+
+
 # ----------------------------------------------------------------------------
 # Anomali: sürpriz bittir, aday kuralı, kontrol listesi
 # ----------------------------------------------------------------------------
@@ -116,24 +143,85 @@ def test_records_carry_bits_and_no_wrongdoing_probability(syn):
 
 def test_candidates_are_top_share_within_league_season(syn):
     recs = A.flag_anomalies(syn)
-    got = {r["pair_id"] for r in recs if A.TYPE_SURPRISE in r["flags"]}
+    got = _surprise_pairs(recs)
     tm = syn.tm
     home = tm["is_home"].to_numpy()
     bits = A.surprise_bits(syn)[home]
     pair = tm["pair_id"].to_numpy()[home]
     cl = np.asarray(syn.cluster)[home]
+    top = 1 - C.ANOMALY_QUANTILE
     expected = set()
     for c in np.unique(cl):
-        v = bits[cl == c]
-        greater = (v[None, :] > v[:, None]).sum(axis=1)
-        expected |= set(pair[cl == c][greater / len(v) < 1 - C.ANOMALY_QUANTILE].tolist())
+        sel = cl == c
+        assert sel.sum() == 380
+        hit = _brute_top(bits[sel], top)
+        assert hit.sum() == 2  # 380 sürekli değerde ≈ round(380 × %0,5) = 2 (nominal paya yakın)
+        expected |= set(pair[sel][hit].tolist())
     assert got == expected
-    assert len({r["cluster"] for r in recs if A.TYPE_SURPRISE in r["flags"]}) == len(np.unique(cl))
     assert len({r["pair_id"] for r in recs}) == len(recs)  # pair_id başına tek kayıt
-    # Maske: yalnızca maskedeki maçlar havuzdadır
-    mask = np.asarray(syn.period, dtype=object) == "kesif"
-    sub = A.flag_anomalies(syn, mask)
+    for r in recs:
+        assert r["surprise_pool_n"] == 380 and r["surprise_top_share"] < top
+    # Maske: yalnızca maskedeki maçlar raporlanır; referans havuz maskeden bağımsızdır (aynı kayıtlar)
+    per = np.asarray(syn.period, dtype=object)
+    sub = A.flag_anomalies(syn, per == "kesif")
+    full = {r["pair_id"]: r for r in recs}
     assert sub and all(r["period"] == "kesif" for r in sub)
+    assert all(full[r["pair_id"]] == r for r in sub)
+    assert {r["pair_id"] for r in sub} == {p for p, r in full.items() if r["period"] == "kesif"}
+
+
+def test_mask_cannot_build_team_pool(syn):
+    """Tek takımlık maske takım bazında "en üst" maç üretemez: yalnızca tam görünümdeki adaylardan o takımınkiler."""
+    tm = syn.tm
+    full = _surprise_pairs(A.flag_anomalies(syn))
+    for team in tm["team"].unique()[:4]:
+        m = (tm["team"] == team).to_numpy()
+        got = _surprise_pairs(A.flag_anomalies(syn, m))
+        assert got == full & set(tm.loc[m, "pair_id"])
+    with pytest.raises(ValueError):
+        A.flag_anomalies(syn, np.ones(len(tm), dtype=int))  # boolean olmayan maske
+    with pytest.raises(ValueError):
+        A.flag_anomalies(syn, np.ones(len(tm) - 1, dtype=bool))
+
+
+def test_small_pool_yields_no_candidate(syn):
+    """En üst %0,5 ancak > 100 maçlık havuzda tanımlıdır: küçük havuzda (ör. devam eden sezon) en büyük değer bile aday değil."""
+    tm = syn.tm
+    home = tm["is_home"].to_numpy()
+    c0 = np.asarray(syn.cluster)[home][0]
+    pairs = tm["pair_id"].to_numpy()[home][np.asarray(syn.cluster)[home] == c0]
+    target = int(pairs[50])
+    for keep, flagged in ((100, False), (101, True)):
+        fr = _set_realised_p(syn, [target], 1e-12)
+        raw = fr.raw_probs.copy()
+        drop = np.isin(tm["pair_id"].to_numpy(), pairs[keep:])
+        raw[drop] = np.nan  # S0 yok → havuz dışında
+        fr = dataclasses.replace(fr, raw_probs=raw)
+        recs = [r for r in A.flag_anomalies(fr) if r["cluster"] == c0]
+        assert (target in _surprise_pairs(recs)) is flagged
+        assert len(_surprise_pairs(recs)) == int(flagged)
+        if flagged:
+            assert recs[0]["surprise_pool_n"] == keep
+
+
+def test_ties_and_infinite_surprise_are_deterministic(syn):
+    tm = syn.tm
+    home = tm["is_home"].to_numpy()
+    cl = np.asarray(syn.cluster)[home]
+    c0 = cl[0]
+    pairs = tm["pair_id"].to_numpy()[home][cl == c0]
+    # p = 0 → +∞ bit; iki eşit +∞: orta-sıra üst pay 1/380 < %0,5 → ikisi de aday, başka aday yok
+    two = [int(pairs[10]), int(pairs[200])]
+    fr2 = _set_realised_p(syn, two, 0.0)
+    recs = [r for r in A.flag_anomalies(fr2) if r["cluster"] == c0]
+    assert _surprise_pairs(recs) == set(two)
+    assert all(r["surprise_bits"] == np.inf and r["s0_p_gerceklesen"] == 0.0 for r in recs)
+    # dört eşit +∞: orta-sıra üst pay 2/380 > %0,5 → eşit blok birlikte dışarıda kalır (aynı karar), aday yok
+    four = [int(pairs[k]) for k in (10, 100, 200, 300)]
+    fr4 = _set_realised_p(syn, four, 0.0)
+    assert not [r for r in A.flag_anomalies(fr4) if r["cluster"] == c0]
+    b = A.surprise_bits(fr4)[home][cl == c0]
+    assert np.array_equal(_brute_top(b, 1 - C.ANOMALY_QUANTILE), np.zeros(len(b), dtype=bool))
 
 
 def test_checklist_items_and_unavailable_checks(syn):
@@ -201,7 +289,19 @@ def test_model_market_gap_flag_is_separate(syn):
     recs = A.flag_anomalies(fr)
     m = [r for r in recs if A.TYPE_MARKET in r["flags"]]
     assert m and all(r["model_market_gap"] is not None for r in m)
-    assert len({r["cluster"] for r in m}) == len(m)  # 90 maçlık küme → küme başına en büyük fark
+    # Kaba kuvvet: her iki takımın |S0 p_win − piyasa p_win| değerinin büyüğü, lig-sezon içi orta-sıra kuralı
+    tm = fr.tm
+    home = np.where(tm["is_home"].to_numpy())[0]
+    mir = tm["mirror_row"].to_numpy()[home]
+    gap = np.maximum(np.abs(fr.p_win[home] - mkt[home, 0]), np.abs(fr.p_win[mir] - mkt[mir, 0]))
+    cl = np.asarray(fr.cluster)[home]
+    exp = set()
+    for c in np.unique(cl):
+        exp |= set(tm["pair_id"].to_numpy()[home][cl == c][_brute_top(gap[cl == c], 1 - C.ANOMALY_QUANTILE)].tolist())
+    assert {r["pair_id"] for r in m} == exp
+    for r in m:
+        h, a = _rows_of(fr, r["pair_id"])
+        assert r["model_market_gap"] == pytest.approx(max(abs(fr.p_win[h] - mkt[h, 0]), abs(fr.p_win[a] - mkt[a, 0])))
     for r in m:
         if r["flags"] == [A.TYPE_MARKET]:
             assert r["type"] == A.TYPE_MARKET and r["status"] in (A.TYPE_MARKET, "açıklanabilir")
@@ -312,6 +412,14 @@ def test_official_append_only_and_corrections(tmp_path):
     assert reg.status_for_event(ev, _ist(2026, 10, 15)).decision_id == "K1"  # düzeltme henüz bilinmiyor
     latest = reg.status_for_event(ev, _ist(2026, 10, 21))
     assert latest.decision_id == "K2" and latest.finality == "kesin"
+    # Kapsamı daraltan düzeltme: eski kararın kapsadığı olay için zincirin son kararı döner (geri alındığı görünür)
+    ev2 = "T1|2026-10-11|C|D"
+    reg.append(_dec(5, dt.date(2026, 10, 12), events=(ev2,)))
+    assert reg.status_for_event(ev2, _ist(2026, 10, 14)).decision_id == "K5"
+    reg.append(_dec(6, dt.date(2026, 10, 16), events=("T1|2026-10-11|E|F",), supersedes="K5"))
+    assert reg.status_for_event(ev2, _ist(2026, 10, 16)).decision_id == "K5"  # düzeltme o gün henüz bilinmiyor
+    later = reg.status_for_event(ev2, _ist(2026, 10, 17))
+    assert later.decision_id == "K6" and ev2 not in later.scope_event_ids and later.supersedes == "K5"
     # Diskten yeniden okuma aynı içeriği verir
     again = O.OfficialRegistry(path)
     assert [d.to_dict() for d in again.decisions()] == [d.to_dict() for d in reg.decisions()]
@@ -357,7 +465,8 @@ class _Clock:
 
 
 def _future_dtime(days: int) -> dt.datetime:
-    today = dt.datetime.now(ISTANBUL).date()
+    """Gerçek saatten ve sözleşme tarihinden sonraki bir maç günü (defter gerçek kayıt anını da damgalar)."""
+    today = max(dt.datetime.now(ISTANBUL).date(), dt.date.fromisoformat(C.FORWARD_FROM))
     return RL.decision_time_for(today + dt.timedelta(days=days))
 
 
@@ -406,6 +515,8 @@ def test_research_ledger_refuses_late_or_naive_forecasts(tmp_path):
         _fc(led, dtime, early, config_hash="baska")
     with pytest.raises(ValueError):
         _fc(led, dtime, early, p_pattern=1.0)
+    with pytest.raises(ValueError):
+        _fc(led, dtime, clock.t + dt.timedelta(minutes=5))  # created_at defter saatinden ileride
     late_clock = _Clock(dtime + dt.timedelta(hours=1))  # geriye tarihleme: gerçek kayıt anı karar zamanından sonra
     led_late = RL.ResearchLedger(tmp_path / "gec.sqlite", clock=late_clock)
     with pytest.raises(ValueError):
@@ -440,9 +551,34 @@ def test_research_ledger_accepts_early_forecast_and_outcome(tmp_path):
     assert recs[fid]["y"] == 1.0 and recs[fid]["outcome_state"] == RL.OUTCOME_KNOWN
     ok, _ = led.verify_chain()
     assert ok
-    ev = led.evaluate("P1", 2026)
+    season = RL._season_year(dtime.astimezone(ISTANBUL).date())
+    ev = led.evaluate("P1", season)
     assert ev["status"] == "PAPER_TRADING" and ev["evaluation_point_reached"] is False
     assert ev["excluded"].get("bekleyen") == 1
+    led.close()
+
+
+def test_research_ledger_season_limit_uses_clock(tmp_path):
+    """Kayıt gelmese bile sezon sınırı defter saatiyle dolar (sessiz uzatma yok)."""
+    clock = _Clock(now_utc())
+    led = RL.ResearchLedger(tmp_path, clock=clock)
+    ids = []
+    for k, lg in enumerate(("T1", "E0", "D1", "I1")):
+        dtime = _future_dtime(3 + k)
+        ids.append(_fc(led, dtime, clock.t - dt.timedelta(minutes=5), event=f"{lg}|e{k}", league=lg))
+    season = RL._season_year(_future_dtime(3).astimezone(ISTANBUL).date())
+    end = dt.date(season + C.PAPER_MAX_SEASONS, 7, 1)
+    clock.t = RL.decision_time_for(end) - dt.timedelta(days=2)
+    for k, fid in enumerate(ids):
+        led.record_outcome(fid, k % 2, source="test")
+    before = led.evaluate("P1", season)
+    assert before["evaluation_point_reached"] is False and before["status"] == "PAPER_TRADING"
+    clock.t = RL.decision_time_for(end) + dt.timedelta(hours=1)
+    after = led.evaluate("P1", season)
+    assert after["evaluation_point_reached"] is True and after["trigger"] == "sezon" and after["n_used"] == 4
+    assert after["status"] in ("PAPER_TRADING", "NO_ADDED_VALUE") and after["succeeded"] is not None
+    # Modül düzeyi işlev as_of verilmezse kayıtlara göre (tekrarlanabilir) karar verir: sınır henüz dolmamış
+    assert RL.paper_evaluation(led.records_with_outcomes("P1"), season)["evaluation_point_reached"] is False
     led.close()
 
 
@@ -512,6 +648,13 @@ def test_paper_evaluation_season_limit_and_exclusions():
     late[1]["created_at"] = (dt.datetime.fromisoformat(late[1]["decision_time"]) + dt.timedelta(hours=2)).isoformat()
     r = RL.paper_evaluation(late, 2026, as_of=dt.date(2028, 7, 1))
     assert r["excluded"]["gec_kayit"] == 2 and r["n_used"] == 98
+    # Karar zamanı maç günü 00:00 (İstanbul) değilse satır nitelikli değildir (ör. maç günü 23:00 → geç tahmin)
+    odd = [dict(r) for r in recs]
+    odd[0]["decision_time"] = (dt.datetime.fromisoformat(odd[0]["decision_time"]) + dt.timedelta(hours=23)).isoformat()
+    odd[0]["forecast_created_at"] = odd[0]["created_at"] = (
+        dt.datetime.fromisoformat(odd[0]["decision_time"]) - dt.timedelta(hours=1)).isoformat()
+    r = RL.paper_evaluation(odd, 2026, as_of=dt.date(2028, 7, 1))
+    assert r["excluded"]["gecersiz_zaman"] == 1 and r["n_used"] == 99
     # Değerlendirme noktasından önce sonucu beklenen satır varsa değerlendirme bekler
     pend = _paper_records(320, START)
     pend[3]["outcome_state"], pend[3]["y"] = RL.OUTCOME_PENDING, None

@@ -213,6 +213,14 @@ def test_s2_fit_libraries_selection_and_effective_sample(fr, models):
     ev, _ = M.shared_rows(fr, "GALIBIYET", "test")
     assert np.isfinite(r.pred[ev]).all()
     assert np.nanmax(r.eff_rows["takim_sezon"]) <= r.k
+    # Saklanan logit düzeltmesi tahminle tutarlı; 7b/5'te aynı düzeltme S0p üzerine eklenir
+    q = np.isfinite(r.pred)
+    assert np.array_equal(q, np.isfinite(r.adj)) and q.any()
+    assert np.allclose(expit(M._logit(fr.p0["GALIBIYET"][q]) + r.adj[q]), r.pred[q], atol=1e-12)
+    ctrl = M.market_controlled_predictions(fr, "GALIBIYET", models)["S2"]
+    s0p = models.s0p["GALIBIYET"]
+    ok = q & np.isfinite(s0p)
+    assert np.allclose(ctrl[ok], expit(M._logit(s0p[ok]) + r.adj[ok]))
 
 
 def test_s2_default_grid_on_single_target(fr, space):
@@ -226,6 +234,104 @@ def test_s2_default_grid_on_single_target(fr, space):
 # ----------------------------------------------------------------------------
 # S0p ve ortak değerlendirme
 # ----------------------------------------------------------------------------
+
+def test_pick_rules_on_crafted_library():
+    """Her dışlama kuralı ayrı ayrı: aynı gün, label_known_at = karar günü, aynı pair_id (yapay olarak daha erken
+    günde), hedefi bilinmeyen kütüphane satırı ve takım-sezon sınırı; mesafe sırası korunur."""
+    #            0    1   2   3   4   5   6   7
+    lday = np.array([100, 99, 50, 50, 40, 30, 20, 98])
+    lpair = np.array([1, 2, 7, 3, 4, 5, 6, 8])
+    lts = np.array([1, 2, 3, 10, 10, 11, 12, 13])
+    lok = np.array([True, True, True, True, True, False, True, True])
+    ind = np.arange(8)[None, :]  # mesafe sırası
+    q_day, q_pair = np.array([100]), np.array([7])
+    out, cnt = M._pick(ind, q_day, q_pair, lday, lpair, lts, lok, 3)
+    assert out.tolist() == [[3, 6, 7]] and cnt.tolist() == [3]
+    out, cnt = M._pick(ind, q_day, q_pair, lday, lpair, lts, lok, 5)
+    assert out.tolist() == [[3, 6, 7, -1, -1]] and cnt.tolist() == [3]
+    out, _ = M._pick(ind, q_day, q_pair, lday, lpair, lts, None, 5)  # lok yoksa 5 izinli olur
+    assert out.tolist() == [[3, 5, 6, 7, -1]]
+
+
+def test_s0p_temperature_lets_market_replace_noisy_s0(fr):
+    """S0 gürültülü, piyasa bilgili: S0p (sözleşme §6 'sıcaklık') S0'ın ağırlığını düşürüp yalnız-piyasa modeline
+    ulaşmalı. Sıcaklıksız (S0 katsayısı 1'e sabit) kontrol bunu yapamaz ve piyasa bilgisini 'ek katkı' gibi
+    gösterirdi."""
+    t = "GALIBIYET"
+    rng = np.random.default_rng(11)
+    noisy = expit(M._logit(fr.p0[t]) + rng.normal(0, 0.6, len(fr.tm)))
+    fr2 = dataclasses.replace(fr, p0={**fr.p0, t: noisy})
+    tr = M.train_mask(fr2, t, ("kesif", "parametre"), "test")
+    ev = M.shared_rows(fr2, t, "test", need_market=True)[0]
+    p, fit = M.p0_market(fr2, t, tr, ev, return_fit=True)
+    y = fr2.y[t]
+    trm = tr & np.isfinite(fr2.mkt).all(axis=1)
+    Xm = M._logit(fr2.mkt[:, [0, 2]])
+    only = M.fit_offset_logistic(Xm[trm], y[trm], np.zeros(trm.sum()), 0.0).predict(Xm[ev], np.zeros(ev.sum()))
+    ll = lambda q: float(M._log_loss(y[ev], q).mean())  # noqa: E731
+    assert M.s0p_temperature(fit) < 0.5
+    assert ll(p[ev]) < ll(noisy[ev]) - 0.03
+    assert abs(ll(p[ev]) - ll(only)) < 2e-3
+    _, info = M.s0p_predict(fr, t)
+    assert all(np.isfinite(info[per]["s0_sicaklik"]) for per in ("parametre", "test"))
+
+
+def test_s1_market_control_uses_s0p_offset_and_frozen_plan(fr, models):
+    t = "GALIBIYET"
+    s1 = models.s1[t]
+    pm = models.s1_mkt[t]
+    info = models.s1_mkt_info[t]
+    Xi, mu, sd, names = M.s1_design(fr)
+    y = fr.y[t]
+    for period, train in M.EVAL_PLAN:
+        tr = M.train_mask(fr, t, train, period)
+        sel = fr.period == period
+        p_mkt = M.p0_market(fr, t, tr, tr | sel)
+        assert np.allclose(p_mkt[sel], models.s0p[t][sel], equal_nan=True)  # aynı S0p uyumu
+        trm = tr & np.isfinite(p_mkt)
+        fit = M.fit_offset_logistic(Xi[trm], y[trm], M._logit(p_mkt[trm]), s1.lam, means=mu, stds=sd)
+        ap = sel & np.isfinite(p_mkt)
+        assert np.allclose(pm[ap], fit.predict(Xi[ap], M._logit(p_mkt[ap])))
+        assert np.isnan(pm[sel & ~np.isfinite(p_mkt)]).all()
+        start = pd.Timestamp(C.PERIODS[period][0], 7, 1)
+        assert pd.Timestamp(info[period]["egitim_son_tarih"]) + pd.Timedelta(days=1) < start
+        assert info[period]["lam"] == s1.lam  # yeniden seçim yok
+    assert np.isnan(pm[~M._in_periods(fr, ("parametre", "test"))]).all()
+
+
+def test_falsification_checks_detect_fragile_gains(fr):
+    t = "GALIBIYET"
+    mask = M.shared_rows(fr, t, "test", need_market=True)[0]
+    n = int(mask.sum())
+    y = fr.y[t][mask]
+    lg = fr.tm["league"].to_numpy()[mask]
+    se = fr.tm["season"].to_numpy()[mask]
+    f = M._falsification(fr, mask, np.full(n, -0.01), y, 1000, C.SEED)
+    assert all(f[k]["gecti"] for k in ("1_lig_takim_cikarma", "2_en_cok_katki_yuzde1", "3_sezon_yonu"))
+    # 1: kazanç tek ligde → o lig çıkarılınca yön değişir
+    d = np.where(lg == lg[0], -0.05, 0.001)
+    assert d.mean() < 0 and not M._falsification(fr, mask, d, y, 1000, C.SEED)["1_lig_takim_cikarma"]["gecti"]
+    # 2: kazanç en iyi %1 satırda → çıkarılınca fark ≥ 0
+    d = np.full(n, 0.001)
+    d[: int(np.ceil(0.01 * n))] = -1.0
+    f = M._falsification(fr, mask, d, y, 1000, C.SEED)
+    assert d.mean() < 0 and not f["2_en_cok_katki_yuzde1"]["gecti"]
+    # 3: yalnızca iki sezonda iyileşme
+    seasons = np.unique(se)
+    d = np.where(np.isin(se, seasons[:2]), -0.05, 0.001)
+    f = M._falsification(fr, mask, d, y, 1000, C.SEED)
+    assert d.mean() < 0 and not f["3_sezon_yonu"]["gecti"]
+    assert f["3_sezon_yonu"]["pay"] == pytest.approx(2 / len(seasons))
+    # 6: en büyük karşı örnekler fark sırasında, yalnızca kimlik/tarih/sonuç/fark
+    rows = f["6_karsi_ornekler"]
+    assert len(rows) == 20 and all(a["fark"] >= b["fark"] for a, b in zip(rows, rows[1:]))
+    # 5: piyasa kontrolü — S0p'ye özdeş tahmin geçemez; S0p'den daha bilgili tahmin geçer; tahmin yoksa geçmez
+    cl = fr.cluster[mask]
+    noisy = expit(M._logit(fr.p0[t][mask]) + np.random.default_rng(2).normal(0, 0.5, n))
+    assert not M._market_check(y, noisy, noisy, cl, 1000, C.SEED)["gecti"]
+    assert M._market_check(y, fr.p0[t][mask], noisy, cl, 1000, C.SEED)["gecti"]
+    assert M._market_check(y, None, noisy, cl, 1000, C.SEED)["gecti"] is False
+
 
 def test_p0_market_nan_without_odds(fr):
     t = "GALIBIYET"
@@ -272,21 +378,65 @@ def test_run_f3_holm_family(fr, models):
     adj = np.array([r["p_holm_test"] for r in res["holm"]])
     i = int(np.argmin(p))
     assert adj[i] == pytest.approx(min(1.0, 8 * p[i]))
+    for row in res["holm"]:
+        recs = {per: res["hedefler"][row["hedef"]]["donemler"][per]["s0_fark"][row["model"]]
+                for per in ("parametre", "test")}
+        for rec in recs.values():
+            f = rec["yanlislama"]
+            assert {"1_lig_takim_cikarma", "2_en_cok_katki_yuzde1", "3_sezon_yonu", "4_eslestirilmis_ampirik",
+                    "5_piyasa", "6_karsi_ornekler", "gecti"} <= set(f)
+            assert f["5_piyasa"]["durum"] == "OK" and isinstance(f["gecti"], bool)
+            assert f["4_eslestirilmis_ampirik"]["gecti"] is None
+            assert 0 < len(f["6_karsi_ornekler"]) <= 20
+            assert all(set(c) == {"row_id", "tarih", "y", "fark"} for c in f["6_karsi_ornekler"])  # takım adı yok
+        st, _ = M._f3_status(recs["parametre"], recs["test"], row["p_holm_parametre"], row["p_holm_test"])
+        assert row["statu"] == st or (row["model"] == "S1" and row["statu"] == "NO_ADDED_VALUE")
     text = json.dumps(res, default=float, ensure_ascii=False).lower()
     assert not any(w in text for w in FORBIDDEN)
 
 
+def _fals(**failed):
+    keys = ("1_lig_takim_cikarma", "2_en_cok_katki_yuzde1", "3_sezon_yonu", "5_piyasa")
+    out = {k: {"gecti": not failed.get(k[:1], False)} for k in keys}
+    out["4_eslestirilmis_ampirik"] = {"gecti": None}
+    out["gecti"] = all(v["gecti"] for v in out.values() if isinstance(v, dict) and v["gecti"] is not None)
+    return out
+
+
+def test_run_f3_lambda_inf_s1_is_never_supported(fr, models, monkeypatch):
+    """λ = ∞ seçilirse S1 = S0 + sabit: diğer kurallar geçse bile dizi özelliklerine destek statüsü verilmez."""
+    s1 = dict(models.s1)
+    s1["GALIBIYET"] = dataclasses.replace(models.s1["GALIBIYET"], lam=math.inf)
+    monkeypatch.setattr(M, "_f3_status", lambda *a: ("OUT_OF_SAMPLE_SUPPORTED", "test"))
+    res = M.run_f3(fr, targets=("GALIBIYET",), models=dataclasses.replace(models, s1=s1))
+    rows = {r["model"]: r for r in res["holm"]}
+    assert rows["S1"]["statu"] == "NO_ADDED_VALUE" and "λ = ∞" in rows["S1"]["gerekce"]
+    assert rows["S2"]["statu"] == "OUT_OF_SAMPLE_SUPPORTED"
+
+
 def test_f3_status_rules():
-    ok_neg = {"durum": "OK", "ci_hi": -0.001}
-    ok_pos = {"durum": "OK", "ci_hi": 0.001}
+    ok_neg = {"durum": "OK", "ci_hi": -0.001, "yanlislama": _fals()}
+    ok_pos = {"durum": "OK", "ci_hi": 0.001, "yanlislama": _fals()}
     none = {"durum": "SATIR_YOK"}
-    assert M._f3_status(ok_neg, ok_neg, 0.01, 0.01)[0] == "OUT_OF_SAMPLE_SUPPORTED"
+    st, why = M._f3_status(ok_neg, ok_neg, 0.01, 0.01)
+    assert st == "OUT_OF_SAMPLE_SUPPORTED" and "ileriye dönük" in why  # §5 dürüstlük notu kartta
     assert M._f3_status(ok_neg, ok_pos, 0.01, 0.01)[0] == "NO_ADDED_VALUE"  # test üst sınırı ≥ 0
     assert M._f3_status(ok_neg, ok_neg, 0.2, 0.01)[0] == "NO_ADDED_VALUE"  # parametre Holm geçmedi
     assert M._f3_status(none, none, np.nan, np.nan)[0] == "INSUFFICIENT_EVIDENCE"
     assert M._f3_status(ok_neg, none, 0.01, np.nan)[0] == "EXPLORATORY"
     assert M._f3_status(ok_neg, none, 0.3, np.nan)[0] == "NO_ADDED_VALUE"
-    cases = (ok_neg, ok_pos, none)
+    # 7b (sözleşme §9): Holm + bootstrap geçse de yanlışlama iki dönemde geçmeli
+    bare = {"durum": "OK", "ci_hi": -0.001}
+    st, why = M._f3_status(bare, bare, 0.01, 0.01)
+    assert st == "NO_ADDED_VALUE" and "değerlendirilmedi" in why
+    mkt = {**ok_neg, "yanlislama": _fals(**{"5": True})}
+    st, why = M._f3_status(ok_neg, mkt, 0.01, 0.01)
+    assert st == "NO_ADDED_VALUE" and "piyasa" in why.lower()
+    for k in ("1", "2", "3"):
+        bad = {**ok_neg, "yanlislama": _fals(**{k: True})}
+        assert M._f3_status(bad, ok_neg, 0.01, 0.01)[0] == "NO_ADDED_VALUE"
+        assert M._f3_status(ok_neg, bad, 0.01, 0.01)[0] == "NO_ADDED_VALUE"
+    cases = (ok_neg, ok_pos, none, bare, mkt)
     assert all(M._f3_status(a, b, p, q)[0] in C.STATUSES
                for a in cases for b in cases for p in (0.01, 0.5) for q in (0.01, 0.5))
 
@@ -295,6 +445,9 @@ def test_holm_hand_example():
     assert np.allclose(M.holm([0.01, 0.04, 0.03]), [0.03, 0.06, 0.06])
     out = M.holm([0.02, np.nan])
     assert out[0] == pytest.approx(0.02) and np.isnan(out[1])
+    # Ön-kayıtlı aile: değerlendirilemeyen hipotez aileyi küçültmez (k sabit)
+    fam = M.holm_family([0.02, np.nan, 0.01])
+    assert np.allclose(fam[[0, 2]], [0.04, 0.03]) and np.isnan(fam[1])
 
 
 # ----------------------------------------------------------------------------
@@ -390,6 +543,7 @@ def test_economic_same_event_set_and_missing_odds(fr):
 
 def test_run_f6_shapes(fr, models):
     res = M.run_f6(fr, models)
+    assert res["donem"] == "test" and res["donem_etiketi"] == M.PERIOD_LABELS["test"]
     assert set(res["hedefler"]) == set(C.TARGETS_Q1)
     for t in ("IY_GERIDE_MS_GALIP", "IY_ONDE_MS_MAGLUP"):
         assert res["hedefler"][t]["roi"] == C.ROI_UNAVAILABLE
@@ -421,6 +575,8 @@ def test_abc_check_match_level_holm_and_exploratory_label(fr):
         assert pd.Timestamp(rec["egitim_son_tarih"]) + pd.Timedelta(days=1) < pd.Timestamp("2013-07-01")
         p_raw.append(rec["p_parametre"])
         p_adj.append(rec["p_holm_parametre"])
-    assert np.allclose(M.holm(p_raw), p_adj)
+    assert np.allclose(M.holm_family(p_raw), p_adj)
+    text = json.dumps(res, default=float, ensure_ascii=False).lower()
+    assert not any(w in text for w in FORBIDDEN)
     with pytest.raises(ValueError):
         M.abc_check(fr, pd.concat([s0, s0.head(1)]))

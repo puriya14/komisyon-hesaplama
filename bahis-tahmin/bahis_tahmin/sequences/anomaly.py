@@ -5,6 +5,11 @@
   kontrollerle açıklanamıyor.
 * ``MODEL_PIYASA_FARKI`` = ayrı bayrak: |S0 galibiyet olasılığı − marjsız piyasa galibiyet olasılığı| kendi
   lig-sezonunun en üst aynı payında. İkisi birbirini güçlendirmez; ayrı sayılır.
+* "En üst pay" sonlu örneklemde orta-sıra (yüzdelik sıra) tanımıyla ölçülür: üst pay = (değeri daha büyük maç
+  sayısı + eşitlerin yarısı, kendisi dahil) / n; aday ⇔ üst pay < 1 − q. Böylece lig-sezon başına ≈ round(n·%0,5)
+  aday çıkar ve ≤ 100 maçlık havuzlarda (ör. devam eden sezon) aday üretilmez (en büyük değer bile en üst %0,5'te
+  değildir). Referans havuz her zaman lig-sezonun TÜM değerlendirilebilir maçlarıdır; ``mask`` yalnızca hangi
+  maçların raporlanacağını seçer (maske ile takım/lig bazında alt havuz kurulamaz).
 * Sürpriz bir BİT değeridir; suç, şike veya herhangi bir kasıt olasılığı değildir ve öyle bir alan üretilmez.
 * Bu modül takım, lig veya hakem bazında toplama/sıralama YAPMAZ ve böyle bir işlev sunmaz (testle korunur).
   Özet yalnızca tür, durum ve dönem sayımlarıdır. Lig-sezon yalnızca sürprizin referans dağılımıdır.
@@ -12,6 +17,8 @@
 """
 
 from __future__ import annotations
+
+from fractions import Fraction
 
 import numpy as np
 import pandas as pd
@@ -55,36 +62,55 @@ def surprise_bits(fr) -> np.ndarray:
     return out
 
 
-def _share_above(values: np.ndarray, groups: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Grup içinde değeri (eşitler hariç) daha büyük olan maçların payı ve grup büyüklüğü (NaN değerler dışarıda).
+def _tail_fraction() -> Fraction:
+    """1 − ``config.ANOMALY_QUANTILE`` tam kesir olarak (0,995 → 1/200; kayan nokta sınır hatası olmasın)."""
+    top = Fraction(1) - Fraction(repr(float(C.ANOMALY_QUANTILE))).limit_denominator(10 ** 9)
+    if not (0 < top < 1):
+        raise ValueError("ANOMALY_QUANTILE (0, 1) aralığında olmalı")
+    return top
 
-    Eşitlikler aynı payı alır (deterministik); +∞ değerler en üsttedir.
+
+def _upper_share(values: np.ndarray, groups: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Grup içi orta-sıra üst payı, grup büyüklüğü ve "en üst pay" bayrağı (NaN değerler havuz dışında).
+
+    üst pay = (daha büyük değer sayısı + eşit değer sayısının yarısı, kendisi dahil) / n. Eşitler aynı payı ve
+    aynı kararı alır (deterministik); +∞ değerler en üsttedir. Bayrak tam sayı aritmetiğiyle: 2·üst·n < 2·top·n.
     """
-    s = pd.Series(values, dtype=float)
+    s = pd.Series(np.asarray(values, dtype=float))
     valid = s.notna().to_numpy()
     share = np.full(len(s), np.nan)
     size = np.zeros(len(s), dtype=np.int64)
+    flag = np.zeros(len(s), dtype=bool)
     if valid.any():
-        g = pd.Series(groups)[valid]
+        g = np.asarray(groups, dtype=object)[valid]
         sv = s[valid]
-        greater = sv.groupby(g.to_numpy()).rank(method="min", ascending=False).to_numpy() - 1.0
-        n = sv.groupby(g.to_numpy()).transform("size").to_numpy()
-        share[valid] = greater / n
+        grp = sv.groupby(g)
+        r_min = grp.rank(method="min", ascending=False).to_numpy()  # 1 + daha büyük sayısı
+        r_max = grp.rank(method="max", ascending=False).to_numpy()  # daha büyük + eşit sayısı
+        n = grp.transform("size").to_numpy().astype(np.int64)
+        twice = (r_min - 1.0) + r_max  # 2·(daha büyük) + eşit = 2 × orta-sıra üst sayım (tam sayı)
+        top = _tail_fraction()
+        share[valid] = twice / (2.0 * n)
         size[valid] = n
-    return share, size
+        flag[valid] = twice.astype(np.int64) * top.denominator < 2 * n * top.numerator
+    return share, size, flag
 
 
 def _match_table(fr, mask: np.ndarray | None) -> pd.DataFrame:
-    """Maç düzeyi tablo (pair_id başına bir satır; ev satırı temsilci). Maskede en az bir satırı olan maçlar."""
+    """Maç düzeyi tablo (pair_id başına bir satır; ev satırı temsilci).
+
+    Paylar lig-sezonun TÜM maçlarından hesaplanır (referans havuz maskeden bağımsızdır); ``selected`` sütunu maskede
+    en az bir satırı olan maçları gösterir.
+    """
     tm = fr.tm
     n = len(tm)
-    m = np.ones(n, dtype=bool) if mask is None else np.asarray(mask, dtype=bool)
-    if m.shape != (n,):
+    m = np.ones(n, dtype=bool) if mask is None else np.asarray(mask)
+    if m.shape != (n,) or m.dtype != bool:
         raise ValueError("mask, tm satırlarına hizalı boolean dizi olmalı")
     pair = tm["pair_id"].to_numpy()
-    in_mask_pair = pd.Series(m).groupby(pair).transform("max").to_numpy()
+    in_mask_pair = pd.Series(m).groupby(pair).transform("max").to_numpy(dtype=bool)
     home = tm["is_home"].to_numpy(dtype=bool)
-    rows = np.where(home & in_mask_pair)[0]
+    rows = np.where(home)[0]
     mirror = tm["mirror_row"].to_numpy()[rows]
     bits = surprise_bits(fr)
     p_win = np.asarray(fr.p_win, dtype=float)
@@ -106,9 +132,10 @@ def _match_table(fr, mask: np.ndarray | None) -> pd.DataFrame:
         "cluster": np.asarray(fr.cluster, dtype=object)[rows],
         "period": [p if isinstance(p, str) else NO_PERIOD for p in period],
         "htft": tm["htft"].to_numpy()[rows], "p_real": p_real, "bits": bits[rows], "gap": gap,
+        "selected": in_mask_pair[rows],
     })
-    mt["bits_share"], mt["bits_n"] = _share_above(mt["bits"].to_numpy(), mt["cluster"].to_numpy())
-    mt["gap_share"], mt["gap_n"] = _share_above(mt["gap"].to_numpy(), mt["cluster"].to_numpy())
+    mt["bits_share"], mt["bits_n"], mt["is_s"] = _upper_share(mt["bits"].to_numpy(), mt["cluster"].to_numpy())
+    mt["gap_share"], mt["gap_n"], mt["is_m"] = _upper_share(mt["gap"].to_numpy(), mt["cluster"].to_numpy())
     return mt
 
 
@@ -206,21 +233,23 @@ def _checklist(cols: dict[str, np.ndarray], r: int, mr: int, score_issue: str) -
 def flag_anomalies(fr, mask: np.ndarray | None = None) -> list[dict]:
     """Maç düzeyi anomali kayıtları (pair_id başına en fazla bir kayıt; tarih, pair_id sırasında).
 
-    Aday kuralı (her ölçüt kendi lig-sezonunda, maskedeki değerlendirilebilir maçlar arasında): değeri (eşitler hariç)
-    daha büyük olan maçların payı < 1 − ``config.ANOMALY_QUANTILE``. Sürpriz adayı ``UNEXPLAINED_ANOMALY`` türüdür;
-    çalıştırılabilen bir kontrol açıklarsa durumu ``açıklanabilir`` olur. Piyasa farkı ayrı ``MODEL_PIYASA_FARKI``
-    bayrağıdır (açıklanamazsa durumu ``MODEL_PIYASA_FARKI``).
+    Aday kuralı (her ölçüt kendi lig-sezonunun TÜM değerlendirilebilir maçlarına göre): orta-sıra üst pay
+    < 1 − ``config.ANOMALY_QUANTILE`` (modül belgesine bakın; ≤ 100 maçlık havuzda aday yok). ``mask`` (tm satırlarına
+    hizalı) yalnızca raporlanacak maçları seçer — iki satırından biri maskedeyse maç dahildir — referans havuzu
+    değiştirmez. Sürpriz adayı ``UNEXPLAINED_ANOMALY`` türüdür; çalıştırılabilen bir kontrol açıklarsa durumu
+    ``açıklanabilir`` olur. Piyasa farkı ayrı ``MODEL_PIYASA_FARKI`` bayrağıdır (açıklanamazsa durumu
+    ``MODEL_PIYASA_FARKI``).
     """
-    top = 1.0 - C.ANOMALY_QUANTILE
+    top = _tail_fraction()
     mt = _match_table(fr, mask)
-    is_s = (mt["bits_share"] < top).to_numpy()
-    is_m = (mt["gap_share"] < top).to_numpy()
-    sel = mt[is_s | is_m].sort_values(["date", "pair_id"], kind="mergesort")
+    is_s = mt["is_s"].to_numpy(dtype=bool)
+    is_m = mt["is_m"].to_numpy(dtype=bool)
+    sel = mt[(is_s | is_m) & mt["selected"].to_numpy(dtype=bool)].sort_values(["date", "pair_id"], kind="mergesort")
     cols = _check_arrays(fr.tm)
     score_issues = _score_issues(cols, sel["row"].to_numpy(dtype=np.int64))
     records = []
-    for k, (i, row) in enumerate(sel.iterrows()):
-        flags = [t for t, on in ((TYPE_SURPRISE, is_s[i]), (TYPE_MARKET, is_m[i])) if on]
+    for k, (_, row) in enumerate(sel.iterrows()):
+        flags = [t for t, on in ((TYPE_SURPRISE, bool(row["is_s"])), (TYPE_MARKET, bool(row["is_m"]))) if on]
         checks = _checklist(cols, int(row["row"]), int(row["mirror"]), score_issues[k])
         by_flag = {}
         for f in flags:
@@ -235,12 +264,14 @@ def flag_anomalies(fr, mask: np.ndarray | None = None) -> list[dict]:
             "htft": row["htft"] if isinstance(row["htft"], str) else None,
             "s0_p_gerceklesen": _fnum(row["p_real"]),
             "surprise_bits": float(row["bits"]) if pd.notna(row["bits"]) else None,
-            "surprise_share_above": _fnum(row["bits_share"]), "surprise_pool_n": int(row["bits_n"]),
-            "model_market_gap": _fnum(row["gap"]), "gap_share_above": _fnum(row["gap_share"]),
+            "surprise_top_share": _fnum(row["bits_share"]), "surprise_pool_n": int(row["bits_n"]),
+            "model_market_gap": _fnum(row["gap"]), "gap_top_share": _fnum(row["gap_share"]),
             "gap_pool_n": int(row["gap_n"]),
             "flags": flags, "type": flags[0], "status_by_flag": by_flag, "status": by_flag[flags[0]],
             "explained_by": explained_by, "checklist": checks,
-            "reference": f"lig-sezon içi üst pay < {top:.3%} (config.ANOMALY_QUANTILE = {C.ANOMALY_QUANTILE})",
+            "reference": (f"lig-sezonun tüm maçlarına göre orta-sıra üst pay < {float(top):.3%} "
+                          f"(config.ANOMALY_QUANTILE = {C.ANOMALY_QUANTILE}); ≤ {top.denominator // (2 * top.numerator)} "
+                          "maçlık havuzda aday yok"),
             "note": ANOMALY_NOTE, "link_note": NO_LINK_NOTE,
         })
     return records

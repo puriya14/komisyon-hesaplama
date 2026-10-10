@@ -11,10 +11,13 @@
   her takım-sezonun ilk = en yakın satırı). Kütüphane: parametre değerlendirmesi için keşif, test için keşif +
   parametre (arındırılmış). (k, κ) parametre döneminde seçilir. Kütüphane ÖRNEKLENMEZ (tam arama); bellek, sorgu
   parçalarıyla sınırlanır (``chunk_cells``) ve yetmeyen sorgularda getirilen komşu sayısı uyarlanarak büyütülür.
-* S0p: kalibre S0 logiti offset + [logit piyasa galip, logit piyasa mağlup] (takım perspektifi, marjsız Bet365)
-  ile hedef başına lojistik; oran yoksa NaN.
+* S0p: kalibre S0 logiti offset + [S0 sıcaklığı (logit p0), logit piyasa galip, logit piyasa mağlup] (takım
+  perspektifi, marjsız Bet365) ile hedef başına cezasız lojistik; oran yoksa NaN.
 * ``compare_models``: S0, S0p, S1, S2 her dönemde TEK ortak satır kümesinde (kesişim; satır kimliği SHA-256);
-  ``run_f3``: 4 hedef × 2 model tek yönlü Holm. ``abc_check`` (F5), ``economic_eval`` / ``run_f6`` (F6, varsayımsal).
+  S1/S2 için 7b yanlışlama uyarlaması (1 lig/takım çıkarma, 2 en çok katkı veren %1, 3 sezon yönü, 5 piyasa
+  kontrolü: S1 özellikleri S0p offsetiyle / S2 düzeltmesi S0p üzerine, 6 karşı örnekler).
+  ``run_f3``: 4 hedef × 2 model tek yönlü Holm; OUT_OF_SAMPLE_SUPPORTED ayrıca 7b'nin iki dönemde geçmesini ister.
+  ``abc_check`` (F5), ``economic_eval`` / ``run_f6`` (F6, varsayımsal).
 
 Tüm belirsizlik aralıkları lig-sezon kümeli bootstrap (``fr.cluster``; ISO hafta blokları duyarlılık);
 rastgelelik ``config.SEED`` tabanlı ``np.random.default_rng``.
@@ -128,7 +131,8 @@ def _impute_scale(X: np.ndarray, ref: np.ndarray) -> tuple[np.ndarray, np.ndarra
 
 
 def holm(pvals) -> np.ndarray:
-    """Holm adım adım düzeltilmiş p değerleri (NaN'lar ailede sayılmaz ve NaN kalır)."""
+    """Holm adım adım düzeltilmiş p değerleri (NaN'lar ailede sayılmaz ve NaN kalır; sabit aile boyu için
+    ``holm_family``)."""
     p = np.asarray(pvals, dtype=float)
     out = np.full(p.shape, np.nan)
     ok = np.where(np.isfinite(p))[0]
@@ -138,6 +142,14 @@ def holm(pvals) -> np.ndarray:
     order = ok[np.argsort(p[ok], kind="mergesort")]
     out[order] = np.minimum(1.0, np.maximum.accumulate((m - np.arange(m)) * p[order]))
     return out
+
+
+def holm_family(pvals) -> np.ndarray:
+    """Ön-kayıtlı aile boyu k korunarak Holm: değerlendirilemeyen (NaN) hipotez p = 1 sayılır (aile küçülmez);
+    çıktıda yine NaN kalır."""
+    p = np.asarray(pvals, dtype=float)
+    adj = holm(np.where(np.isfinite(p), p, 1.0))
+    return np.where(np.isfinite(p), adj, np.nan)
 
 
 def _ratio_boot(num: np.ndarray, den: np.ndarray, clusters: np.ndarray, reps: int, seed: int) -> np.ndarray:
@@ -520,14 +532,19 @@ def _s2_aggregate(fr: ResearchFrame, Z: np.ndarray, meta: _NNMeta, groups: Seque
     return outs
 
 
-def s2_adjust(p0, O, E, n, kappa: float) -> np.ndarray:
-    """logit p = logit p0 + [logit((O + κ·p̄)/(n + κ)) − logit((E + κ·p̄)/(n + κ))], p̄ = E/n; n = 0 → p0."""
-    p0, O, E, n = (np.asarray(v, dtype=float) for v in (p0, O, E, n))
+def s2_logit_adj(O, E, n, kappa: float) -> np.ndarray:
+    """S2 logit düzeltmesi: logit((O + κ·p̄)/(n + κ)) − logit((E + κ·p̄)/(n + κ)), p̄ = E/n; n = 0 → 0."""
+    O, E, n = (np.asarray(v, dtype=float) for v in (O, E, n))
     has = n > 0
     nn_ = np.where(has, n, 1.0)
     pbar = np.where(has, E / nn_, 0.5)
     adj = _logit((O + kappa * pbar) / (nn_ + kappa)) - _logit((E + kappa * pbar) / (nn_ + kappa))
-    return expit(_logit(p0) + np.where(has, adj, 0.0))
+    return np.where(has, adj, 0.0)
+
+
+def s2_adjust(p0, O, E, n, kappa: float) -> np.ndarray:
+    """logit p = logit p0 + [logit((O + κ·p̄)/(n + κ)) − logit((E + κ·p̄)/(n + κ))], p̄ = E/n; n = 0 → p0."""
+    return expit(_logit(p0) + s2_logit_adj(O, E, n, kappa))
 
 
 @dataclass
@@ -540,6 +557,7 @@ class S2Result:
     eff: dict  # dönem → etkili örnek özeti (seçilen k)
     eff_rows: dict  # "takim_sezon"/"takim"/"mac": tm'ye hizalı satır başına sayılar (seçilen k)
     info: dict = field(default_factory=dict)
+    adj: np.ndarray | None = None  # tm'ye hizalı seçilen (k, κ) logit düzeltmesi (7b/5: S0p üzerine eklenir)
 
 
 def _eff_summary(n: np.ndarray, team: np.ndarray, match: np.ndarray, lib: dict) -> dict:
@@ -602,6 +620,7 @@ def fit_s2(fr: ResearchFrame, targets: str | Sequence[str] = C.TARGETS_Q1, ks: S
             _, bi, k_sel, kappa_sel = best
             n_tm = len(fr.tm)
             pred = np.full(n_tm, np.nan)
+            adj = np.full(n_tm, np.nan)
             eff, eff_rows = {}, {"takim_sezon": np.full(n_tm, np.nan), "takim": np.full(n_tm, np.nan),
                                  "mac": np.full(n_tm, np.nan)}
             for period, _ in EVAL_PLAN:
@@ -609,8 +628,8 @@ def fit_s2(fr: ResearchFrame, targets: str | Sequence[str] = C.TARGETS_Q1, ks: S
                 agg = aggs[gi]
                 qk = np.isfinite(fr.p0[t][q_rows])
                 qr = q_rows[qk]
-                pred[qr] = s2_adjust(fr.p0[t][qr], agg["O"][t][qk, bi], agg["E"][t][qk, bi], agg["n"][qk, bi],
-                                     kappa_sel)
+                adj[qr] = s2_logit_adj(agg["O"][t][qk, bi], agg["E"][t][qk, bi], agg["n"][qk, bi], kappa_sel)
+                pred[qr] = expit(_logit(fr.p0[t][qr]) + adj[qr])
                 eff_rows["takim_sezon"][q_rows] = agg["n"][:, bi]
                 eff_rows["takim"][q_rows] = agg["team"][:, bi]
                 eff_rows["mac"][q_rows] = agg["match"][:, bi]
@@ -621,7 +640,7 @@ def fit_s2(fr: ResearchFrame, targets: str | Sequence[str] = C.TARGETS_Q1, ks: S
                     "kutuphane_ornekleme": "yok (tüm kütüphane)", "test_icinde_yeniden_uyum": False,
                     "hedef_grubu": list(grp),
                     "not": "Ham benzerlik yüzdesi olasılık değildir; S2 yalnızca S0'a göre O/E düzeltmesidir."}
-            results[t] = S2Result(t, k_sel, kappa_sel, selection, pred, eff, eff_rows, info)
+            results[t] = S2Result(t, k_sel, kappa_sel, selection, pred, eff, eff_rows, info, adj)
     return results
 
 
@@ -629,27 +648,38 @@ def fit_s2(fr: ResearchFrame, targets: str | Sequence[str] = C.TARGETS_Q1, ks: S
 # S0p (piyasa kontrolü)
 # ----------------------------------------------------------------------------
 
-def _market_design(fr: ResearchFrame) -> np.ndarray:
-    return np.column_stack([_logit(fr.mkt[:, 0]), _logit(fr.mkt[:, 2])])
+S0P_NAMES = ["logit_s0_sicaklik", "logit_piyasa_galip", "logit_piyasa_maglup"]
+
+
+def _market_design(fr: ResearchFrame, target: str) -> np.ndarray:
+    """S0p ortak değişkenleri: [logit p0 (sıcaklık terimi), logit piyasa galip, logit piyasa mağlup]."""
+    return np.column_stack([_logit(fr.p0[target]), _logit(fr.mkt[:, 0]), _logit(fr.mkt[:, 2])])
+
+
+def s0p_temperature(fit: OffsetLogit) -> float:
+    """S0p uyumundaki S0 sıcaklığı τ (logit p0 katsayısı = 1 + β_sıcaklık / std)."""
+    return float(1.0 + fit.coef[0] / fit.stds[0])
 
 
 def p0_market(fr: ResearchFrame, target: str, fit_mask: np.ndarray, apply_mask: np.ndarray,
               return_fit: bool = False):
-    """S0p: logit p = logit p0 + sabit + β₁·logit(piyasa galip) + β₂·logit(piyasa mağlup) (takım perspektifi,
-    marjsız Bet365; zamanı doğrulanamaz). ``fit_mask`` satırlarında (hedef, S0 ve oran olanlar) cezasız uyum;
+    """S0p (piyasa kontrolü): logit p = τ·logit p0 + sabit + β₁·logit(piyasa galip) + β₂·logit(piyasa mağlup)
+    (takım perspektifi, marjsız Bet365; zamanı doğrulanamaz). Sözleşme §6'daki "sıcaklık": S0 logiti offset olarak
+    girer ve ayrıca ortak değişkendir (katsayı τ − 1), böylece piyasa S0'ı gerektiği kadar AZALTABİLİR; τ sabit 1
+    olsaydı S0'ın piyasanın bilmediği gürültüsü kontrolde kalır ve piyasa bilgisi taşıyan özellikler (ör. geçmiş
+    piyasa sürprizi) "ek katkı" gibi görünürdü. ``fit_mask`` satırlarında (hedef, S0 ve oran olanlar) cezasız uyum;
     ``apply_mask`` satırlarında tahmin, oran yoksa NaN. Zaman güvenliği (arındırma) çağıranın sorumluluğundadır."""
     has = np.isfinite(fr.mkt).all(axis=1) & np.isfinite(fr.p0[target])
     y = fr.y[target]
     fit_rows = np.asarray(fit_mask, dtype=bool) & has & np.isfinite(y)
     if not fit_rows.any() or np.unique(y[fit_rows]).size < 2:
         raise ValueError(f"{target}: S0p uyumu için oranlı ve iki sınıflı satır yok")
-    X = np.where(has[:, None], _market_design(fr), 0.0)
+    X = np.where(has[:, None], _market_design(fr, target), 0.0)
     off = _logit(fr.p0[target])
     mu = X[fit_rows].mean(axis=0)
     sd = X[fit_rows].std(axis=0)
     sd = np.where(sd > 1e-12, sd, 1.0)
-    fit = fit_offset_logistic(X[fit_rows], y[fit_rows], off[fit_rows], 0.0, means=mu, stds=sd,
-                              names=["logit_piyasa_galip", "logit_piyasa_maglup"])
+    fit = fit_offset_logistic(X[fit_rows], y[fit_rows], off[fit_rows], 0.0, means=mu, stds=sd, names=S0P_NAMES)
     out = np.full(len(y), np.nan)
     ap = np.asarray(apply_mask, dtype=bool) & has
     out[ap] = fit.predict(X[ap], off[ap])
@@ -670,8 +700,39 @@ def s0p_predict(fr: ResearchFrame, target: str) -> tuple[np.ndarray, dict]:
             continue
         sel = fr.period == period
         out[sel] = p[sel]
-        info[period] = {"durum": "OK", "uyum": fit.summary(),
+        info[period] = {"durum": "OK", "uyum": fit.summary(), "s0_sicaklik": s0p_temperature(fit),
                         "egitim_son_tarih": _last_date(fr, tr & np.isfinite(fr.mkt).all(axis=1))}
+    return out, info
+
+
+def s1_market_predict(fr: ResearchFrame, target: str, s1: S1Result, design: tuple | None = None
+                      ) -> tuple[np.ndarray, dict]:
+    """7b/5 piyasa kontrolü için S1 özellikleri S0p OFFSETİYLE: logit p = logit S0p + sabit + β·x.
+
+    Aynı dönem planı ve arındırma (``train_mask``): S0p, ``s0p_predict`` ile aynı eğitim satırlarında uyumlanır
+    (değerlendirme satırlarında ``s0p_predict`` ile aynı değerler); S1 özellikleri o satırların oranlı olanlarında,
+    S1'in seçilmiş λ'sıyla (yeniden seçim yok) uyumlanır ve değerlendirme dönemine DONDURULMUŞ uygulanır.
+    Karşılaştırma S0p iledir: katkı piyasa kontrolünde sürmeli.
+    """
+    Xi, means, stds, names = design or s1_design(fr)
+    y = fr.y[target]
+    out = np.full(len(y), np.nan)
+    info = {}
+    for period, train_periods in EVAL_PLAN:
+        tr = train_mask(fr, target, train_periods, period)
+        sel = fr.period == period
+        try:
+            p_mkt = p0_market(fr, target, tr, tr | sel)
+        except ValueError as exc:
+            info[period] = {"durum": "UYUM_YOK", "neden": str(exc)}
+            continue
+        trm = tr & np.isfinite(p_mkt)
+        off = _logit(p_mkt)
+        fit = fit_offset_logistic(Xi[trm], y[trm], off[trm], s1.lam, means=means, stds=stds, names=names)
+        ap = sel & np.isfinite(p_mkt)
+        out[ap] = fit.predict(Xi[ap], off[ap])
+        info[period] = {"durum": "OK", "lam": float(s1.lam), "n_egitim": int(trm.sum()),
+                        "egitim_son_tarih": _last_date(fr, trm), "yakinsadi": fit.converged}
     return out, info
 
 
@@ -699,20 +760,107 @@ class FittedModels:
     s2: dict
     s0p: dict
     s0p_info: dict
+    s1_mkt: dict = field(default_factory=dict)  # 7b/5: S1 özellikleri S0p offsetiyle (s1_market_predict)
+    s1_mkt_info: dict = field(default_factory=dict)
 
 
 def fit_models(fr: ResearchFrame, targets: Sequence[str] = C.TARGETS_Q1, **s2_kw) -> FittedModels:
     design = s1_design(fr)
     s1 = {t: fit_s1(fr, t, design=design) for t in targets}
     s2 = fit_s2(fr, targets, **s2_kw)
-    s0p, s0p_info = {}, {}
+    s0p, s0p_info, s1m, s1m_info = {}, {}, {}, {}
     for t in targets:
         s0p[t], s0p_info[t] = s0p_predict(fr, t)
-    return FittedModels(s1, s2, s0p, s0p_info)
+        s1m[t], s1m_info[t] = s1_market_predict(fr, t, s1[t], design=design)
+    return FittedModels(s1, s2, s0p, s0p_info, s1m, s1m_info)
+
+
+def market_controlled_predictions(fr: ResearchFrame, target: str, models: FittedModels) -> dict[str, np.ndarray]:
+    """7b/5 piyasa kontrolü tahminleri: S1 → S0p offsetli S1 uyumu; S2 → aynı S2 logit düzeltmesi S0p üzerine.
+
+    S2 düzeltmesi S0'a göre komşu O/E'sinden gelir; S0p'nin zaten bildiği bilgiyi taşıyorsa S0p üzerine eklenmesi
+    log-kaybı kötüleştirir (tutucu kontrol). Hesaplanamayan model için anahtar yoktur (kontrol değerlendirilmez).
+    """
+    out = {}
+    if target not in models.s1_mkt and target in models.s1:
+        models.s1_mkt[target], models.s1_mkt_info[target] = s1_market_predict(fr, target, models.s1[target])
+    if target in models.s1_mkt:
+        out["S1"] = models.s1_mkt[target]
+    s2 = models.s2.get(target)
+    if s2 is not None and s2.adj is not None:
+        out["S2"] = expit(_logit(models.s0p[target]) + s2.adj)
+    return out
 
 
 def model_predictions(fr: ResearchFrame, target: str, models: FittedModels) -> dict[str, np.ndarray]:
     return {"S0": fr.p0[target], "S0p": models.s0p[target], "S1": models.s1[target].pred, "S2": models.s2[target].pred}
+
+
+FALS_TOP_SHARE = 0.01  # 7b/2: farka en çok katkı veren satır payı (sözleşme: %1)
+FALS_SEASON_SHARE = 0.6  # 7b/3: aynı yönde olması gereken sezon payı (sözleşme: %60)
+FALS_N_COUNTER = 20  # 7b/6: listelenen en büyük karşı örnek sayısı (sözleşme: 20)
+
+
+def _falsification(fr: ResearchFrame, mask: np.ndarray, diff: np.ndarray, y: np.ndarray, reps: int,
+                   seed: int) -> dict:
+    """Sözleşme 7b'nin F3 modellerine uyarlanmış hâli (fark = model − S0 satır log-kaybı; ön-kayıtlı yön < 0).
+
+    1 bir lig veya bir takım çıkarıldığında ortalama fark < 0 kalmalı; 2 farka en çok katkı veren %1 satır (en negatif
+    fark) çıkarıldığında fark < 0 ve lig-sezon kümeli bootstrap üst sınırı < 0; 3 sezonların ≥ %60'ında fark < 0;
+    4 eşleştirilmiş ampirik karşılaştırma bu modellerde uygulanamaz (koşul/tümleyen yok); 5 piyasa kontrolü
+    ``_market_check``'te; 6 en büyük 20 karşı örnek (modelin S0'a göre en kötü olduğu satırlar; yalnızca satır
+    kimliği, tarih, sonuç ve fark — takım/kulüp adı yazılmaz). Gruplar raporda adla değil sayıyla özetlenir.
+    """
+    tm = fr.tm
+    n = len(diff)
+    tot = float(diff.sum())
+    out: dict = {}
+    loo, ok1 = {}, True
+    for col, lab in (("league", "lig"), ("team", "takim")):
+        _, inv = np.unique(tm[col].to_numpy()[mask].astype(str), return_inverse=True)
+        s = np.bincount(inv, weights=diff)
+        rest = n - np.bincount(inv).astype(float)
+        m = (tot - s[rest > 0]) / rest[rest > 0]
+        loo[lab] = {"n_grup": int(len(s)), "en_buyuk_fark": float(m.max()) if len(m) else float("nan"),
+                    "yon_degisen": int((m >= 0).sum())}
+        ok1 = ok1 and len(m) > 0 and bool((m < 0).all())
+    out["1_lig_takim_cikarma"] = {"gecti": bool(ok1), **loo}
+    k = int(np.ceil(FALS_TOP_SHARE * n))
+    keep = np.ones(n, dtype=bool)
+    keep[np.argsort(diff, kind="mergesort")[:k]] = False
+    b = cluster_bootstrap_diff(diff[keep], np.zeros(int(keep.sum())), fr.cluster[mask][keep], reps, seed)
+    out["2_en_cok_katki_yuzde1"] = {"gecti": bool(np.isfinite(b["diff"]) and b["diff"] < 0 and b["ci_hi"] < 0),
+                                    "cikarilan": k, **b}
+    seasons = tm["season"].to_numpy()[mask].astype(str)
+    per_season = pd.Series(diff).groupby(seasons).mean()
+    share = float((per_season < 0).mean()) if len(per_season) else float("nan")
+    out["3_sezon_yonu"] = {"gecti": bool(len(per_season) > 0 and share >= FALS_SEASON_SHARE), "pay": share,
+                           "esik": FALS_SEASON_SHARE}
+    out["4_eslestirilmis_ampirik"] = {
+        "gecti": None, "durum": "UYGULANAMAZ",
+        "neden": "Modellerde koşul/tümleyen yoktur; karşılaştırma aynı satırlarda S0 iledir."}
+    rows = np.where(mask)[0]
+    top = np.argsort(-diff, kind="mergesort")[:FALS_N_COUNTER]
+    dates = pd.to_datetime(tm["date"].to_numpy()[rows[top]])
+    out["6_karsi_ornekler"] = [{"row_id": int(tm["row_id"].iat[rows[i]]), "tarih": str(d.date()), "y": int(y[i]),
+                                "fark": float(diff[i])} for i, d in zip(top, dates)]
+    return out
+
+
+def _market_check(y: np.ndarray, p_ctrl: np.ndarray | None, p_s0p: np.ndarray, clusters: np.ndarray, reps: int,
+                  seed: int) -> dict:
+    """7b/5: piyasa kontrolünde (S0p offseti) katkı sürmeli — fark = log-kayıp(model | S0p) − log-kayıp(S0p) < 0 ve
+    lig-sezon kümeli bootstrap üst sınırı < 0. Hesaplanamazsa geçmedi sayılır."""
+    if p_ctrl is None:
+        return {"gecti": False, "durum": "DEGERLENDIRILMEDI", "neden": "Piyasa kontrollü tahmin yok."}
+    if not (np.isfinite(p_ctrl).all() and np.isfinite(p_s0p).all()):
+        return {"gecti": False, "durum": "VERI_YOK",
+                "neden": "Ortak satırların bir kısmında piyasa kontrollü tahmin yok.",
+                "n_eksik": int((~np.isfinite(p_ctrl)).sum())}
+    lc, l0 = _log_loss(y, p_ctrl), _log_loss(y, p_s0p)
+    b = cluster_bootstrap_diff(lc, l0, clusters, reps, seed)
+    return {"gecti": bool(b["diff"] < 0 and b["ci_hi"] < 0), "durum": "OK", "n": int(len(y)),
+            "ll_model_piyasa": float(lc.mean()), "ll_s0p": float(l0.mean()), **b}
 
 
 def compare_models(fr: ResearchFrame, target: str, models: FittedModels | None = None, n_boot: int = MIN_BOOT,
@@ -721,12 +869,14 @@ def compare_models(fr: ResearchFrame, target: str, models: FittedModels | None =
 
     Ölçütler: n, taban oran, log-kayıp, Brier, kalibrasyon eğimi/kesişimi, ECE; S0'a göre ΔLL (model − S0; negatif =
     iyileşme), lig-sezon kümeli bootstrap aralığı ve tek yönlü p, ISO hafta blokları duyarlılığı, sezon kararlılığı.
+    S1 ve S2 için ``s0_fark[model]["yanlislama"]``: 7b uyarlaması (``_falsification`` + ``_market_check``).
     Oransız satırlar (S0p tanımsız) ortak kümeden çıkar ve ``dislanan`` altında ayrıca raporlanır.
     """
     if n_boot < MIN_BOOT:
         raise ValueError(f"Sözleşme gereği bootstrap tekrar sayısı en az {MIN_BOOT} olmalı")
     models = models or fit_models(fr, [target])
     preds = model_predictions(fr, target, models)
+    ctrl = market_controlled_predictions(fr, target, models)
     y_all = fr.y[target]
     out = {"target": target, "aile": "F3", "sozlesme": C.CONTRACT_VERSION, "donemler": {},
            "secim": {"S1_lam": models.s1[target].lam, "S1_secim": models.s1[target].selection,
@@ -771,6 +921,14 @@ def compare_models(fr: ResearchFrame, target: str, models: FittedModels | None =
             share = float((per_season < 0).mean()) if len(per_season) else float("nan")
             rec["sezon_kararliligi"][name] = {"sezon_fark": {s: float(v) for s, v in per_season.items()},
                                               "iyilesen_sezon_payi": share}
+            if name in F3_MODELS:  # 7b yanlışlama uyarlaması (OUT_OF_SAMPLE_SUPPORTED için iki dönemde geçmeli)
+                fals = _falsification(fr, mask, d, y, n_boot, seed + 200 + k)
+                pc = ctrl.get(name)
+                fals["5_piyasa"] = _market_check(y, pc[mask] if pc is not None else None, preds["S0p"][mask], cl,
+                                                 n_boot, seed + 300 + k)
+                fals["gecti"] = all(v["gecti"] for v in fals.values() if isinstance(v, dict)
+                                    and v.get("gecti") is not None)
+                rec["s0_fark"][name]["yanlislama"] = fals
         excl = shared_rows(fr, target, period, need_market=False)[0] & ~mask
         rec["dislanan"] = {"n": int(excl.sum()), "neden": "oran yok (S0p tanımsız) veya model tahmini yok",
                            "log_kayip": {name: (float(np.mean(_log_loss(y_all[excl], p[excl])))
@@ -780,15 +938,40 @@ def compare_models(fr: ResearchFrame, target: str, models: FittedModels | None =
     return out
 
 
+_HONESTY = ("Test dönemi koşullu örüntüler için ön-kayıtlıdır; S0 İY/MS kalibrasyonu test döneminde görülmüştür. "
+            "Tamamen temiz kanıt yalnızca ileriye dönük dönemdir.")
+
+
+def _failed_checks(par: dict, te: dict) -> list[str] | None:
+    """İki dönemde geçmeyen 7b kontrolleri; herhangi bir dönemde 7b değerlendirilmediyse None."""
+    out = []
+    for name, rec in (("parametre", par), ("test", te)):
+        fals = rec.get("yanlislama")
+        if not isinstance(fals, dict) or fals.get("gecti") is None:
+            return None
+        out += [f"{name}:{key}" for key, v in fals.items() if isinstance(v, dict) and v.get("gecti") is False]
+    return out
+
+
 def _f3_status(par: dict, te: dict, p_par: float, p_te: float) -> tuple[str, str]:
+    """F3 statüsü (sözleşme §9): OUT_OF_SAMPLE_SUPPORTED için parametre ve test dönemlerinde ayrı ayrı tek yönlü Holm,
+    testte ΔLL bootstrap üst sınırı < 0 VE 7b uyarlaması (1, 2, 3, 5) iki dönemde geçmeli."""
     par_ok, te_ok = par.get("durum") == "OK", te.get("durum") == "OK"
     if not par_ok and not te_ok:
         return "INSUFFICIENT_EVIDENCE", "Örneklem dışı değerlendirme yapılamadı (ortak satır yok)."
     par_pass = par_ok and np.isfinite(p_par) and p_par < C.ALPHA
     te_pass = te_ok and np.isfinite(p_te) and p_te < C.ALPHA and te.get("ci_hi", np.inf) < 0
     if par_pass and te_pass:
-        return "OUT_OF_SAMPLE_SUPPORTED", ("Parametre ve test dönemlerinde ayrı ayrı tek yönlü Holm geçti; test ΔLL "
-                                           "lig-sezon kümeli bootstrap üst sınırı < 0.")
+        failed = _failed_checks(par, te)
+        if failed is None:
+            return "NO_ADDED_VALUE", "7b yanlışlama uyarlaması değerlendirilmedi; destek statüsü verilmez."
+        if not failed:
+            return "OUT_OF_SAMPLE_SUPPORTED", (
+                "Parametre ve test dönemlerinde ayrı ayrı tek yönlü Holm geçti; test ΔLL lig-sezon kümeli bootstrap "
+                "üst sınırı < 0; 7b uyarlaması (1, 2, 3, 5) iki dönemde geçti. " + _HONESTY)
+        if all(f.endswith("5_piyasa") for f in failed):
+            return "NO_ADDED_VALUE", "Piyasa kontrolünde (S0p offseti) katkı sürmedi (piyasa/temel model bilgisi)."
+        return "NO_ADDED_VALUE", "Holm ve bootstrap geçti; 7b yanlışlama uyarlaması geçmedi: " + ", ".join(failed)
     if par_ok and te_ok:
         return "NO_ADDED_VALUE", "Örneklem dışı log-kayıp katkısı Holm düzeltmesiyle doğrulanmadı."
     if (par_ok and not par_pass) or (te_ok and not te_pass):
@@ -805,20 +988,27 @@ def run_f3(fr: ResearchFrame, targets: Sequence[str] = C.TARGETS_Q1, models: Fit
     holm_tab = {}
     for period, _ in EVAL_PLAN:
         p = [res[t]["donemler"][period]["s0_fark"][m].get("p_one_sided", np.nan) for t, m in keys]
-        holm_tab[period] = holm(p)
+        holm_tab[period] = holm_family(p)
     rows = []
     for i, (t, m) in enumerate(keys):
         par = res[t]["donemler"]["parametre"]["s0_fark"][m]
         te = res[t]["donemler"]["test"]["s0_fark"][m]
         st, why = _f3_status(par, te, holm_tab["parametre"][i], holm_tab["test"][i])
+        if m == "S1" and not math.isfinite(models.s1[t].lam) and st == "OUT_OF_SAMPLE_SUPPORTED":
+            st, why = "NO_ADDED_VALUE", "λ = ∞ seçildi: S1 = S0 + sabit; dizi özelliklerinin katkısı yok."
         rows.append({"hedef": t, "model": m, "p_parametre": par.get("p_one_sided"),
                      "p_holm_parametre": float(holm_tab["parametre"][i]),
                      "p_test": te.get("p_one_sided"), "p_holm_test": float(holm_tab["test"][i]),
-                     "dll_test": te.get("diff"), "dll_test_ust": te.get("ci_hi"), "statu": st, "gerekce": why})
+                     "dll_test": te.get("diff"), "dll_test_ust": te.get("ci_hi"),
+                     "yanlislama_parametre": par.get("yanlislama", {}).get("gecti"),
+                     "yanlislama_test": te.get("yanlislama", {}).get("gecti"),
+                     "piyasa_kontrolu_test": te.get("yanlislama", {}).get("5_piyasa", {}).get("gecti"),
+                     "statu": st, "gerekce": why})
     return {"aile": "F3", "sozlesme": C.CONTRACT_VERSION, "config_hash": C.config_hash(), "hipotez_sayisi": len(keys),
             "holm": rows, "hedefler": res,
             "not": ("Holm ailesi: 4 hedef × {S1, S2}; tek yönlü H1: ΔLL(model − S0) < 0. S0p piyasa kontrolüdür, "
-                    "aileye girmez.")}
+                    "aileye girmez. OUT_OF_SAMPLE_SUPPORTED ayrıca 7b uyarlamasını (1 lig/takım çıkarma, 2 en çok "
+                    "katkı veren %1, 3 sezon yönü, 5 S0p offsetiyle katkının sürmesi) iki dönemde gerektirir.")}
 
 
 # ----------------------------------------------------------------------------
@@ -905,7 +1095,7 @@ def abc_check(fr: ResearchFrame, s0_table: pd.DataFrame, n_boot: int = MIN_BOOT,
         par = rec["donemler"].get("parametre", {})
         p_param.append(par.get("fark_m10_sabit", {}).get("p_one_sided", np.nan) if par.get("durum") == "OK" else np.nan)
         out["pazarlar"][s] = rec
-    adj = holm(p_param)
+    adj = holm_family(p_param)
     for s, pa, ph in zip(ABC_MARKETS, p_param, adj):
         rec = out["pazarlar"][s]
         rec["p_parametre"] = float(pa) if np.isfinite(pa) else None
@@ -1011,7 +1201,8 @@ def run_f6(fr: ResearchFrame, models: FittedModels, period: str = "test", target
            n_boot: int = MIN_BOOT, seed: int = C.SEED) -> dict:
     """F6 (tanımlayıcı): S0, S0p, S1, S2 ve marjsız Bet365 aynı maç kümesinde (F3 ortak satırları) varsayımsal ROI.
     İY-MS geçiş hedefleri ``ROI_UNAVAILABLE``."""
-    out = {"aile": "F6", "donem": period, "etiket": ECON_LABEL, "hedefler": {}}
+    out = {"aile": "F6", "donem": period, "donem_etiketi": PERIOD_LABELS.get(period), "etiket": ECON_LABEL,
+           "hedefler": {}}
     for t in targets:
         preds = model_predictions(fr, t, models)
         if t in ECON_TARGETS:
@@ -1023,7 +1214,9 @@ def run_f6(fr: ResearchFrame, models: FittedModels, period: str = "test", target
 
 __all__ = [
     "OffsetLogit", "fit_offset_logistic", "shared_rows", "rows_sha256", "train_mask", "S1Result", "fit_s1", "s1_design",
-    "S2Result", "fit_s2", "s2_space", "knn_neighbors", "s2_adjust", "p0_market", "s0p_predict", "FittedModels",
-    "fit_models", "model_predictions", "compare_models", "run_f3", "abc_check", "economic_eval", "run_f6",
-    "cluster_bootstrap_diff", "holm",
+    "S2Result", "fit_s2", "s2_space", "knn_neighbors", "s2_adjust", "s2_logit_adj", "p0_market", "s0p_predict",
+    "s0p_temperature",
+    "s1_market_predict", "FittedModels", "fit_models", "model_predictions", "market_controlled_predictions",
+    "compare_models", "run_f3", "abc_check", "economic_eval", "run_f6",
+    "cluster_bootstrap_diff", "holm", "holm_family",
 ]

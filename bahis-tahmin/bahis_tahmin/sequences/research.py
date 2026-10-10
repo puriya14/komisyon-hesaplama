@@ -80,12 +80,33 @@ RUN_DECISIONS = {
     "yanlislama": "7b/1–5 hem parametre hem test döneminde geçmeli (katı yorum); 7b/5 için S0p = models.s0p_predict.",
     "plasebo": ("F7 başarısızsa (keşif çıkan tohum > 1) referans süreç güvenilmez sayılır: F1 ve F2 keşifleri "
                 "INSUFFICIENT_EVIDENCE statüsüne indirilir (dondurulur)."),
+    "plasebo_bagisci": ("Plasebo bağışçısı: aynı lig-sezon, farklı takım ve rakip olmayan; en yakın S0 galibiyet "
+                        "ondalığı, sonra satırdan SONRA OLMAYAN en yakın tarih (aynı gün olabilir; aynı gün bağışçı "
+                        "satırın takımı/rakibiyle oynamaz) — §4 zaman güvenliği."),
+    "sozlesme_sabitleri": ("Sözleşme metnindeki sabitler modül sabiti olarak kullanılır (config_hash'e girmez): "
+                           "z = 1,96; 7b/2 çıkarılan pay %1; 7b/3 sezon payı %60; eşleştirme S0 ondalığı 10; karşı örnek 20; "
+                           "plasebo S0 ondalığı 10; bootstrap 1000; tehlike kırılganlık önseli 50, önceki 2 sezon."),
     "sorgu2_statu": (
         "Sorgu 2: WY anlamlı (p_adj < 0,05 ve MC aralığı 0,05'i içermiyor) hipotezler parametre ve test dönemlerinde "
         "tek yönlü Holm (k = WY-anlamlı sayısı) ile sınanır; ikisi de geçer ve testte oran aralığı 1'i dışlarsa "
         "OUT_OF_SAMPLE_SUPPORTED (7b listesi Sorgu 1 içindir; kartta belirtilir); WY anlamsız → INSUFFICIENT_EVIDENCE; "
         "WY anlamlı ama örneklem dışı geçmedi → NO_ADDED_VALUE."),
     "modeller": "F3–F6 kendi modüllerinin satır kuralını (uygun ∧ dönem; ortak küme kesişimi) kullanır.",
+    "f3_yanlislama": (
+        "F3 (S1/S2) ve F4 (tehlike) için 7b uyarlaması kendi modüllerindedir (models._falsification/_market_check, "
+        "hazard._falsification/_market_check), her iki örneklem dışı dönemde: 1) bir lig/takım çıkarılınca ΔLL < 0 "
+        "kalmalı; 2) en çok katkı veren %1 satır çıkarılınca ΔLL < 0 ve bootstrap üst sınırı < 0; 3) sezonların ≥ %60'ında "
+        "iyileşme; 4) UYGULANAMAZ (koşul örüntüsüne özgü); 5) piyasa kontrolü: S1 için S0p offsetli S1 vs S0p, S2 için "
+        "S0p + aynı komşu düzeltmesi, F4 için S0 sıcaklığı + piyasa logitleri ortak değişkenken kategori katkısı."),
+    "s0p_tanimi": (
+        "S0p (piyasa kontrolü; F1 7b/5, F3): hedef başına logit p = logit p0 + τ'·logit p0 + sabit + β1·logit(piyasa galip) "
+        "+ β2·logit(piyasa mağlup) — S0'a serbest sıcaklık (1 + τ'), cezasız, dönem planıyla arındırılmış ve dondurulmuş. "
+        "Sözleşmedeki 9 hücreli çarpan biçimi yerine hedef başına biçim; değişiklik models gözden geçirmesinde sentetik "
+        "veride gösterilen zayıflık (S0 katsayısı 1'e sabit) nedeniyle, F1'in gerçek veride çalıştırılmasından önce."),
+    "onceden_gorulen_aileler": (
+        "Geliştirme sırasında bir alt ajan F3, F5 ve F6'yı gerçek veride (test dönemi dahil) hesapladı. Bu ailelerin "
+        "test dönemi temiz sayılmaz: OUT_OF_SAMPLE_SUPPORTED en fazla EXPLORATORY olarak raporlanır. F1, F2, F4, F7 "
+        "gerçek sonuçlarla S0'a göre hesaplanmadı (F1 uygulayıcısı yalnızca hız ölçümü için sahte bir S0 kullandı)."),
     "anomali": "Anomali taraması tüm dönemlerin uygun maçlarında; depoya yalnızca tür/durum/dönem sayıları yazılır, "
                "tekil maç kayıtları yalnızca yerel uygulama klasöründe tutulur.",
 }
@@ -195,6 +216,21 @@ def clean_test_status(manifest: dict, experiments: list[dict]) -> dict:
         if diff:
             reasons.append(f"test dönemi {r.get('zaman_utc')} tarihinde farklı tanımla açılmış ({', '.join(diff)})")
     return {"temiz": not reasons, "nedenler": reasons, "onceki_acilis": len(earlier)}
+
+
+SEEN_FAMILIES = ("F3", "F5", "F6")  # RUN_DECISIONS['onceden_gorulen_aileler']
+
+
+def _downgrade_seen(results: dict) -> None:
+    """Önceden görülmüş ailelerde (F3/F5/F6) OUT_OF_SAMPLE_SUPPORTED → EXPLORATORY (gerekçesiyle)."""
+    why = ("Test dönemi bu aile için temiz değil: geliştirme sırasında gerçek veride hesaplandı "
+           "(RUN_DECISIONS['onceden_gorulen_aileler']).")
+    for r in (results["aileler"].get("F3") or {}).get("holm", []):
+        if r.get("statu") == "OUT_OF_SAMPLE_SUPPORTED":
+            r["statu"], r["gerekce"] = "EXPLORATORY", why
+    for rec in ((results["aileler"].get("F5") or {}).get("pazarlar") or {}).values():
+        if rec.get("statu") == "OUT_OF_SAMPLE_SUPPORTED":
+            rec["statu"], rec["gerekce"] = "EXPLORATORY", why
 
 
 def _downgrade_unclean(results: dict, clean: dict) -> None:
@@ -706,7 +742,7 @@ def preregister_run_decisions(path: Path | None = None) -> dict:
     rec = {"zaman_utc": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
            "asama": "dizi-uygulama-kararlari (gercek veride ilk oruntu sonucundan ONCE)",
            "sozlesme": C.CONTRACT_VERSION, "parametre_ozeti": C.config_hash(), "kararlar_sha256": sha,
-           "kararlar": RUN_DECISIONS, "git": git_state()}
+           "kararlar": RUN_DECISIONS, "kod_sha256": code_sha256(), "git": git_state()}
     append_experiment(rec, path)
     return {"durum": "kaydedildi", "sha256": sha}
 
@@ -781,6 +817,7 @@ def run_research(matches: pd.DataFrame, out_dir: Path, s0: pd.DataFrame | None =
     def done(name, res):
         results["aileler"][name] = res
         _downgrade_unclean(results, manifest["temiz_test"])
+        _downgrade_seen(results)
         res["ozet"] = _family_summary(name, res)
         progress(f"{name}: {res['ozet']}")
         if record:
@@ -819,7 +856,9 @@ def run_research(matches: pd.DataFrame, out_dir: Path, s0: pd.DataFrame | None =
         progress("F3: S1 ve S2 uyumları (S2 tam kNN araması uzun sürer)")
         fitted = M.fit_models(fr)
     if "F3" in families:
-        done("F3", M.run_f3(fr, models=fitted, n_boot=n_boot))
+        f3 = M.run_f3(fr, models=fitted, n_boot=n_boot)
+        f3["statu_sayilari"] = _status_counts([r["statu"] for r in f3.get("holm", [])])
+        done("F3", f3)
     if "F4" in families:
         progress("F4: olaylar arası süre ve tehlike modeli")
         done("F4", HZ.run_hazard_family(fr, n_boot=n_boot))
