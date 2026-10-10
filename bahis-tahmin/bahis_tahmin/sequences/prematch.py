@@ -88,6 +88,9 @@ def _status_lookup(results: dict | None) -> dict[str, dict]:
     out = {}
     for r in results.get("oruntuler", []) or []:
         out[f"{r.get('hedef')}|{r.get('kosul')}"] = r
+    for dup, rep in (results.get("ayna_kopyalari") or {}).items():  # ayna kopyası → temsilcinin statüsü
+        if rep in out:
+            out[dup] = {**out[rep], "ayna_kopyasi_of": rep}
     return out
 
 

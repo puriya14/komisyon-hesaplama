@@ -10,6 +10,8 @@ Kurallar (docs/DIZI_ARASTIRMA_SOZLESMESI.md §13):
 
 from __future__ import annotations
 
+from html import escape
+
 import numpy as np
 import pandas as pd
 from PySide6.QtCore import Qt
@@ -481,9 +483,23 @@ class SequencesPage(Page):
             f"Denenen ham hipotez: <b>{res.get('hipotez_ham', '-')}</b> · tekil: <b>{res.get('hipotez_tekil', '-')}</b> · "
             f"referans tekrarı R={res.get('R', '-')} · kalibrasyon kapısı: {res.get('kalibrasyon_kapisi', '-')} · "
             f"plasebo: {fam.get('F7', {}).get('ozet', '-')}")
+        names = {"F1": "Sorgu 1 (maç öncesi koşul araması)", "F2": "Sorgu 2 (olay sonrası)", "F3": "S1/S2'nin S0'a katkısı",
+                 "F4": "Olaylar arası süre (tehlike)", "F5": "A/B/C ek kontrolü", "F6": "Ekonomik değer (varsayımsal)",
+                 "F7": "Plasebo negatif kontrol"}
+        man = res.get("manifest", {})
+        clean = man.get("temiz_test", {})
+        fam_html = ("<h3>Deney aileleri (sonuç ne olursa olsun kayıtlı)</h3><ul>"
+                    + "".join(f"<li><b>{k} {names.get(k, '')}</b>: {escape(str(v.get('ozet', '-')))}</li>"
+                              for k, v in sorted(fam.items()))
+                    + "</ul>"
+                    + f"<p>Test dönemi temiz mi: <b>{'evet' if clean.get('temiz') else 'hayır'}</b>"
+                    + (f" ({escape('; '.join(clean.get('nedenler', [])))})" if clean.get("nedenler") else "")
+                    + ". F3, F5 ve F6 geliştirme sırasında gerçek veride görüldüğü için bu ailelerde statü en fazla "
+                      "EXPLORATORY olabilir.</p>")
         if pats.empty:
             self.pat_model.set_frame(pd.DataFrame())
-            self.pat_card.setHtml("Keşif döneminde aile bazlı hata kontrolünden geçen örüntü yok. Bu da geçerli bir sonuçtur.")
+            self.pat_card.setHtml(fam_html + "<p>Keşif döneminde aile bazlı hata kontrolünden geçen örüntü yok. Bu da "
+                                  "geçerli bir sonuçtur.</p>")
             return
         show = [c for c in ("hedef", "kosul", "statu", "lift", "lift_lo", "lift_hi", "p_adj", "n", "O", "E_adj") if c in pats]
         df = pats[show].copy()
@@ -492,7 +508,7 @@ class SequencesPage(Page):
         self.pat_model.formatters = {"lift": fmt_num, "lift_lo": fmt_num, "lift_hi": fmt_num, "p_adj": lambda v: fmt_num(v, 3),
                                      "E_adj": lambda v: fmt_num(v, 1)}
         self.pat_model.set_frame(df)
-        self.pat_card.setHtml(res.get("oruntu_karti_html", ""))
+        self.pat_card.setHtml(fam_html + res.get("oruntu_karti_html", ""))
 
     def _render_anomalies(self, res: dict) -> None:
         an = pd.DataFrame(res.get("anomaliler", []))

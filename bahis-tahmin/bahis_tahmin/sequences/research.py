@@ -59,6 +59,16 @@ PREREGISTERED = {
     "esleme_sha256": "69f7a695315bbb9c4f16e467a1ea30e0ce65fe226ce88e1bb4f9fb55e07d940a",
 }
 
+# Test döneminin açıldığı resmi çalıştırma (docs/DIZI_ARASTIRMA_SONUCLARI.md). Bundan sonra farklı kod, karar veya
+# parametreyle yapılan her çalıştırma, hangi ortamda olursa olsun "temiz test" sayılmaz.
+TEST_OPENED = {
+    "zaman_utc": "2026-10-10T10:36:06+00:00",
+    "git": "398b60b85f65c2d7000341d3aa2f9a40558d3456",
+    "parametre_ozeti": "fc12e4915484c78e1c33c7bb4c538205d3e9a247fa656cb59fd2f6e764d814a0",
+    "uygulama_kararlari_sha256": "a85fa19e41994746fda1f1a6bdbaccc3237cac5575ce946a02f90ada0a1441d1",
+    "kod_sha256": "8ca41041f0bb274b0c7981e86b1cad26c3ee943b89582df261da4aca485aa82e",
+}
+
 # Sözleşmenin açık bıraktığı uygulama kararları. Gerçek veride ilk örüntü sonucundan ÖNCE ayrı bir deney kaydı
 # olarak yazılır (``preregister_run_decisions``); özeti her manifestte bulunur.
 RUN_DECISIONS = {
@@ -210,6 +220,11 @@ def clean_test_status(manifest: dict, experiments: list[dict]) -> dict:
             reasons.append(f"{k} ön-kayıttan farklı")
     keys = (("parametre_ozeti", "parametre_ozeti"), ("kararlar_sha256", "uygulama_kararlari_sha256"),
             ("kod_sha256", "kod_sha256"))
+    diff0 = [k for k in ("parametre_ozeti", "uygulama_kararlari_sha256", "kod_sha256")
+             if manifest.get(k) is not None and manifest.get(k) != TEST_OPENED[k]]
+    if diff0:
+        reasons.append(f"test dönemi {TEST_OPENED['zaman_utc']} resmi çalıştırmasında (git {TEST_OPENED['git'][:7]}) "
+                       f"açıldı; bu çalıştırmada farklı: {', '.join(diff0)}")
     earlier = [r for r in experiments if str(r.get("asama", "")).startswith("dizi-arastirma F1")]
     for r in earlier:
         diff = [a for a, b in keys if r.get(a) is not None and r.get(a) != manifest.get(b)]
@@ -675,8 +690,13 @@ def ui_summary(results: dict, anomalies: list[dict] | None) -> dict:
             pats.append({"hyp_id": r["hyp_id"], "hedef": r["target"], "kosul": r["condition"], "statu": r["statu"],
                          "lift": r["lift"], "lift_lo": r["lift_lo"], "lift_hi": r["lift_hi"], "p_adj": r["p_adj"],
                          "n": r["n"], "O": r["O"], "E_adj": r["E_adj"], "sorgu": r.get("sorgu")})
+    mirrors = {}
+    if len(hyps) and "tekil" in hyps:
+        for _, r in hyps[~hyps["tekil"].astype(bool)].iterrows():
+            if isinstance(r.get("ayna_kopyasi"), str):
+                mirrors[r["hyp_id"]] = r["ayna_kopyasi"]
     out = {
-        "surum": RESULT_VERSION, "manifest": results.get("manifest", {}),
+        "surum": RESULT_VERSION, "manifest": results.get("manifest", {}), "ayna_kopyalari": mirrors,
         "hipotez_ham": f1.get("hipotez_ham"), "hipotez_tekil": f1.get("hipotez_tekil"), "R": f1.get("R"),
         "kalibrasyon_kapisi": "geçti" if f1.get("kalibrasyon_kapisi", {}).get("gecti") else "geçmedi",
         "oruntuler": pats, "oruntu_karti_html": pattern_card_html(f1, f7),

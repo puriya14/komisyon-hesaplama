@@ -18,6 +18,7 @@ Windows 11 için Türkçe, ücretsiz verilere dayalı futbol analiz uygulaması 
 
 Gol pazarlarının ayrıntıları: [`docs/GOL_PAZARLARI_MODEL_KARTI.md`](docs/GOL_PAZARLARI_MODEL_KARTI.md).
 Dizi araştırması: [`docs/DIZI_ARASTIRMA_KULLANIM.md`](docs/DIZI_ARASTIRMA_KULLANIM.md) ve ön-kayıtlı [`docs/DIZI_ARASTIRMA_SOZLESMESI.md`](docs/DIZI_ARASTIRMA_SOZLESMESI.md).
+İlk resmi çalıştırmanın sonucu ([`docs/DIZI_ARASTIRMA_SONUCLARI.md`](docs/DIZI_ARASTIRMA_SONUCLARI.md)): örneklem dışında temel modele ve piyasaya ek değer katan bir dizi örüntüsü **bulunamadı**; tekrar eden "iyi form" etkileri piyasa oranlarında zaten yer alıyor, İY/MS 2/1 tipi geri dönüşler için anlamlı öncü koşul yok.
 
 ## Kurulum (Windows 11)
 
@@ -84,6 +85,7 @@ dokunmaz (`tests/conftest.py`: `BAHIS_TAHMIN_HOME` geçici dizine yönlendirilir
 - [`docs/TEKNIK_KARARLAR.md`](docs/TEKNIK_KARARLAR.md) — mimari kararlar
 - [`docs/DIZI_ARASTIRMA_SOZLESMESI.md`](docs/DIZI_ARASTIRMA_SOZLESMESI.md) — dizi araştırması ön-kayıtlı sözleşmesi
 - [`docs/DIZI_ARASTIRMA_KULLANIM.md`](docs/DIZI_ARASTIRMA_KULLANIM.md) — dizi araştırması kullanımı ve dosyaları
+- [`docs/DIZI_ARASTIRMA_SONUCLARI.md`](docs/DIZI_ARASTIRMA_SONUCLARI.md) — dizi araştırması sonuçları ve zorunlu test eşlemesi
 - `reports/` — deney günlüğü (`experiments.jsonl`) ve doğrulama sonuçları (JSON)
 
 ## Kaldırma / geri alma

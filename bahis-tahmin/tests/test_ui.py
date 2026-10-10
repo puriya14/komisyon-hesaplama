@@ -205,3 +205,31 @@ def test_sequences_prematch_view_has_no_post_event(app, window):
                 assert "gerçekleşmedi" in set(ex["sonuc"])
             shown = True
     assert shown
+
+
+def test_sequences_page_renders_frozen_research_results(app, window):
+    """Araştırma kaydı (YALNIZCA sentetik test verisiyle üretilmiş) sayfada: tüm hipotezler ve aile özetleri görünür."""
+    import sys
+
+    from bahis_tahmin.sequences import research as RS
+    from bahis_tahmin.sequences.synthetic import synthetic_matches
+    from bahis_tahmin.ui.controller import SEQ_DIR, load_sequence_results
+    from bahis_tahmin.ui.pages.sequences import SequencesPage
+
+    sys.path.insert(0, str(__import__("pathlib").Path(__file__).parent))
+    from test_seq_research import _s0_table
+
+    m, probs = synthetic_matches(n_leagues=1, n_seasons=27, n_teams=12, seed=21)
+    ctl = window.ctl
+    out = ctl.home / SEQ_DIR
+    RS.run_research(m, out, s0=_s0_table(m, probs), R=5, placebo_seeds=1, R_placebo=3, record=True,
+                    experiments_path=out / "deneyler.jsonl", families=("F1", "F2", "F4", "F7"))
+    ctl.seq_results = load_sequence_results(ctl.home)
+    page = window.page(SequencesPage)
+    page.refresh_research()
+    res = ctl.seq_results
+    if res.get("hipotez_tekil"):
+        assert page.pat_model.rowCount() == res["hipotez_tekil"]  # başarısızlar dahil hepsi listelenir
+    html = page.pat_card.toPlainText()
+    assert "Deney aileleri" in html and "F7" in html and "Plasebo" in html
+    assert "şike olasılığı" not in html.lower()

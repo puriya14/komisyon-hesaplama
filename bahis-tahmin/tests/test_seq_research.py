@@ -151,13 +151,18 @@ def test_rerun_with_same_manifest_and_seed_is_identical(frame):
 
 
 def test_changed_definition_after_test_opened_is_not_clean():
-    man = {"on_kayitla_uyum": {"sozlesme": True, "parametre": True, "esleme": True}, "parametre_ozeti": "p1",
-           "uygulama_kararlari_sha256": "k1", "kod_sha256": "c2"}
-    earlier = [{"asama": "dizi-arastirma F1", "zaman_utc": "2026-10-10T10:00:00+00:00", "parametre_ozeti": "p1",
-                "kararlar_sha256": "k1", "kod_sha256": "c1"}]
-    st = RS.clean_test_status(man, earlier)
+    T = RS.TEST_OPENED
+    same = {"on_kayitla_uyum": {"sozlesme": True, "parametre": True, "esleme": True},
+            "parametre_ozeti": T["parametre_ozeti"], "uygulama_kararlari_sha256": T["uygulama_kararlari_sha256"],
+            "kod_sha256": T["kod_sha256"]}
+    assert RS.clean_test_status(same, [])["temiz"]  # resmi çalıştırmanın birebir tekrarı
+    man = {**same, "kod_sha256": "c2"}
+    st = RS.clean_test_status(man, [])  # deney geçmişi görülmese de (ör. yerel uygulama) sabit açılış kaydı yakalar
     assert not st["temiz"] and "kod_sha256" in st["nedenler"][0]
-    assert RS.clean_test_status({**man, "kod_sha256": "c1"}, earlier)["temiz"]
+    earlier = [{"asama": "dizi-arastirma F1", "zaman_utc": "2026-10-11T10:00:00+00:00",
+                "parametre_ozeti": T["parametre_ozeti"], "kararlar_sha256": "k-baska", "kod_sha256": T["kod_sha256"]}]
+    st = RS.clean_test_status(same, earlier)
+    assert not st["temiz"] and "kararlar_sha256" in st["nedenler"][-1]
     # YALNIZCA TEST: elle kurulmuş statü tablosu
     hyp = pd.DataFrame({"hyp_id": ["X|a"], "statu": ["OUT_OF_SAMPLE_SUPPORTED"], "gerekce": ["-"], "tekil": [True]})
     results = {"aileler": {"F1": {"hipotezler": hyp, "adaylar": [{"statu": "OUT_OF_SAMPLE_SUPPORTED"}]},
@@ -240,3 +245,23 @@ def test_previously_seen_families_cannot_be_supported():
     assert [r["statu"] for r in results["aileler"]["F3"]["holm"]] == ["EXPLORATORY", "NO_ADDED_VALUE"]
     assert results["aileler"]["F5"]["pazarlar"]["A"]["statu"] == "EXPLORATORY"
     assert set(RS.SEEN_FAMILIES) == {"F3", "F5", "F6"}
+
+
+def test_prematch_status_lookup_maps_mirror_duplicates():
+    from bahis_tahmin.sequences.prematch import _status_lookup
+
+    # YALNIZCA TEST: elle kurulmuş özet
+    res = {"oruntuler": [{"hedef": "GALIBIYET", "kosul": "RAKIP_SON3_MAGLUBIYET", "statu": "NO_ADDED_VALUE"}],
+           "ayna_kopyalari": {"MAGLUBIYET|SON3_MAGLUBIYET": "GALIBIYET|RAKIP_SON3_MAGLUBIYET"}}
+    lk = _status_lookup(res)
+    assert lk["MAGLUBIYET|SON3_MAGLUBIYET"]["statu"] == "NO_ADDED_VALUE"
+    assert lk["MAGLUBIYET|SON3_MAGLUBIYET"]["ayna_kopyasi_of"] == "GALIBIYET|RAKIP_SON3_MAGLUBIYET"
+
+
+def test_ui_summary_lists_mirror_duplicates(run):
+    res, base, _ = run
+    ui = json.loads((base / "out" / "son_sonuclar.json").read_text(encoding="utf-8"))
+    h = res["aileler"]["F1"].get("hipotezler")
+    if isinstance(h, pd.DataFrame) and len(h):
+        assert len(ui["ayna_kopyalari"]) == int((~h["tekil"]).sum())
+        assert len(ui["oruntuler"]) + len(ui["ayna_kopyalari"]) == 800
