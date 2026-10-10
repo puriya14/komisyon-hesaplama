@@ -14,8 +14,10 @@ Windows 11 için Türkçe, ücretsiz verilere dayalı futbol analiz uygulaması 
 | En Olası Seçimler | Model olasılığı yüksek seçimler ve geçmişte gerçekleşme oranları (avantaj listesi **değildir**) |
 | Geriye dönük test | Gerçek 1X2 ve 2,5 Alt/Üst oranlarıyla geçmiş simülasyon |
 | **Gol Pazarları** | İki yarıda da karşılıklı gol (A), maç sonu 3,5 Üst (B), ilk yarı 1,5 Üst (C): ortak yarı-gol modeli, belirsizlik aralıkları, kapsam matrisi, doğrulama, karar motoru ve değiştirilemez sanal takip |
+| **Dizi Araştırması** | Maç dizileri, olay öncesi/sonrası ve tekrarlar (ör. İY/MS 2/1): geçmiş inceleme, maç öncesi benzer diziler, ön-kayıtlı örüntü doğrulama (çoklu test, yanlışlama, zaman sıralı doğrulama) ve tahminden ayrı anomali incelemesi. **Araştırma statüsündedir**; ana modelleri değiştirmez |
 
 Gol pazarlarının ayrıntıları: [`docs/GOL_PAZARLARI_MODEL_KARTI.md`](docs/GOL_PAZARLARI_MODEL_KARTI.md).
+Dizi araştırması: [`docs/DIZI_ARASTIRMA_KULLANIM.md`](docs/DIZI_ARASTIRMA_KULLANIM.md) ve ön-kayıtlı [`docs/DIZI_ARASTIRMA_SOZLESMESI.md`](docs/DIZI_ARASTIRMA_SOZLESMESI.md).
 
 ## Kurulum (Windows 11)
 
@@ -46,6 +48,9 @@ Veriler, modeller ve sanal takip dosyası yalnızca bilgisayarınızda tutulur:
 .venv\Scripts\python -m bahis_tahmin gol-oran-ice-aktar --csv oranlar.csv            & rem yalnızca doğrular
 .venv\Scripts\python -m bahis_tahmin gol-oran-ice-aktar --csv oranlar.csv --uygula   & rem doğrulananları ekler
 .venv\Scripts\python -m bahis_tahmin gol-sanal
+.venv\Scripts\python -m bahis_tahmin dizi-olay --takim "PSV Eindhoven" --iyms 2/1
+.venv\Scripts\python -m bahis_tahmin dizi-arastir --isci 3
+.venv\Scripts\python -m bahis_tahmin dizi-benzer --takim "PSV Eindhoven"
 .venv\Scripts\python -m bahis_tahmin self-test
 ```
 
@@ -77,10 +82,13 @@ dokunmaz (`tests/conftest.py`: `BAHIS_TAHMIN_HOME` geçici dizine yönlendirilir
 - [`docs/VERI_SOZLESMESI.md`](docs/VERI_SOZLESMESI.md) — veri alanları, pazar kuralları, zaman güvenceleri
 - [`docs/LISANS_DENETIMI.md`](docs/LISANS_DENETIMI.md) — veri kaynakları ve kullanım koşulları
 - [`docs/TEKNIK_KARARLAR.md`](docs/TEKNIK_KARARLAR.md) — mimari kararlar
+- [`docs/DIZI_ARASTIRMA_SOZLESMESI.md`](docs/DIZI_ARASTIRMA_SOZLESMESI.md) — dizi araştırması ön-kayıtlı sözleşmesi
+- [`docs/DIZI_ARASTIRMA_KULLANIM.md`](docs/DIZI_ARASTIRMA_KULLANIM.md) — dizi araştırması kullanımı ve dosyaları
 - `reports/` — deney günlüğü (`experiments.jsonl`) ve doğrulama sonuçları (JSON)
 
 ## Kaldırma / geri alma
 
 - Uygulama verisini silmek: `%LOCALAPPDATA%\BahisTahmin` klasörünü silin (veriler, modeller, sanal takip).
 - Yalnızca gol pazarları: `goal_engine.joblib`, `goal_engine.manifest.json`, `gol_pazarlari.sqlite` dosyalarını silin.
+- Yalnızca dizi araştırması: `dizi_arastirma` klasörünü silin (diğer bölümler etkilenmez).
 - Kod değişikliği: ilgili git commit'ini `git revert` ile geri alın.

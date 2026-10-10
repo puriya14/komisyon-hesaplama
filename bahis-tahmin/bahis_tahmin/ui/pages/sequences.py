@@ -268,16 +268,101 @@ class SequencesPage(Page):
         w = QWidget()
         lay = QVBoxLayout(w)
         lay.addWidget(banner(PREMATCH_NOTE, "banner"))
+        row = QHBoxLayout()
+        self.cb_fixture = QComboBox()
+        self.cb_fixture.setMinimumWidth(360)
+        self.btn_prematch = QPushButton("Yaklaşan maçları hazırla")
+        self.btn_prematch.clicked.connect(self.ctl.ensure_prematch)
+        row.addWidget(QLabel("Yaklaşan maç (takım):"))
+        row.addWidget(self.cb_fixture)
+        row.addWidget(self.btn_prematch)
+        row.addStretch(1)
+        lay.addLayout(row)
         self.sim_text = QLabel("")
         self.sim_text.setWordWrap(True)
         self.sim_text.setTextFormat(Qt.RichText)
         lay.addWidget(self.sim_text)
         self.sim_model = DataFrameModel()
-        sv, _ = make_table(self.sim_model)
-        sv.setMinimumHeight(420)
-        lay.addWidget(sv)
-        lay.addStretch(1)
+        self.sim_model.headers = {"kosul": "Koşul (karar anından önce)", "hedef": "Hedef", "n_gecmis": "Geçmiş örnek",
+                                  "isabet": "Gerçekleşti", "iska": "Gerçekleşmedi", "olay_orani": "Olay oranı",
+                                  "s0_beklenen": "S0 beklenen", "statu": "Örüntü statüsü"}
+        self.sim_model.formatters = {"olay_orani": fmt_pct, "s0_beklenen": lambda v: fmt_num(v, 1)}
+        self.sim_model.hidden = {"_i"}
+        self.sim_view, self.sim_proxy = make_table(self.sim_model)
+        self.sim_view.setMinimumHeight(300)
+        self.sim_view.clicked.connect(self._show_examples)
+        lay.addWidget(self.sim_view)
+        lay.addWidget(section("Geçmiş benzer örnekler (gerçekleşen ve gerçekleşmeyen birlikte)"))
+        self.sim_ex_model = DataFrameModel()
+        self.sim_ex_model.headers = {"sonuc": "Sonuç", "tarih": "Tarih", "lig": "Lig", "takim": "Takım", "rakip": "Rakip",
+                                     "ev": "Ev?", "iy_ms": "İY/MS (ham)"}
+        ev, _ = make_table(self.sim_ex_model, sortable=False)
+        ev.setMinimumHeight(260)
+        lay.addWidget(ev)
+        self.cb_fixture.currentIndexChanged.connect(self.refresh_prematch)
+        self._sim_view = None
         return w
+
+    def _fill_fixtures(self) -> None:
+        pf = self.ctl.prematch
+        cur = self.cb_fixture.currentData()
+        self.cb_fixture.blockSignals(True)
+        self.cb_fixture.clear()
+        if pf is not None:
+            tm = pf["tm"]
+            up = np.where(pf["upcoming"])[0]
+            first = tm.iloc[up].groupby("team").head(1)
+            for r, x in first.sort_values(["date", "league", "team"]).iterrows():
+                self.cb_fixture.addItem(f"{_date(x['date'])} {x['league']} · {x['team']} – {x['opponent']} "
+                                        f"({'ev' if x['is_home'] else 'deplasman'})", int(r))
+            i = self.cb_fixture.findData(cur)
+            self.cb_fixture.setCurrentIndex(max(i, 0))
+        self.cb_fixture.blockSignals(False)
+
+    def refresh_prematch(self) -> None:
+        from ...sequences.prematch import prematch_view
+
+        pf = self.ctl.prematch
+        if pf is None:
+            self.sim_text.setText(self.ctl.prematch_error or "Yaklaşan maç görünümü hazırlanmadı. "
+                                  "'Yaklaşan maçları hazırla' düğmesine basın (fikstür verisi gerekir).")
+            self.sim_model.set_frame(pd.DataFrame())
+            self.sim_ex_model.set_frame(pd.DataFrame())
+            return
+        row = self.cb_fixture.currentData()
+        if row is None:
+            self.sim_text.setText("Fikstürde, son oynanmış maçtan sonra gelen yaklaşan maç yok.")
+            self.sim_model.set_frame(pd.DataFrame())
+            self.sim_ex_model.set_frame(pd.DataFrame())
+            return
+        v = prematch_view(pf, int(row), self.ctl.seq_results)
+        self._sim_view = v
+        true = [k for k, x in v["PRE_EVENT_KOSULLARI"].items() if x]
+        undef = [k for k, x in v["PRE_EVENT_KOSULLARI"].items() if x is None]
+        self.sim_text.setText(
+            f"Karar anı: <b>{v['karar_ani']}</b> · doğru koşullar: <b>{', '.join(true) or '-'}</b> · tanımsız "
+            f"(eksik pencere): {len(undef)}<br>{v['not']}"
+            + ("" if pf["has_s0"] else "<br>Araştırma çalıştırılmadığı için S0 beklentisi ve beklenen puanlı atomlar "
+                                       "tanımsız; statüler KAYIT_YOK."))
+        df = pd.DataFrame([{k: s[k] for k in ("kosul", "hedef", "n_gecmis", "isabet", "iska", "olay_orani",
+                                              "s0_beklenen", "statu")} for s in v["benzer_kosullar"]])
+        if len(df):
+            df["_i"] = np.arange(len(df))
+        self.sim_model.set_frame(df)
+        self.sim_ex_model.set_frame(pd.DataFrame())
+
+    def _show_examples(self, idx) -> None:
+        if self._sim_view is None:
+            return
+        src = self.sim_proxy.mapToSource(idx)
+        i = int(self.sim_model.frame.iloc[src.row()]["_i"])
+        s = self._sim_view["benzer_kosullar"][i]
+        rows = ([{"sonuc": "gerçekleşti", **e} for e in s["ornekler_isabet"]]
+                + [{"sonuc": "gerçekleşmedi", **e} for e in s["ornekler_iska"]])
+        df = pd.DataFrame(rows)
+        if len(df):
+            df = df.drop(columns=["hedef_gerceklesti"]).sort_values("tarih", ascending=False, kind="mergesort")
+        self.sim_ex_model.set_frame(df)
 
     # ======================================================= C: örüntü doğrulama
     def _build_patterns(self) -> QWidget:
@@ -378,15 +463,16 @@ class SequencesPage(Page):
         empty = ("Araştırma henüz çalıştırılmadı. Ön-kayıtlı araştırma komut satırından çalıştırılır: "
                  "<code>python -m bahis_tahmin dizi-arastir</code>. Sonuçlar burada gösterilir; gerçek veri yoksa örnek "
                  "sonuç gösterilmez.")
+        self._fill_fixtures()
+        self.refresh_prematch()
         if not res:
-            for lbl, model in ((self.sim_text, self.sim_model), (self.pat_text, self.pat_model), (self.an_text, self.an_model)):
+            for lbl, model in ((self.pat_text, self.pat_model), (self.an_text, self.an_model)):
                 lbl.setText(empty)
                 model.set_frame(pd.DataFrame())
             self.pat_card.setHtml("")
             return
         self._render_patterns(res)
         self._render_anomalies(res)
-        self.sim_text.setText(res.get("benzer_diziler_notu", "Maç öncesi benzer diziler için yaklaşan maç seçimi gerekir."))
 
     def _render_patterns(self, res: dict) -> None:
         pats = pd.DataFrame(res.get("oruntuler", []))

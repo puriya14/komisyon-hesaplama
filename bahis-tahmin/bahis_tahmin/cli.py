@@ -15,6 +15,8 @@
     python -m bahis_tahmin gol-oran-ice-aktar --csv oranlar.csv            # yalnızca doğrulama
     python -m bahis_tahmin gol-oran-ice-aktar --csv oranlar.csv --uygula   # doğrulananları ekle
     python -m bahis_tahmin dizi-olay --takim "PSV Eindhoven" --iyms 2/1    # geçmiş inceleme (olay seçimli)
+    python -m bahis_tahmin dizi-arastir --isci 3                           # ön-kayıtlı dizi araştırması
+    python -m bahis_tahmin dizi-benzer --takim "PSV Eindhoven"             # maç öncesi benzer diziler
 """
 
 from __future__ import annotations
@@ -354,6 +356,76 @@ def cmd_seq_coverage(a) -> int:
     return 0
 
 
+def cmd_seq_research(a) -> int:
+    """Ön-kayıtlı dizi araştırması (sözleşme dizi-sozlesme-v2): F1–F7 + anomali; sonuçlar uygulama klasörüne."""
+    import pandas as pd
+
+    from .sequences import config as SC
+    from .sequences.research import load_or_build_s0, run_research
+
+    st = _store()
+    if not st.has_data:
+        print("Veri yok. Önce 'update' çalıştırın.", file=sys.stderr)
+        return 2
+    out = app_home() / "dizi_arastirma"
+    fams = [f.strip().upper() for f in a.aileler.split(",") if f.strip()]
+    bad = [f for f in fams if f not in ("F1", "F2", "F3", "F4", "F5", "F6", "F7")]
+    if bad:
+        print(f"Bilinmeyen aile: {bad}", file=sys.stderr)
+        return 2
+    if a.R < SC.N_NULL or a.plasebo_R < SC.N_NULL_PLACEBO or a.plasebo_tohum < SC.N_PLACEBO_SEEDS:
+        print(f"UYARI: sözleşmenin altında tekrar sayısı (R={a.R}, plasebo {a.plasebo_tohum}×{a.plasebo_R}); sonuçlar "
+              "statü için geçerli sayılmaz, yalnızca deneme çalıştırmasıdır.")
+    t = time.time()
+    log = lambda s: print(f"[{time.time() - t:7.0f} sn] {s}", flush=True)  # noqa: E731
+    s0 = pd.read_pickle(a.s0) if a.s0 else load_or_build_s0(st.matches, out, progress=log)
+    res = run_research(st.matches, out, s0=s0, R=a.R, placebo_seeds=a.plasebo_tohum, R_placebo=a.plasebo_R,
+                       workers=a.isci, families=fams, progress=log, record=True,
+                       experiments_path=out / "deneyler.jsonl", data_label="uygulama verisi")
+    print("\nÖzet (her aile, sonuç ne olursa olsun kaydedildi):")
+    for k, v in res["aileler"].items():
+        print(f"  {k}: {v.get('ozet')}")
+    print(f"Anomali özeti (yalnızca tür/durum/dönem sayıları): {res.get('anomali_ozeti', {}).get('durum')}")
+    print(f"Sonuçlar: {out}")
+    return 0
+
+
+def cmd_seq_prematch(a) -> int:
+    """Maç öncesi benzer diziler: yaklaşan maç için karar anından önce bilinen koşullar ve geçmiş örnekler."""
+    import json
+
+    import pandas as pd
+
+    from .sequences.prematch import prematch_frame, prematch_view
+
+    st = _store()
+    if not st.has_data:
+        print("Veri yok. Önce 'update' çalıştırın.", file=sys.stderr)
+        return 2
+    out = app_home() / "dizi_arastirma"
+    cal = pd.read_pickle(out / "s0_kalibre.pkl") if (out / "s0_kalibre.pkl").exists() else None
+    res = json.loads((out / "son_sonuclar.json").read_text(encoding="utf-8")) if (out / "son_sonuclar.json").exists() else None
+    pf = prematch_frame(st.matches, st.fixtures, cal)
+    tm = pf["tm"]
+    rows = [int(i) for i in tm.index[pf["upcoming"] & (tm["team"] == a.takim).to_numpy()]]
+    if not rows:
+        print(f"{a.takim} için yaklaşan maç bulunamadı (fikstür verisi gerekir).", file=sys.stderr)
+        return 2
+    v = prematch_view(pf, rows[0], res)
+    print("MAÇ ÖNCESİ GÖRÜNÜM — yalnızca karar anından önce bilinen bilgi; olay sonrası alan yok.")
+    print(f"{v['kimlik']['date']} {v['kimlik']['team']} - {v['kimlik']['opponent']} (karar anı {v['karar_ani']})")
+    print("Doğru koşullar:", ", ".join(k for k, x in v["PRE_EVENT_KOSULLARI"].items() if x) or "-")
+    for s in v["benzer_kosullar"]:
+        rate = "-" if s["olay_orani"] is None else f"{s['olay_orani']:.3f}"
+        exp = "-" if s["s0_beklenen"] is None else f"{s['s0_beklenen']:.1f}"
+        print(f"  {s['kosul']:<45s} {s['hedef']:<20s} n={s['n_gecmis']:<6d} isabet={s['isabet']:<5d} "
+              f"ıska={s['iska']:<5d} oran={rate} S0 beklenen={exp} statü={s['statu']}")
+    print(v["not"])
+    if cal is None:
+        print("Not: araştırma çalıştırılmadığı için beklenen puanlı atomlar ve S0 beklentisi tanımsız.")
+    return 0
+
+
 def cmd_self_test(a) -> int:
     from .selftest import run_self_test
 
@@ -408,5 +480,16 @@ def main(argv: list[str] | None = None) -> int:
     so.add_argument("--kart", type=int, help="olay kartı gösterilecek olay sırası (0'dan)")
     so.set_defaults(fn=cmd_seq_events)
     sub.add_parser("dizi-kapsam", help="dizi araştırması veri kapsamı ve incelenemeyen alanlar").set_defaults(fn=cmd_seq_coverage)
+    sa = sub.add_parser("dizi-arastir", help="ön-kayıtlı dizi araştırması (F1–F7 + anomali); uzun sürer")
+    sa.add_argument("--R", type=int, default=1000, help="referans süreç tekrar sayısı (sözleşme: 1000)")
+    sa.add_argument("--plasebo-tohum", type=int, default=20, help="plasebo tohum sayısı (sözleşme: 20)")
+    sa.add_argument("--plasebo-R", type=int, default=200, help="plasebo başına referans tekrarı (sözleşme: 200)")
+    sa.add_argument("--isci", type=int, default=1, help="paralel işlem sayısı (sonuç işçi sayısından bağımsızdır)")
+    sa.add_argument("--aileler", default="F1,F2,F3,F4,F5,F6,F7", help="çalıştırılacak aileler")
+    sa.add_argument("--s0", help="hazır S0 soy kaydı (pickle); verilmezse uygulama klasöründe kurulur/önbellekten okunur")
+    sa.set_defaults(fn=cmd_seq_research)
+    sb = sub.add_parser("dizi-benzer", help="maç öncesi benzer diziler (yaklaşan maç; olay sonrası bilgi yok)")
+    sb.add_argument("--takim", required=True)
+    sb.set_defaults(fn=cmd_seq_prematch)
     a = p.parse_args(argv)
     return a.fn(a)

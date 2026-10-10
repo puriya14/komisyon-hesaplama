@@ -166,3 +166,42 @@ def test_sequences_page_historical_view(app, window):
     # Araştırma sonucu yoksa örnek/uydurma sonuç gösterilmez
     assert page.pat_model.rowCount() == 0 and "çalıştırılmadı" in page.pat_text.text()
     assert "DATA_QUALITY_BLOCKED" in page.meth_text.toPlainText()
+
+
+def test_sequences_prematch_view_has_no_post_event(app, window):
+    """Maç öncesi sekmesi: yalnızca karar anından önceki koşullar; olay sonrası alan yok; başarısız örnekler gösterilir."""
+    from bahis_tahmin.sequences.synthetic import synthetic_matches
+    from bahis_tahmin.ui.pages.sequences import SequencesPage
+
+    m, _ = synthetic_matches(n_leagues=1, n_seasons=8, n_teams=8, seed=4)  # YALNIZCA TEST verisi
+    cut = m["date"].max() - pd.Timedelta(days=14)
+    ctl = window.ctl
+    ctl.store.matches = m[m["date"] <= cut].reset_index(drop=True)
+    fx = m[m["date"] > cut][["league", "date", "time", "home", "away", "source"]].copy()
+    ctl.store.fixtures = fx.reindex(columns=ctl.store.fixtures.columns)
+    ctl.prematch = None
+    ctl.ensure_prematch()
+    ctl.wait()
+    for _ in range(50):
+        if ctl.prematch is not None:
+            break
+        app.processEvents()
+    assert ctl.prematch is not None
+    page = window.page(SequencesPage)
+    page._fill_fixtures()
+    assert page.cb_fixture.count() == 8  # her takımın bir sonraki maçı
+    shown = False
+    for i in range(page.cb_fixture.count()):
+        page.cb_fixture.setCurrentIndex(i)
+        page.refresh_prematch()
+        assert "POST_EVENT" not in page.sim_text.text()
+        if page.sim_model.rowCount():
+            df = page.sim_model.frame
+            assert (df["n_gecmis"] == df["isabet"] + df["iska"]).all()
+            k = int(df["iska"].to_numpy().argmax())
+            page._show_examples(page.sim_proxy.mapFromSource(page.sim_model.index(k, 0)))
+            ex = page.sim_ex_model.frame
+            if df["iska"].iloc[k] > 0:
+                assert "gerçekleşmedi" in set(ex["sonuc"])
+            shown = True
+    assert shown

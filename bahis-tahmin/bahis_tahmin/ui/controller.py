@@ -99,6 +99,8 @@ class AppController(QObject):
         self.seq_table: pd.DataFrame | None = None  # dizi araştırması: takım-maç tablosu (istek üzerine kurulur)
         self.seq_results: dict | None = None  # son araştırma çalıştırmasının sonuçları (varsa)
         self.seq_error: str | None = None  # takım-maç tablosu kurulamadıysa kullanıcıya gösterilecek neden
+        self.prematch: dict | None = None  # maç öncesi benzer diziler (yaklaşan maç satırları + atomlar)
+        self.prematch_error: str | None = None
         self.last_report_text = ""
         self._task: Task | None = None
         self._queue: list[Callable[[], None]] = []
@@ -173,6 +175,7 @@ class AppController(QObject):
             self.store = store
             self.seq_table = None  # veri değişti: dizi tablosu yeniden kurulacak
             self.seq_error = None
+            self.prematch = None
             self.engine = engine
             self.goal_engine = goal
             self.goal_load_error = gerr
@@ -267,6 +270,7 @@ class AppController(QObject):
             self.store = store
             self.seq_table = None  # veri değişti: dizi tablosu yeniden kurulacak
             self.seq_error = None
+            self.prematch = None
             self.engine = engine
             if goal is not None or gerr:
                 self.goal_engine = goal
@@ -372,6 +376,39 @@ class AppController(QObject):
             self._queue.append(self.ensure_sequence_table)
             return
         self._run(work, done, "Dizi araştırması hazırlanıyor...", critical=False)
+
+    def ensure_prematch(self) -> None:
+        """Maç öncesi görünüm için yaklaşan maçları (fikstür) sonucu bilinmeyen satırlar olarak ekleyip dizi atomlarını
+        yalnızca önceki günlerin maçlarından hesaplar (arka planda, salt okuma)."""
+        if not self.store.has_data:
+            return
+        if self.store.fixtures.empty:
+            self.prematch, self.prematch_error = None, "Yaklaşan maç (fikstür) verisi yok."
+            self.sequenceChanged.emit()
+            return
+        matches, fixtures, home = self.store.matches, self.store.fixtures, self.home
+
+        def work(progress):
+            import pandas as pd
+
+            from ..sequences.prematch import prematch_frame
+
+            progress(20, "Maç öncesi görünüm: yaklaşan maçlar hazırlanıyor...")
+            cal_path = home / SEQ_DIR / "s0_kalibre.pkl"
+            cal = pd.read_pickle(cal_path) if cal_path.exists() else None
+            try:
+                return prematch_frame(matches, fixtures, cal), None
+            except ValueError as exc:
+                return None, str(exc)
+
+        def done(res):
+            self.prematch, self.prematch_error = res
+            self.sequenceChanged.emit()
+
+        if self.busy:
+            self._queue.append(self.ensure_prematch)
+            return
+        self._run(work, done, "Maç öncesi görünüm hazırlanıyor...", critical=False)
 
     def ledger_if_exists(self) -> Ledger | None:
         """Okuma amaçlı: sanal takip dosyası henüz yoksa oluşturmadan None döner."""

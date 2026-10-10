@@ -25,11 +25,36 @@ Bu modül maç sonuçlarının çevresindeki dizileri (olay öncesi/sonrası) ve
 .venv\Scripts\python -m bahis_tahmin dizi-olay --takim "PSV Eindhoven" --iyms 2/1 --kart 0
 .venv\Scripts\python -m bahis_tahmin dizi-olay --takim "PSV Eindhoven" --hedef IY_GERIDE_MS_GALIP
 .venv\Scripts\python -m bahis_tahmin dizi-kapsam
+.venv\Scripts\python -m bahis_tahmin dizi-arastir --isci 3
+.venv\Scripts\python -m bahis_tahmin dizi-benzer --takim "PSV Eindhoven"
 ```
 
 - `dizi-olay`: Mod A (tanımlayıcı, olay seçimli). `--iyms` ham kod (`2/1`, `X/1`, `0/2` …; `0` ve `X` beraberlik);
   `--hedef` takım perspektifi hedefi; `--kart N` N'inci olayın kartını yazdırır.
 - `dizi-kapsam`: veri boşluklu lig-sezonlar, incelenemeyen alanlar, hükmen olabilir satırlar, ad eşlemeleri.
+- `dizi-arastir`: ön-kayıtlı araştırmanın tamamı (F1–F7 + anomali). S0 soy kaydı ilk çalıştırmada kurulur
+  (~20 dk) ve veri/eşleme değişmedikçe önbellekten okunur. Hesaplama bütçesi sabittir: referans süreç R = 1000,
+  plasebo 20 tohum × 200 tekrar, bootstrap 1000; açık uçlu arama veya harici API çağrısı yoktur. `--isci` yalnızca
+  hızı değiştirir (her tekrar kendi tohumunu kullanır; sonuç işçi sayısından bağımsızdır). Sözleşmenin altında
+  tekrar sayısıyla çalıştırma "deneme" olarak uyarı verir.
+- `dizi-benzer`: maç öncesi görünüm — takımın yaklaşan maçı için karar anından (maç günü 00:00) önce bilinen
+  koşullar ve geçmiş benzer örnekler (gerçekleşen ve gerçekleşmeyen birlikte). Olay sonrası alan yoktur; statü
+  yalnızca dondurulmuş araştırma kaydından okunur ve olasılık değiştirilmez.
+
+## Statüler ve "temiz test"
+
+| Statü | Anlamı |
+|---|---|
+| `EXPLORATORY` | Keşifte bulundu, örneklem dışında sınanmadı (veya test dönemi temiz değil) |
+| `INSUFFICIENT_EVIDENCE` | Destek yetersiz, aile düzeltmesinden geçmedi ya da Monte Carlo aralığı 0,05'i içeriyor |
+| `NO_ADDED_VALUE` | Örneklem dışında temel modele (S0) ek katkı doğrulanmadı veya piyasa kontrolünde kayboldu |
+| `OUT_OF_SAMPLE_SUPPORTED` | Parametre ve test dönemlerinde ayrı ayrı doğrulandı; yanlışlama kontrolleri geçti |
+| `PAPER_TRADING` | Örneklem dışı desteklenen örüntünün ileriye dönük sanal takibi |
+| `DATA_QUALITY_BLOCKED` | Gerekli veri yok |
+
+Test dönemi bir kez açıldıktan sonra sözleşme, parametre, uygulama kararları veya `sequences` kodu değişirse
+sonraki çalıştırmalar "temiz test" sayılmaz: `OUT_OF_SAMPLE_SUPPORTED` otomatik olarak `EXPLORATORY`'ye iner ve
+gerekçe kartta yazılır (`manifest.temiz_test`).
 
 ## Hedef adları
 
@@ -45,7 +70,17 @@ galip", deplasmanın aynı maçı ise "İY önde → MS mağlup"tur.
 
 ## Dosyalar
 
-- Uygulama klasöründe (`%LOCALAPPDATA%\BahisTahmin\dizi_arastirma\`): araştırma sonuçları ve manifesti.
-  İleriye dönük sanal takip için ayrı bir defter (`dizi_arastirma.sqlite`) kullanılır; gerçek para kullanılmaz.
-- Depoda: `reports/experiments.jsonl` (ön-kayıt ve tüm deneyler), `reports/dizi_*.json` (sonuçlar),
-  `reports/dizi_sozlesme_kirmizi_takim.json` (sözleşme incelemesi).
+- Uygulama klasöründe (`%LOCALAPPDATA%\BahisTahmin\dizi_arastirma\`): `son_sonuclar.json` (arayüz özeti),
+  `sonuclar_tam.json` (tüm aileler), `manifest.json`, `f1_hipotezler.csv` (başarısızlar dahil 800 hipotez),
+  `anomaliler.json` (tekil maç anomali kayıtları — yalnızca yerelde), `deneyler.jsonl`, `s0_soy.pkl`,
+  `s0_kalibre.pkl`. İleriye dönük sanal takip için ayrı bir defter (`dizi_arastirma.sqlite`) kullanılır; gerçek
+  para kullanılmaz.
+- Depoda: `reports/experiments.jsonl` (ön-kayıt ve tüm deneyler), `reports/dizi_sonuclar.json`,
+  `reports/dizi_f1_hipotezler.csv`, `reports/dizi_sozlesme_kirmizi_takim.json` (sözleşme incelemesi). Depoya tekil
+  maç anomali listesi yazılmaz; yalnızca tür/durum/dönem sayıları.
+
+## Geri alma
+
+- Araştırma çıktıları: `dizi_arastirma` klasörünü silin (ana modeller, gol pazarları ve sanal takip etkilenmez).
+- Kod: ilgili commit'i `git revert` ile geri alın. Modül ana tahmin modellerini, karar motorunu veya mevcut
+  kayıtları değiştirmez; üç ana pazarın tahminleri altın regresyon testiyle korunur.
