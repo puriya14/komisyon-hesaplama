@@ -465,8 +465,14 @@ def test_consent_alone_never_grants_scope_and_no_label_spoofing():
     # yalnızca fikstür sağlayan CC0 kaynağın etiketiyle sonuç verisi hak kazanamaz
     spoof = E.rights_from_registry({"openfootball"}, consent)
     assert spoof.codes({"openfootball"}, {"openfootball"}, "tahmin") == ["KAYNAK_ETIKETI_UYUMSUZ"]
-    for fake in ("Football-Data.co.uk", "football-data.co.uk ", "sentetik", "openfootball-sonuc"):
+    for fake in ("Football-Data.co.uk", "football-data.co.uk ", "sentetik", "openfootball-results"):
         assert E.rights_from_registry({fake}, consent).codes({fake}, set()) == ["KAYNAK_HAKKI_BILINMIYOR"]
+    # S4-PILOT-01: "openfootball-sonuc" artık kayıtlı sonuç adaptörü etiketidir, ancak etiket tek başına hak vermez:
+    # kökeni doğrulanmamış satır engelli kalır (etiket değiştirerek hak atlatma negatif kontrolü korunur)
+    lb = "openfootball-sonuc"
+    assert E.rights_from_registry({lb}, consent).codes({lb}, {lb}, "tahmin") == ["KAYNAK_KOKENI_DOGRULANAMADI"]
+    assert E.rights_from_registry({lb}, consent, set()).codes({lb}, set()) == ["KAYNAK_KOKENI_DOGRULANAMADI"]
+    assert E.rights_from_registry({lb}, consent, {lb}).codes({lb}, {lb}, "tahmin") == []
     # GitHub yedeğinin depo lisansı asıl kaynağın haklarını kanıtlamaz; belgeye erişilemeyen kaynak izinli değil
     from bahis_tahmin.data.source_registry import USE_RIGHTS
 

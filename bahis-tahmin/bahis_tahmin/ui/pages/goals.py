@@ -638,9 +638,11 @@ class GoalsPage(Page):
         self.src_model.set_frame(pd.DataFrame([{
             "Kaynak": s.name, "Lisans özeti": s.license_summary, "Ticari kullanım": s.commercial_use,
             "Model eğitimi": s.model_training, "Maliyet": s.cost,
-            "Durum": ("Onay gerekmez" if not s.requires_consent else
-                      ("Kullanıcı onayladı" if k in self.ctl.settings.source_consent else "ONAY YOK")) if k != "the-odds-api"
-            else "Entegre edilmedi",
+            "Durum": ("Entegre edilmedi" if k == "the-odds-api" else
+                      # S4: yalnızca ayrı pilot klasöründe; ana uygulama bu kaynaktan sonuç okumaz
+                      "Yalnızca S4 pilotu (köken doğrulaması zorunlu)" if k == "openfootball-sonuc" else
+                      "Onay gerekmez" if not s.requires_consent else
+                      ("Kullanıcı onayladı" if k in self.ctl.settings.source_consent else "ONAY YOK")),
         } for k, s in SOURCES.items()]))
         if not st.has_data:
             self.cov_model.set_frame(pd.DataFrame())

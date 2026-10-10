@@ -14,6 +14,8 @@ eğitimi ve model kullanımı belgeyle doğrulanmadıkça bu verilerle tahmin g�
 | football-data.co.uk | Geçmiş sonuçlar, İY skoru, şut, 1X2 ve 2,5 oranları; fikstür | Açık lisans metni bulunamadı; site "All Rights Reserved" altbilgisi taşıyor; İngiliz/İskoç ligleri için Football DataCo hak iddia eder | Doğrulanamadı → seyrek, önbellekli | Doğrulanamadı | Varsayılmaz (veri yalnızca kullanıcı bilgisayarında) | **Onay gerektirir**; onay yoksa indirilmez |
 | GitHub: xgabora/Club-Football-Match-Data | football-data erişilemezse yedek geçmiş veri | Depo MIT; ancak içerik football-data/ClubElo kaynaklı, kaynak koşulları geçerli | GitHub tek dosya | Asıl kaynağa bağlı | Varsayılmaz | **Onay gerektirir** |
 | openfootball/football.json | Yedek fikstür | CC0 1.0 | İzinli | İzinli | İzinli | Onay gerekmez |
+| openfootball/football.json (sonuçlar, `openfootball-sonuc`) | Yalnızca S4 pilotu: E0 maç sonuçları | CC0 1.0 (derleyici hakları; doğruluk garantisi ve üçüncü kişi hakları kapsam dışı, madde 4) | Sabit commit, önbellekli | İzinli (köken doğrulanırsa) | İzinli; uygulama ham veriyi dağıtmaz | Onay gerekmez; köken doğrulaması zorunlu |
+| openfootball/clubs (`europe/england/eng.clubs.txt`) | Yalnızca kulüp alternatif adı kanıtı (pilot kimlik eşlemesi) | CC0 1.0 | Tek dosya, bir kez okundu | — (veri değil, kimlik kanıtı) | — | Kodda 16 ad eşlemesi |
 | The Odds API | (Planlanan) gerçek oran | Ücretli planlar; resmi koşullar doğrulanamadı | API anahtarı | Doğrulanamadı | Doğrulanamadı | **Entegre edilmedi** (ücretli, kullanıcı ücretsiz kaynak istedi) |
 
 ## Uygulanan kontroller
@@ -38,6 +40,12 @@ eğitimi ve model kullanımı belgeyle doğrulanmadıkça bu verilerle tahmin g�
   alan adı çözümlenemedi (ENOTFOUND), belge okunamadı. Veri indirilmedi, kaynak sahibine mesaj gönderilmedi, ücretli
   üyelik başlatılmadı. Belge okunamadığı için hiçbir alan "izinli" sayılmadı. GitHub yedeğinin depo lisansı (MIT) asıl
   kaynağın haklarını kanıtlamaz.
+- 2026-10-10 (S4-PILOT-01): openfootball/football.json `LICENSE.md` (commit e6744429ee39, git nesnesi
+  670154e3538863b2) ve openfootball/clubs `LICENSE.md` (commit ae3800227c44, aynı git nesnesi) kısmi git klonuyla
+  okundu: CC0 1.0 Universal. CC0, derleyicinin telif ve veritabanı haklarından feragatidir; verinin doğruluğunu
+  garanti etmez ve üçüncü kişilerin olası haklarını (ör. lig fikstür listeleri üzerindeki talepler) temizlemez
+  (madde 4). Sonuç satırları yalnızca köken doğrulamasıyla hak kazanır (`openfootball-sonuc`, `data/provenance.py`);
+  football-data/GitHub yedeği satırları bu etiketle hak kazanamaz. Ham veri depoya veya dağıtıma konmadı.
 
 ## Açık konular (kullanıcı kararı gerekir)
 

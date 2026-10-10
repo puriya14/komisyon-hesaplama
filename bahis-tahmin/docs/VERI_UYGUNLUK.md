@@ -177,6 +177,15 @@ ticari kullanım (`ticari_kullanim`), yeniden dağıtım (`yeniden_dagitim`) ve 
 - football-data.co.uk belgeleri (`data.php`, `contact.php`) 2026-10-10'da bu ortamdan açılamadı (ad çözümlenemedi);
   belge okunamadığı için hiçbir alan izinli sayılmadı. Engeli kaldırmanın tek yolu kaynağın lisans/izin belgesinin
   kayda (`belge` alanıyla) eklenmesidir. Bu bir hukuki ihlal tespiti değildir.
+- **Sonuç kökeni (S4-PILOT-01).** `openfootball-sonuc` etiketi (openfootball sonuç adaptörü, CC0) hak kaydında
+  `koken_dogrulamasi` taşır: etiket tek başına hak vermez. Veri deposunun `meta["kaynak_kokeni"]` kaydında her
+  (lig, sezon) için depo, dosya yolu, sabit commit, alınma anı, dosya özeti, ayrıştırıcı sürümü ve satır özeti
+  bulunmalı; önbellekteki dosya aynı özete sahip olmalı ve aynı ayrıştırıcı bu dosyadan depodaki satırların birebir
+  aynısını üretmeli (`data/provenance.py`). Aksi halde `KAYNAK_KOKENI_DOGRULANAMADI` (tahmin ve eğitim engeli). Böylece
+  başka kaynaktan gelen eski satırların etiketini değiştirmek hak kazandırmaz; fikstür etiketiyle (`openfootball`)
+  sonuç satırı hâlâ `KAYNAK_ETIKETI_UYUMSUZ` olur. Kapsam kaynağıyla aynı veri zincirinden gelen sonuç satırları
+  (openfootball) takvim tamlığı için bağımsız katılımcı listesi sayılmaz; bağımsız referans verilmezse kapsam
+  `KAYNAK_KAPSAMI_KISMI` kalır. Kullanım: [`S4_PILOT.md`](S4_PILOT.md).
 
 ## Kullanıldığı yollar
 

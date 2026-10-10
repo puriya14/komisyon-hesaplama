@@ -11,6 +11,7 @@ import pandas as pd
 from PySide6.QtCore import QObject, QThread, QTimer, Signal
 
 from ..config import Settings, app_home
+from ..data.provenance import verified_labels
 from ..data.store import DataStore
 from ..eligibility import training_rights_codes
 from ..goals.engine import GoalDataError, GoalEngine, GoalPrediction
@@ -266,7 +267,8 @@ class AppController(QObject):
             )
             engine = old_engine
             sig = PredictionEngine.signature(store.matches, s.margin_method)
-            blocked = training_rights_codes(store.matches, s.source_consent) if store.has_data else []
+            blocked = (training_rights_codes(store.matches, s.source_consent, verified_labels(store))
+                       if store.has_data else [])
             if blocked:  # hak kapsamı doğrulanmayan gerçek veriyle eğitim yapılmaz (S3-GATE-02)
                 report.warnings.append("Model eğitimi yapılmadı: veri kaynağının kullanım kapsamı doğrulanmadı ("
                                        + ", ".join(blocked) + ").")
@@ -309,7 +311,7 @@ class AppController(QObject):
         """Gerçek veriyle eğitimin hak kapsamı (onay kutusu bu kontrolü aşamaz)."""
         from ..eligibility import reason_texts
 
-        codes = training_rights_codes(self.store.matches, self.settings.source_consent)
+        codes = training_rights_codes(self.store.matches, self.settings.source_consent, verified_labels(self.store))
         if codes:
             self.message.emit("warn", "Model eğitimi yapılmadı; veri kaynağının kullanım kapsamı doğrulanmadı:\n"
                               + reason_texts(codes))

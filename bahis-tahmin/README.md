@@ -55,6 +55,10 @@ Veriler, modeller ve sanal takip dosyası yalnızca bilgisayarınızda tutulur:
 .venv\Scripts\python -m bahis_tahmin self-test
 ```
 
+Tek ligde gerçek veri pilotu (S4; openfootball sonuçları, İngiltere Premier League; bütün yazmalar yalnızca `--ev`
+ile verilen ayrı pilot klasörüne): `pilot-hazirla`, `pilot-kapsam` (salt okunur), `pilot-egit`, `pilot-tahmin`
+(varsayılan kuru çalıştırma; `--uygula` pilot defterine yazar). Ayrıntılar: [`docs/S4_PILOT.md`](docs/S4_PILOT.md).
+
 ## Gol pazarları kısaca
 
 - Üç pazar tek bir ortak gol dağılımından hesaplanır; A ⊆ B ∩ C olduğundan P(A) ≤ P(B), P(A) ≤ P(C)
@@ -94,6 +98,8 @@ dokunmaz (`tests/conftest.py`: `BAHIS_TAHMIN_HOME` geçici dizine yönlendirilir
 - [`docs/DIZI_ARASTIRMA_DUZELTMELER.md`](docs/DIZI_ARASTIRMA_DUZELTMELER.md) — sonuç belgesinin kanıt denetimi: düzeltme ve daraltma kaydı (S2-KABUL-01)
 - [`docs/ILERIYE_DONUK_OLCUM.md`](docs/ILERIYE_DONUK_OLCUM.md) — A/B/C için ileriye dönük ölçüm protokolü ve elle günlük akış
 - [`docs/VERI_UYGUNLUK.md`](docs/VERI_UYGUNLUK.md) — ortak veri uygunluk kontrolü (güncellik, kapsam, takım kimliği, zaman, işlem kapsamlı haklar; politika v2, S3-GATE-02)
+- [`docs/S4_PILOT.md`](docs/S4_PILOT.md) — tek ligde gerçek veri pilotu: komutlar, yalıtım, kaynak kökeni, katılımcı referansı
+- `reports/s4_pilot_01/` — S4-PILOT-01 toplu sonuç raporu (yalnızca sayılar; maç satırı ve tahmin listesi yok)
 - `reports/s3_gate_02/` — S3-GATE-02 raporu ve dondurulmuş ileriye dönük ölçüm protokolü v3
 - `reports/s3_gate_01/` — S3-GATE-01 raporu ve dondurulmuş ileriye dönük ölçüm protokolü v2
 - `reports/kabul_s2_01/` — S2-KABUL-01 kabul raporu, denetim kanıtları, kontroller ve dondurulmuş protokol

@@ -11,9 +11,11 @@ Desteklenen kaynaklar:
 from __future__ import annotations
 
 import csv
+import datetime as dt
 import io
 import json
 import re
+from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
@@ -407,3 +409,258 @@ def parse_openfootball(data: bytes, league: str, keep_provider_id: bool = False)
     out["time"] = _clean_time(out["time"])
     out["source"] = "openfootball"
     return _finish(out, cols)
+
+
+# ----------------------------------------------------------------------------
+# openfootball sonuçları (S4-PILOT-01: tek ligde gerçek veri pilotu)
+# ----------------------------------------------------------------------------
+
+OPENFOOTBALL_RESULT_LABEL = "openfootball-sonuc"  # sonuç satırlarının kaynak etiketi (fikstür etiketi "openfootball")
+OPENFOOTBALL_RESULT_PARSER = "openfootball-sonuc-v1"
+_OF_SCORE_KEYS = frozenset({"ht", "ft", "et", "p"})
+_OF_NOT_PLAYED = frozenset({"postponed", "cancelled", "canceled", "abandoned", "suspended"})
+
+# Sağlayıcının kendi kulüp kaydındaki doğrulanmış alternatif adlar -> kanonik ad (lig başına). football.json eski
+# sezonlarda "Manchester City", 2020/21'den itibaren "Manchester City FC" yazar; ikisi ayrı takım sayılırsa takım
+# geçmişi sezon sınırında kopar. Kanıt: openfootball/clubs commit ae3800227c449447b3a337fc0aac79a8f02f4c8b,
+# europe/england/eng.clubs.txt (git nesnesi 685470b0704b, CC0 1.0): her ad kayıtta YALNIZCA bu kulübün alternatif
+# adı olarak listelenir. Yalnızca pilot verisinde görülen adlar; ek silme veya benzerlikle otomatik birleştirme YOK.
+OPENFOOTBALL_CLUB_ALIAS_SOURCE = "openfootball/clubs@ae3800227c449447b3a337fc0aac79a8f02f4c8b:europe/england/eng.clubs.txt"
+OPENFOOTBALL_CLUB_ALIASES: dict[str, dict[str, str]] = {
+    "E0": {
+        "Aston Villa": "Aston Villa FC", "Brighton & Hove Albion": "Brighton & Hove Albion FC",
+        "Crystal Palace": "Crystal Palace FC", "Huddersfield Town": "Huddersfield Town AFC",
+        "Hull City": "Hull City AFC", "Leicester City": "Leicester City FC",
+        "Manchester City": "Manchester City FC", "Manchester United": "Manchester United FC",
+        "Newcastle United": "Newcastle United FC", "Norwich City": "Norwich City FC",
+        "Sheffield United": "Sheffield United FC", "Stoke City": "Stoke City FC",
+        "Tottenham Hotspur": "Tottenham Hotspur FC", "West Bromwich Albion": "West Bromwich Albion FC",
+        "West Ham United": "West Ham United FC", "Wolverhampton Wanderers": "Wolverhampton Wanderers FC",
+    },
+}
+
+
+@dataclass
+class ResultParse:
+    """Bir openfootball sezon dosyasının sonuç ayrıştırması. ``matches`` yalnızca geçerli tamamlanmış maçlar
+    (``MATCH_COLUMNS`` + ``kaynak_ozeti``); ``karantina`` kayda alınmayan kayıtların nedenleri (takım adı yok)."""
+    matches: pd.DataFrame
+    sha256: str
+    toplam: int = 0
+    oynanmis: int = 0
+    ht: int = 0
+    yalniz_ft: int = 0
+    oynanmamis: int = 0
+    oynanmamis_durumlu: int = 0
+    yinelenen: int = 0
+    karantina: list = field(default_factory=list)  # [{"neden": KOD, "tarih": "YYYY-MM-DD"|None, "tur": str|None}]
+    takim: int = 0
+    tur: int = 0
+    ilk_tarih: str | None = None
+    son_tarih: str | None = None
+    son_tamamlanan: str | None = None
+    tamamlanmamis_tarihler: list = field(default_factory=list)  # oynanmamış maçların tarihleri (bayatlık ölçümü)
+    ad_eslemesi: dict = field(default_factory=dict)  # kaynak adı -> sağlayıcı kaydındaki kanonik ad (uygulananlar)
+
+    def ozet(self) -> dict:
+        from collections import Counter
+
+        return {"toplam": self.toplam, "oynanmis_gecerli": self.oynanmis, "ilk_yari_gecerli": self.ht,
+                "yalniz_mac_sonu": self.yalniz_ft, "oynanmamis": self.oynanmamis,
+                "oynanmamis_durumlu": self.oynanmamis_durumlu, "yinelenen": self.yinelenen,
+                "karantina": dict(Counter(k["neden"] for k in self.karantina)), "takim": self.takim, "tur": self.tur,
+                "ilk_tarih": self.ilk_tarih, "son_tarih": self.son_tarih, "son_tamamlanan": self.son_tamamlanan,
+                "kanonik_ad_eslemesi": dict(sorted(self.ad_eslemesi.items()))}
+
+
+def _of_pair(v) -> tuple[tuple[int, int] | None, str | None]:
+    """[ev, deplasman] skor çifti: tam sayı (bool değil), negatif değil, makul aralıkta."""
+    if not (isinstance(v, (list, tuple)) and len(v) == 2):
+        return None, "BICIM_BILINMIYOR"
+    if any(isinstance(x, bool) or not isinstance(x, int) for x in v):
+        return None, "SKOR_GECERSIZ"
+    if any(x < 0 or x > 30 for x in v):
+        return None, "SKOR_GECERSIZ"
+    return (int(v[0]), int(v[1])), None
+
+
+def _of_score(m: dict) -> tuple[str, tuple | None, tuple | None, str | None]:
+    """(durum, ms, iy, karantina_nedeni). durum: OYNANDI / OYNANMADI / KARANTINA.
+
+    Biçimler: ``score: {"ft": [a, b], "ht": [c, d]}`` (ht isteğe bağlı), ``score: [a, b]`` (yalnızca maç sonu; ilk
+    yarı YOK sayılır, uydurulmaz), eski ``score1``/``score2``. Uzatma/penaltı alanı (et/p) lig maçında belirsizdir."""
+    s = m.get("score")
+    if s is None:
+        s1, s2 = m.get("score1"), m.get("score2")
+        if s1 is None and s2 is None:
+            return "OYNANMADI", None, None, None
+        ft, err = _of_pair([s1, s2])
+        return ("OYNANDI", ft, None, None) if err is None else ("KARANTINA", None, None, err)
+    if isinstance(s, list):
+        ft, err = _of_pair(s)
+        return ("OYNANDI", ft, None, None) if err is None else ("KARANTINA", None, None, err)
+    if not isinstance(s, dict) or not s or not set(s) <= _OF_SCORE_KEYS or "ft" not in s:
+        return "KARANTINA", None, None, "BICIM_BILINMIYOR"
+    if "et" in s or "p" in s:
+        return "KARANTINA", None, None, "UZATMA_ALANI"
+    ft, err = _of_pair(s["ft"])
+    if err:
+        return "KARANTINA", None, None, err
+    ht = None
+    if "ht" in s:
+        ht, err = _of_pair(s["ht"])
+        if err:
+            return "KARANTINA", None, None, err
+        if ht[0] > ft[0] or ht[1] > ft[1]:
+            return "KARANTINA", None, None, "IY_MS_CELISKI"
+    return "OYNANDI", ft, ht, None
+
+
+def parse_openfootball_results(data: bytes, league: str, season: str) -> ResultParse:
+    """openfootball sezon dosyasındaki tamamlanmış maç sonuçları (normal süre). Belirsiz/çelişkili kayıt karantinaya
+    alınır; birebir tekrar sayılmaz; aynı anahtarla farklı içerik ikisi birden karantinaya alınır. Eksik ilk yarı
+    eksik kalır (0-0 yapılmaz); 0-0 gerçek sonuçtur. Takım adları yalnızca sağlayıcının kulüp kaydındaki doğrulanmış
+    alternatif adlarla (``OPENFOOTBALL_CLUB_ALIASES``) kanonik ada çevrilir; tekrar/çakışma/aynı gün denetimleri
+    kanonik adla yapılır. Deterministik (aynı dosya → aynı satırlar)."""
+    import hashlib
+    from collections import Counter
+
+    aliases = OPENFOOTBALL_CLUB_ALIASES.get(league, {})
+    sha = hashlib.sha256(data).hexdigest()
+    try:
+        obj = json.loads(decode_bytes(data))
+    except ValueError:
+        return ResultParse(pd.DataFrame(columns=MATCH_COLUMNS + ["kaynak_ozeti"]), sha,
+                           karantina=[{"neden": "DOSYA_OKUNAMADI", "tarih": None, "tur": None}])
+    raw = obj.get("matches") if isinstance(obj, dict) else None
+    if not isinstance(raw, list):
+        return ResultParse(pd.DataFrame(columns=MATCH_COLUMNS + ["kaynak_ozeti"]), sha,
+                           karantina=[{"neden": "BICIM_BILINMIYOR", "tarih": None, "tur": None}])
+    res = ResultParse(pd.DataFrame(), sha, toplam=len(raw))
+    # Sezon penceresi: 1. turun ilk günü .. +400 gün. Dışındaki tarih (ör. yılı yanlış yazılmış kayıt) karantinaya
+    # alınır; yıl tahmin edilip düzeltilmez.
+    from ..eligibility import round_number
+
+    first_round = []
+    for m in raw:
+        if isinstance(m, dict) and isinstance(m.get("round"), str) and round_number(m["round"]) == 1:
+            try:
+                first_round.append(dt.date.fromisoformat(m.get("date")))
+            except (TypeError, ValueError):
+                pass
+    season_start = min(first_round) if first_round else None
+    kept: dict[tuple, dict] = {}
+    conflict: set[tuple] = set()
+    teams, rounds, dates, open_dates = set(), set(), [], []
+    for m in raw:
+        if not isinstance(m, dict):
+            res.karantina.append({"neden": "BICIM_BILINMIYOR", "tarih": None, "tur": None})
+            continue
+        t1, t2 = m.get("team1"), m.get("team2")
+        t1 = t1.get("name") if isinstance(t1, dict) else t1
+        t2 = t2.get("name") if isinstance(t2, dict) else t2
+        rnd = m.get("round") if isinstance(m.get("round"), str) else None
+        d = m.get("date")
+        try:
+            day = dt.date.fromisoformat(d) if isinstance(d, str) else None
+        except ValueError:
+            day = None
+        if day is None:
+            res.karantina.append({"neden": "TARIH_GECERSIZ", "tarih": None, "tur": rnd})
+            continue
+        if season_start is not None and not (season_start <= day <= season_start + dt.timedelta(days=400)):
+            res.karantina.append({"neden": "TARIH_SEZON_DISI", "tarih": str(day), "tur": rnd})
+            continue
+        if not (isinstance(t1, str) and isinstance(t2, str) and t1.strip() and t2.strip()
+                and t1.strip() != t2.strip()):
+            res.karantina.append({"neden": "TAKIM_GECERSIZ", "tarih": str(day), "tur": rnd})
+            continue
+        t1, t2 = t1.strip(), t2.strip()
+        for t in (t1, t2):
+            if t in aliases:
+                res.ad_eslemesi[t] = aliases[t]
+        t1, t2 = aliases.get(t1, t1), aliases.get(t2, t2)
+        if t1 == t2:
+            res.karantina.append({"neden": "TAKIM_GECERSIZ", "tarih": str(day), "tur": rnd})
+            continue
+        teams |= {t1, t2}
+        if rnd:
+            rounds.add(rnd)
+        dates.append(day)
+        state, ft, ht, err = _of_score(m)
+        status = m.get("status")
+        if status is not None:
+            st_norm = str(status).strip().lower()
+            if st_norm in _OF_NOT_PLAYED and state == "OYNANMADI":
+                res.oynanmamis_durumlu += 1
+                continue
+            state, err = "KARANTINA", "DURUM_BELIRSIZ"  # skorlu ertelenmiş, hükmen vb.: normal süre sonucu değil
+        if state == "KARANTINA":
+            res.karantina.append({"neden": err, "tarih": str(day), "tur": rnd})
+            continue
+        if state == "OYNANMADI":
+            res.oynanmamis += 1
+            open_dates.append(day)
+            continue
+        pid = m.get("id")
+        key = (("id", str(pid)) if isinstance(pid, (str, int)) and not isinstance(pid, bool) else ("mac", day, t1, t2))
+        content = {"date": day, "home": t1, "away": t2, "round": rnd, "ft": ft, "ht": ht,
+                   "time": str(m.get("time") or "")[:5]}
+        alt = ("mac", day, t1, t2)  # farklı tur etiketiyle aynı maç da aynı olaydır
+        prev = kept.get(key) or kept.get(alt)
+        if prev is not None:
+            if (prev["ft"], prev["ht"]) == (ft, ht) and (prev["home"], prev["away"]) == (t1, t2):
+                res.yinelenen += 1  # birebir tekrar: sayımı artırmaz
+            else:
+                conflict.add(key if key in kept else alt)
+                res.karantina.append({"neden": "CAKISAN_KAYIT", "tarih": str(day), "tur": rnd})
+            continue
+        kept[key] = content
+        if key != alt:
+            kept[alt] = content
+    seen_ids = set()
+    rows = []
+    for key, c in kept.items():
+        if id(c) in seen_ids:
+            continue
+        seen_ids.add(id(c))
+        if key in conflict or ("mac", c["date"], c["home"], c["away"]) in conflict:
+            res.karantina.append({"neden": "CAKISAN_KAYIT", "tarih": str(c["date"]), "tur": c["round"]})
+            continue
+        rows.append(c)
+    # Aynı gün iki kez oynayan takım: kayıtlardan hangisinin doğru olduğu bilinemez (ikisi de karantina)
+    per_day = Counter((c["date"], t) for c in rows for t in (c["home"], c["away"]))
+    bad = {k for k, n in per_day.items() if n > 1}
+    if bad:
+        keep = []
+        for c in rows:
+            if (c["date"], c["home"]) in bad or (c["date"], c["away"]) in bad:
+                res.karantina.append({"neden": "AYNI_GUN_IKI_MAC", "tarih": str(c["date"]), "tur": c["round"]})
+            else:
+                keep.append(c)
+        rows = keep
+    res.oynanmis = len(rows)
+    res.ht = sum(1 for c in rows if c["ht"] is not None)
+    res.yalniz_ft = res.oynanmis - res.ht
+    res.takim, res.tur = len(teams), len(rounds)
+    res.ilk_tarih = str(min(dates)) if dates else None
+    res.son_tarih = str(max(dates)) if dates else None
+    res.son_tamamlanan = str(max(c["date"] for c in rows)) if rows else None
+    res.tamamlanmamis_tarihler = sorted(str(x) for x in open_dates)
+    if not rows:
+        res.matches = pd.DataFrame(columns=MATCH_COLUMNS + ["kaynak_ozeti"])
+        return res
+    out = pd.DataFrame({
+        "league": league, "season": season, "date": pd.to_datetime([str(c["date"]) for c in rows]),
+        "time": [c["time"] for c in rows], "home": [c["home"] for c in rows], "away": [c["away"] for c in rows],
+        "fthg": [c["ft"][0] for c in rows], "ftag": [c["ft"][1] for c in rows],
+        "hthg": [float(c["ht"][0]) if c["ht"] is not None else np.nan for c in rows],
+        "htag": [float(c["ht"][1]) if c["ht"] is not None else np.nan for c in rows],
+    })
+    out["time"] = _clean_time(out["time"])
+    out["source"] = OPENFOOTBALL_RESULT_LABEL
+    out = _finish(out, MATCH_COLUMNS)
+    out = out.sort_values(["date", "home", "away"], kind="mergesort").reset_index(drop=True)
+    out["kaynak_ozeti"] = sha
+    res.matches = out
+    return res

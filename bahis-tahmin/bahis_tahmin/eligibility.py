@@ -100,6 +100,9 @@ FINISHED = "FINISHED"
 SCHEDULED_OR_UNKNOWN = "SCHEDULED_OR_UNKNOWN"
 # Takım adları veri deposundan farklı olan ve ``data.teams`` ile eşlenen fikstür kaynakları (fikstür etiketi)
 MAPPED_FIXTURE_SOURCES = frozenset({"openfootball"})
+# Kapsam kaynağıyla AYNI veri zincirinden gelen depo etiketleri: bu satırlar kaynağın bağımsız denetimi olamaz
+# (bağımsız katılımcı listesine girmez; depo↔kaynak karşılaştırması tek kaynak zinciri olarak işaretlenir)
+COVERAGE_CHAIN_LABELS = {"openfootball": frozenset({"openfootball", "openfootball-sonuc"})}
 
 # ----------------------------------------------------------------------------
 # Neden kodları
@@ -206,6 +209,10 @@ REASONS: dict[str, Reason] = {
     "KAYNAK_MODEL_KULLANIMI_DOGRULANAMADI": Reason(
         "Bu veriyle eğitilmiş modelin kullanım hakkı belgeyle doğrulanmadı; tahmin ve bahis adayı üretilmez.",
         "tahmin", None, "Kaynağın lisans/izin belgesini kaynak kaydına ekleyin (uygulamadaki onay yeterli değildir)."),
+    "KAYNAK_KOKENI_DOGRULANAMADI": Reason(
+        "Sonuç satırlarının gerçekten kayıtlı kaynak dosyasından geldiği doğrulanamadı (köken kaydı, dosya özeti veya "
+        "yeniden ayrıştırma uyuşmuyor); etiket tek başına hak vermez.", "tahmin", None,
+        "Verileri kaynağın kendi sonuç adaptörüyle sabit commit üzerinden yeniden hazırlayın."),
     "MODEL_EGITIM_KOKENI_YOK": Reason(
         "Model dosyasında eğitim verisinin kaynak kökeni yok; modelin izinli kullanımı doğrulanamıyor (eski model).",
         "tahmin", None, "Hakları belgeli veriyle modeli yeniden eğitin (eski model dosyasına köken uydurulmaz)."),
@@ -222,7 +229,7 @@ LEAD_ORDER = (
     "KAYNAK_KAPSAMI_YOK", "KAYNAK_KAPSAMI_KISMI", "KAYNAK_KARAR_ANINDAN_SONRA", "KAYNAK_ESLESME_BELIRSIZ",
     "KAYNAK_DEPO_CELISKISI", "KAYNAK_DURUMU_BELIRSIZ", "KAYNAK_ARALIK_DISI", "LIG_DURUMU_BELIRSIZ",
     "OLASILIK_GECERSIZ", "GEREKLI_ALAN_EKSIK", "TAKIM_GECMISI_YETERSIZ", "KAYNAK_ERISIM_IZNI_YOK",
-    "KAYNAK_HAKKI_BILINMIYOR", "KAYNAK_ETIKETI_UYUMSUZ", "MODEL_EGITIM_KOKENI_YOK",
+    "KAYNAK_HAKKI_BILINMIYOR", "KAYNAK_ETIKETI_UYUMSUZ", "KAYNAK_KOKENI_DOGRULANAMADI", "MODEL_EGITIM_KOKENI_YOK",
     "KAYNAK_SONUC_KULLANIMI_DOGRULANAMADI", "KAYNAK_EGITIM_HAKKI_DOGRULANAMADI", "KAYNAK_MODEL_KULLANIMI_DOGRULANAMADI",
     "LIG_IY_ORANI_DUSUK",
 )
@@ -672,6 +679,7 @@ class SourceUse:
     erisim_kosullari: str = "BILINMIYOR"  # kaynağın erişim/indirme koşulları (indirme onayından ayrı)
     ticari_kullanim: str = "BILINMIYOR"
     saglar: tuple[str, ...] = ()  # kaynağın uygulamada sağladığı veri türleri ("sonuc", "fikstur", "takvim")
+    koken: str = "GEREKMEZ"  # GEREKMEZ / DOGRULANDI / DOGRULANAMADI (satırların gerçekten bu kaynaktan geldiği)
 
 
 # İşlem -> gerekli kapsam. "veri": işlemde kullanılan sonuç verisinin etiketleri; "model": modelin eğitim verisinin
@@ -704,6 +712,8 @@ class RightsStatus:
                 continue
             if "sonuc" not in u.saglar:
                 out.append("KAYNAK_ETIKETI_UYUMSUZ")
+            if u.koken == "DOGRULANAMADI":
+                out.append("KAYNAK_KOKENI_DOGRULANAMADI")
             if u.erisim not in ("IZINLI", "ONAY_VAR"):
                 out.append("KAYNAK_ERISIM_IZNI_YOK")
             need = (scope["veri"] if lb in data_labels else ()) + (scope["model"] if lb in train_labels else ())
@@ -716,8 +726,11 @@ class RightsStatus:
         return {lb: (asdict(self.by_label[lb]) if lb in self.by_label else None) for lb in sorted(set(labels))}
 
 
-def rights_from_registry(labels, consent: dict | None) -> RightsStatus:
-    """Kaynak kaydındaki BELGELİ kullanım kapsamı + kullanıcı onayı (onay yalnızca erişimi etkiler)."""
+def rights_from_registry(labels, consent: dict | None, verified_labels=None) -> RightsStatus:
+    """Kaynak kaydındaki BELGELİ kullanım kapsamı + kullanıcı onayı (onay yalnızca erişimi etkiler).
+
+    ``verified_labels``: kökeni doğrulanmış etiketler (``data.provenance.verified_labels``). Kaydında
+    ``koken_dogrulamasi`` olan kaynak, etiketi doğrulanmadıkça hak kazanmaz."""
     from .data.source_registry import SOURCE_LABELS, SOURCES, USE_RIGHTS
 
     consent = consent or {}
@@ -729,13 +742,15 @@ def rights_from_registry(labels, consent: dict | None) -> RightsStatus:
             continue
         r = USE_RIGHTS[key]
         erisim = "IZINLI" if not SOURCES[key].requires_consent else ("ONAY_VAR" if key in consent else "ONAY_YOK")
+        koken = ("GEREKMEZ" if not r.get("koken_dogrulamasi") else
+                 "DOGRULANDI" if lb in set(verified_labels or ()) else "DOGRULANAMADI")
         out[lb] = SourceUse(lb, key, erisim, r["sonuc_kullanimi"], r["model_egitimi"], r["yeniden_dagitim"],
                             r.get("model_kullanimi", "BILINMIYOR"), r.get("erisim_kosullari", "BILINMIYOR"),
-                            r.get("ticari_kullanim", "BILINMIYOR"), tuple(r.get("saglar", ())))
+                            r.get("ticari_kullanim", "BILINMIYOR"), tuple(r.get("saglar", ())), koken)
     return RightsStatus(out)
 
 
-def training_rights_codes(matches: pd.DataFrame | None, consent: dict | None) -> list[str]:
+def training_rights_codes(matches: pd.DataFrame | None, consent: dict | None, verified_labels=None) -> list[str]:
     """Gerçek veriyle model eğitimi için engel kodları (boş = eğitime hak açısından engel yok).
 
     Eğitim verisinin her satırının kaynağı kayıtlı olmalı ve kaynak kaydında sonuç kullanımı ile model eğitimi hakkı
@@ -747,7 +762,7 @@ def training_rights_codes(matches: pd.DataFrame | None, consent: dict | None) ->
     src = matches["source"]
     out = ["KAYNAK_HAKKI_BILINMIYOR"] if src.isna().any() else []
     labels = set(src.dropna().astype(str))
-    return sorted(set(out) | set(rights_from_registry(labels, consent).codes(labels, (), "egitim")))
+    return sorted(set(out) | set(rights_from_registry(labels, consent, verified_labels).codes(labels, (), "egitim")))
 
 
 # ----------------------------------------------------------------------------
@@ -879,7 +894,7 @@ class EligibilityContext:
 
     def __init__(self, matches: pd.DataFrame | None, state: StateView | None,
                  coverages: dict | None = None, rights: RightsStatus | None = None,
-                 consent: dict | None = None):
+                 consent: dict | None = None, verified_labels=None):
         self.state = state
         self.coverages = {lg: tuple(v) for lg, v in (coverages or {}).items()}
         need = ("league", "date", "home", "away", "fthg", "ftag")
@@ -907,7 +922,8 @@ class EligibilityContext:
         self._by_league = {lg: g.sort_values("day", kind="mergesort") for lg, g in m.groupby("league", sort=False)}
         labels = set(m["source"].dropna().astype(str))
         train = set(state.train_sources) if (state is not None and state.train_sources is not None) else labels
-        self.rights = rights if rights is not None else rights_from_registry(labels | train, consent)
+        self.rights = (rights if rights is not None
+                       else rights_from_registry(labels | train, consent, verified_labels))
         h = hashlib.sha256()
         h.update(pd.util.hash_pandas_object(m[["league", "day", "home", "away", "source", "ingest"]].astype(str),
                                             index=False).values.tobytes() if len(m) else b"bos")
@@ -1095,6 +1111,7 @@ class EligibilityContext:
                 "tam": c.complete,  # (A) tam sezon takvimi; geriye uyumlu anahtar
                 "gecmis_aralik_kaniti": [[str(day_to_date(s)), str(day_to_date(e))] for s, e in c.verified_windows],
                 "bagimsiz_katilimci": c.participants, "eslesme_surumu": c.matching_version or None,
+                "depo_ayni_kaynak_zinciri": bool(set(labels) & COVERAGE_CHAIN_LABELS.get(c.source, frozenset())),
                 "aciklama": c.detail, "ozet": c.sha256[:16]})
         near = g_all[g_all["day"] < cut_day + PAIR_DAY_TOLERANCE]  # aynı maçın yerel tarih farkı (sınırda da)
         partial = [c for c in usable if not c.verified_windows]
@@ -1486,16 +1503,26 @@ def season_participants(matches: pd.DataFrame | None) -> dict:
     return out
 
 
-def build_context(store, engine, consent: dict | None, today: dt.date | None = None) -> EligibilityContext:
-    """Uygulama/CLI için bağlam: veri deposu + motorun durumu + önbellekteki kaynak takvimleri + kayıtlı haklar."""
+def build_context(store, engine, consent: dict | None, today: dt.date | None = None,
+                  participants: dict | None = None) -> EligibilityContext:
+    """Uygulama/CLI için bağlam: veri deposu + motorun durumu + önbellekteki kaynak takvimleri + kayıtlı haklar.
+
+    ``participants``: (lig, sezon) -> bağımsız katılımcılar (depo adlarıyla). Verilmezse depodan türetilir; kapsam
+    kaynağıyla aynı veri zincirinden gelen satırlar (``COVERAGE_CHAIN_LABELS``) bağımsız sayılmaz ve dışarıda kalır.
+    Sonuç satırlarının kökeni ``data.provenance`` ile doğrulanır (ağ isteği yok)."""
+    from .data.provenance import verified_labels
+
     today = today or dt.datetime.now(ISTANBUL).date()
     matches = getattr(store, "matches", None)
     sv = state_view(engine)
     leagues = sorted(set(matches["league"].unique())) if matches is not None and not matches.empty else []
     tmp = EligibilityContext(matches, None, rights=RightsStatus({}))
     known = {lg: tmp.recent_teams(lg) for lg in leagues}
-    covs = cached_coverages(getattr(store, "raw_dir", "."), leagues, today, known, season_participants(matches))
-    return EligibilityContext(matches, sv, covs, consent=consent)
+    if participants is None and matches is not None and not matches.empty and "source" in matches:
+        chain = COVERAGE_CHAIN_LABELS["openfootball"]
+        participants = season_participants(matches[~matches["source"].astype(str).isin(chain)])
+    covs = cached_coverages(getattr(store, "raw_dir", "."), leagues, today, known, participants)
+    return EligibilityContext(matches, sv, covs, consent=consent, verified_labels=verified_labels(store))
 
 
 @dataclass

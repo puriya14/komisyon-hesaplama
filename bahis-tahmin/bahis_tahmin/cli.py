@@ -74,9 +74,10 @@ def _now_utc():
 def _training_blocked(st) -> bool:
     """Gerçek veriyle model eğitimi hak kapsamı (S3-GATE-02): eğitim verisinin kaynaklarında sonuç kullanımı ve model
     eğitimi hakkı belgeli değilse eğitim yapılmaz. Onay veya bayrak bu kontrolü aşamaz."""
+    from .data.provenance import verified_labels
     from .eligibility import reason_texts, training_rights_codes
 
-    codes = training_rights_codes(st.matches, Settings.load().source_consent)
+    codes = training_rights_codes(st.matches, Settings.load().source_consent, verified_labels(st))
     if codes:
         print("Model eğitimi yapılmadı (veri kaynağının kullanım kapsamı doğrulanmadı): " + reason_texts(codes),
               file=sys.stderr)
@@ -584,6 +585,50 @@ def cmd_seq_prematch(a) -> int:
     return 0
 
 
+def _pilot_run(fn) -> int:
+    """Pilot komutlarının ortak çıktısı: JSON özet (yalnızca sayılar/kimlikler; maç satırı yok)."""
+    import json as _json
+
+    from .pilot import PilotError
+
+    try:
+        out = fn()
+    except PilotError as e:
+        print(f"Pilot: {e}", file=sys.stderr)
+        return 3
+    print(_json.dumps(out, ensure_ascii=False, indent=1, default=str))
+    return 0
+
+
+def cmd_pilot_coverage(a) -> int:
+    """S4 pilotu: kaynak kapsamı, köken, katılımcı referansı, model ve defter durumu (salt okunur)."""
+    from .pilot import summary
+
+    return _pilot_run(lambda: summary(a.ev))
+
+
+def cmd_pilot_prepare(a) -> int:
+    """S4 pilotu: openfootball sonuçlarını sabit commit'ten pilot klasörüne hazırlar (yalnızca o klasöre yazar)."""
+    from .pilot import prepare
+
+    return _pilot_run(lambda: prepare(a.ev, ref=a.ref, completed=a.sezon, fixture_days=a.gun,
+                                      participants_file=a.katilimci))
+
+
+def cmd_pilot_train(a) -> int:
+    """S4 pilotu: mevcut gol motorunun ayrı pilot örneğini yalnızca pilot verisiyle eğitir."""
+    from .pilot import train
+
+    return _pilot_run(lambda: train(a.ev, progress=_progress))
+
+
+def cmd_pilot_forecast(a) -> int:
+    """S4 pilotu: yaklaşan maçlar için A/B/C kayıtları (varsayılan kuru çalıştırma; --uygula pilot defterine yazar)."""
+    from .pilot import forecast
+
+    return _pilot_run(lambda: forecast(a.ev, apply=a.uygula))
+
+
 def cmd_self_test(a) -> int:
     from .selftest import run_self_test
 
@@ -667,5 +712,25 @@ def main(argv: list[str] | None = None) -> int:
     sb = sub.add_parser("dizi-benzer", help="maç öncesi benzer diziler (yaklaşan maç; olay sonrası bilgi yok)")
     sb.add_argument("--takim", required=True)
     sb.set_defaults(fn=cmd_seq_prematch)
+    # S4 pilotu: openfootball sonuçlarıyla tek lig (E0); bütün yazmalar yalnızca --ev klasörüne
+    pk = sub.add_parser("pilot-kapsam", help="S4 pilotu: kaynak kapsamı, köken, model ve defter durumu (salt okunur)")
+    pk.add_argument("--ev", required=True, help="pilot klasörü (uygulama veri klasöründen ayrı olmalı)")
+    pk.set_defaults(fn=cmd_pilot_coverage)
+    ph = sub.add_parser("pilot-hazirla", help="S4 pilotu: openfootball E0 sonuçlarını sabit commit'ten pilot "
+                                               "klasörüne indir ve hazırla (yalnızca o klasöre yazar)")
+    ph.add_argument("--ev", required=True, help="pilot klasörü (uygulama veri klasöründen ayrı olmalı)")
+    ph.add_argument("--ref", help="openfootball/football.json commit'i (40 karakter); verilmezse GitHub'dan çözülür")
+    ph.add_argument("--sezon", type=int, default=10, help="tamamlanmış sezon sayısı (varsayılan 10; en çok 16)")
+    ph.add_argument("--gun", type=int, default=10, help="fikstür penceresi (gün)")
+    ph.add_argument("--katilimci", help="bağımsız katılımcı referansı JSON (resmî kaynaktan; bkz. docs/S4_PILOT.md)")
+    ph.set_defaults(fn=cmd_pilot_prepare)
+    pe = sub.add_parser("pilot-egit", help="S4 pilotu: mevcut gol motorunu yalnızca pilot verisiyle eğit")
+    pe.add_argument("--ev", required=True, help="pilot klasörü")
+    pe.set_defaults(fn=cmd_pilot_train)
+    pt = sub.add_parser("pilot-tahmin", help="S4 pilotu: yaklaşan maçlar için A/B/C kayıtları (varsayılan kuru "
+                                              "çalıştırma)")
+    pt.add_argument("--ev", required=True, help="pilot klasörü")
+    pt.add_argument("--uygula", action="store_true", help="kayıtları pilot defterine yaz (değişmez)")
+    pt.set_defaults(fn=cmd_pilot_forecast)
     a = p.parse_args(argv)
     return a.fn(a)

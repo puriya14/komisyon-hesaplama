@@ -16,21 +16,25 @@ DEFAULT_LEAGUES = [
 ]
 
 
+def app_home_path() -> Path:
+    """Uygulama veri klasörünün yolu (klasör oluşturulmaz; ör. pilot dizininin bundan ayrı olduğunu denetlemek için)."""
+    env = os.environ.get("BAHIS_TAHMIN_HOME")
+    if env:
+        return Path(env)
+    if sys.platform == "win32":
+        local = os.environ.get("LOCALAPPDATA")
+        return (Path(local) if local else Path.home() / "AppData" / "Local") / APP_NAME
+    xdg = os.environ.get("XDG_DATA_HOME")
+    return (Path(xdg) if xdg else Path.home() / ".local" / "share") / APP_NAME
+
+
 def app_home() -> Path:
     """Verilerin ve modelin saklandığı klasör.
 
     Windows'ta %LOCALAPPDATA%\\BahisTahmin. Testler için BAHIS_TAHMIN_HOME
     ortam değişkeni ile değiştirilebilir.
     """
-    env = os.environ.get("BAHIS_TAHMIN_HOME")
-    if env:
-        base = Path(env)
-    elif sys.platform == "win32":
-        local = os.environ.get("LOCALAPPDATA")
-        base = (Path(local) if local else Path.home() / "AppData" / "Local") / APP_NAME
-    else:
-        xdg = os.environ.get("XDG_DATA_HOME")
-        base = (Path(xdg) if xdg else Path.home() / ".local" / "share") / APP_NAME
+    base = app_home_path()
     base.mkdir(parents=True, exist_ok=True)
     return base
 

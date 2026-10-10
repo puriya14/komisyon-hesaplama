@@ -285,7 +285,11 @@ def test_goals_page(app, window, goal_setup):
     last = page.scan_model.frame.iloc[-1]
     assert last["A"] != last["A"] and last["data"].startswith("Doğrulanamıyor") and "BAGLAM_YOK" in last["neden"]
     page.refresh_coverage()
-    assert page.cov_model.rowCount() > 0 and page.src_model.rowCount() == 4
+    # S4-PILOT-01: kaynak kaydına pilotun sonuç kaynağı eklendi (5. satır); ana uygulamada kullanılmadığı açıkça yazar
+    assert page.cov_model.rowCount() > 0 and page.src_model.rowCount() == 5
+    status = dict(zip(page.src_model.frame["Kaynak"], page.src_model.frame["Durum"]))
+    assert status["openfootball/football.json (maç sonuçları; S4 pilotu)"].startswith("Yalnızca S4 pilotu")
+    assert status["The Odds API"] == "Entegre edilmedi" and status["openfootball/football.json"] == "Onay gerekmez"
 
 
 def test_sequences_page_historical_view(app, window):

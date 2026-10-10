@@ -81,6 +81,24 @@ SOURCES: dict[str, SourceInfo] = {
         cost="Ücretsiz",
         requires_consent=False,
     ),
+    "openfootball-sonuc": SourceInfo(
+        key="openfootball-sonuc",
+        name="openfootball/football.json (maç sonuçları; S4 pilotu)",
+        url="https://github.com/openfootball/football.json",
+        terms_url="https://github.com/openfootball/football.json/blob/master/LICENSE.md",
+        license_summary=(
+            "CC0 1.0: derleyici kendi telif ve veritabanı haklarından feragat eder. CC0 veri doğruluğunu garanti "
+            "etmez ve üçüncü kişilerin olası haklarını (ör. lig fikstür listeleri üzerindeki talepler) temizlemez "
+            "(CC0 madde 4). Yalnızca pilot sonuç adaptörüyle okunan ve kökeni doğrulanan satırlar için geçerlidir."
+        ),
+        commercial_use="CC0 (derleyicinin hakları açısından izinli; üçüncü kişi hakları temizlenmez).",
+        automated_download="Sabit commit üzerinden, önbellekli ve seyrek (tek lig).",
+        model_training="CC0 (derleyicinin hakları açısından izinli).",
+        redistribution="CC0 (derleyicinin hakları açısından izinli); uygulama ham veriyi dağıtmaz.",
+        coverage="Sezon dosyalarında normal süre sonucu (score.ft / liste) ve çoğu maçta ilk yarı (score.ht).",
+        cost="Ücretsiz",
+        requires_consent=False,
+    ),
     "the-odds-api": SourceInfo(
         key="the-odds-api",
         name="The Odds API",
@@ -105,7 +123,8 @@ SOURCES: dict[str, SourceInfo] = {
 IMPLEMENTED = ("football-data", "github-mirror", "openfootball")
 
 # Veri deposundaki ``source`` etiketi -> kaynak anahtarı
-SOURCE_LABELS = {"football-data.co.uk": "football-data", "github-yedek": "github-mirror", "openfootball": "openfootball"}
+SOURCE_LABELS = {"football-data.co.uk": "football-data", "github-yedek": "github-mirror", "openfootball": "openfootball",
+                 "openfootball-sonuc": "openfootball-sonuc"}
 
 # Kullanım kapsamının yapılandırılmış hâli (veri uygunluk kontrolü bunu okur; S3-GATE-01, kapsamlar S3-GATE-02).
 # Değerler yukarıdaki SOURCES metinlerinin aynısıdır, YENİ HAK VERMEZ: belge yoksa "DOGRULANAMADI" kalır. Ayrı alanlar:
@@ -136,6 +155,17 @@ USE_RIGHTS: dict[str, dict] = {
                      "ticari_kullanim": "IZINLI_BELGELI", "yeniden_dagitim": "IZINLI_BELGELI",
                      "belge": SOURCES["openfootball"].terms_url, "saglar": ("fikstur", "takvim"),
                      "belge_denetimi": "CC0 1.0 lisans dosyası (S2 denetimi)."},
+    # Sonuç verisi (S4-PILOT-01): "sonuc" türü yalnızca gerçek sonuç adaptörüyle okunan ve kökeni doğrulanan satırlara
+    # tanınır (``koken_dogrulamasi``); etiket tek başına hak vermez (data/provenance.py).
+    "openfootball-sonuc": {"erisim_kosullari": "IZINLI_BELGELI", "sonuc_kullanimi": "IZINLI_BELGELI",
+                           "model_egitimi": "IZINLI_BELGELI", "model_kullanimi": "IZINLI_BELGELI",
+                           "ticari_kullanim": "IZINLI_BELGELI", "yeniden_dagitim": "IZINLI_BELGELI",
+                           "belge": "https://github.com/openfootball/football.json/blob/master/LICENSE.md",
+                           "saglar": ("sonuc",), "koken_dogrulamasi": True,
+                           "belge_denetimi": ("2026-10-10 (S4-PILOT-01): LICENSE.md, commit e6744429ee39 git nesnesi "
+                                              "670154e3538863b2 — CC0 1.0 Universal metni okundu."),
+                           "sinirlar": ("CC0 doğruluk garantisi vermez ve üçüncü kişi haklarını temizlemez (madde 4); "
+                                        "uygulama ham veriyi dağıtmaz.")},
 }
 
 
