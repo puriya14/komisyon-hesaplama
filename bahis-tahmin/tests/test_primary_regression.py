@@ -13,7 +13,10 @@ import pytest
 
 from tests.conftest import FIXTURES
 
-TOL = 1e-7
+# Aynı makinede eski (b78a992) ve yeni kod birebir aynı sonuç verdi (en büyük fark 0). Farklı işlemci/BLAS üzerinde
+# L-BFGS uyumunun sonlanma noktası ~1e-6 düzeyinde oynar (CI'da gözlenen en büyük fark 4,1e-6). Tolerans bu gürültünün
+# üzerinde, gerçek bir model/etiket değişikliğinin (tipik olarak ≥ 1e-3) çok altındadır. Etiketler birebir karşılaştırılır.
+TOL = 5e-5
 
 
 @pytest.fixture(scope="module")
