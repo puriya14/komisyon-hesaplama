@@ -19,7 +19,9 @@ class ConsentDialog(QDialog):
         intro = QLabel(
             "Uygulama geçmiş maç verisini aşağıdaki kaynaklardan <b>sizin bilgisayarınıza</b> indirir. Bu kaynakların "
             "yeniden kullanım ve model eğitimi koşulları açıkça doğrulanamadı. Koşulları kaynağın sitesinde okuyup "
-            "verileri yalnızca kişisel, ticari olmayan analiz için kullanmayı kabul ediyorsanız ilgili kutuyu işaretleyin. "
+            "verilerin bilgisayarınıza indirilmesini kabul ediyorsanız ilgili kutuyu işaretleyin. Bu onay yalnızca "
+            "indirmeyi (erişimi) kapsar: sonuç kullanımı, model eğitimi ve model kullanımı hakkı kaynak belgesiyle "
+            "doğrulanmadıkça uygulama bu veriyle model eğitmez ve tahmin/olasılık göstermez. "
             "Onay vermediğiniz kaynaktan veri indirilmez; onayı Veri sayfasından geri alabilirsiniz."
         )
         intro.setWordWrap(True)
@@ -38,7 +40,7 @@ class ConsentDialog(QDialog):
             info.setTextFormat(Qt.RichText)
             info.setOpenExternalLinks(True)
             lay.addWidget(info)
-            box = QCheckBox(f"{s.name} koşullarını okudum; kişisel ve ticari olmayan kullanım için onaylıyorum.")
+            box = QCheckBox(f"{s.name} koşullarını okudum; verilerin bu bilgisayara indirilmesini onaylıyorum.")
             box.setChecked(key in consent)
             self.boxes[key] = box
             lay.addWidget(box)

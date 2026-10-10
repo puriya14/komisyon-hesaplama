@@ -30,12 +30,30 @@ SYN_LABEL = "sentetik"
 
 
 def synthetic_rights(label: str = SYN_LABEL, model_training: str = "IZINLI_BELGELI",
-                     result_use: str = "IZINLI_BELGELI", access: str = "IZINLI") -> RightsStatus:
-    """Testte açıkça belgeli sayılan SENTETİK kaynak hakları (gerçek kaynak kaydını değiştirmez)."""
+                     result_use: str = "IZINLI_BELGELI", access: str = "IZINLI", model_use: str = "IZINLI_BELGELI",
+                     provides: tuple = ("sonuc",)) -> RightsStatus:
+    """Testte açıkça belgeli sayılan SENTETİK kaynak hakları (gerçek kaynak kaydını değiştirmez). Yeniden dağıtım ve
+    ticari kullanım bilinçli olarak izinsiz bırakılır: yerel tahmin/bahis işlemleri bu haklara bağlı değildir."""
     from bahis_tahmin.eligibility import SourceUse
 
     return RightsStatus({label: SourceUse(label, "SENTETIK-TEST", access, result_use, model_training,
-                                          "IZIN_VARSAYILMAZ")})
+                                          "IZIN_VARSAYILMAZ", model_use, "IZINLI_BELGELI", "IZIN_VARSAYILMAZ",
+                                          tuple(provides))})
+
+
+def register_synthetic_source(monkeypatch, label: str = SYN_LABEL) -> None:
+    """Uygulama yollarını (CLI/arayüz) sentetik veriyle sınamak için kaynak kaydına YALNIZCA test süresince açıkça
+    sentetik bir kaynak ekler (monkeypatch; gerçek kayıt değişmez, uygulamada böyle bir atlatma yolu yoktur)."""
+    from bahis_tahmin.data import source_registry as R
+
+    monkeypatch.setitem(R.SOURCE_LABELS, label, "sentetik-test")
+    monkeypatch.setitem(R.SOURCES, "sentetik-test", R.SourceInfo(
+        "sentetik-test", "Sentetik test verisi", "-", "-", "Test için üretilmiş sentetik veri.", "-", "-", "-", "-",
+        "-", "-", requires_consent=False))
+    monkeypatch.setitem(R.USE_RIGHTS, "sentetik-test", {
+        "erisim_kosullari": "IZINLI_BELGELI", "sonuc_kullanimi": "IZINLI_BELGELI", "model_egitimi": "IZINLI_BELGELI",
+        "model_kullanimi": "IZINLI_BELGELI", "ticari_kullanim": "IZIN_VARSAYILMAZ",
+        "yeniden_dagitim": "IZIN_VARSAYILMAZ", "belge": "tests/uygunluk_yardim.py", "saglar": ("sonuc",)})
 
 
 # Sabit, gerçek saatten bağımsız test anı: v2 protokol dondurma gününden sonra; sentetik veri 2020/21–2025/26

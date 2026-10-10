@@ -15,9 +15,10 @@ sistem saati) hedeften önce olmalıdır; değilse olasılık yazılmaz (``PENCE
 dondurma anından önce oynanan maç ileriye dönük kabul edilmez.
 
 Protokol sürümleri: ``ileriye-donuk-olcum-v1`` (2026-10-10, dondurulmuş; 21 gün / son tarih sonrası eksik maç
-kuralı) DEĞİŞTİRİLMEDİ ve kayıtları ayrı raporlanır. Yeni kayıtlar ``ileriye-donuk-olcum-v2`` ile yazılır: veri
-uygunluğu ortak kontrolden (``bahis_tahmin.eligibility``, politika ``veri-uygunluk-v1``) gelir; eşleşmeyen fikstürler
-aday kimlikle nedenli ``TAHMIN_YOK`` olarak kaydedilir (S3-GATE-01).
+kuralı) ve ``ileriye-donuk-olcum-v2`` (S3-GATE-01, politika ``veri-uygunluk-v1``) DEĞİŞTİRİLMEDİ; kayıtları ayrı
+raporlanır. Yeni kayıtlar ``ileriye-donuk-olcum-v3`` ile yazılır (S3-GATE-02): veri uygunluğu politika
+``veri-uygunluk-v2`` (kesin takım kimliği, bağımsız katılımcılarla doğrulanan takvim aralığı, "yerel analiz"
+istisnası olmadan işlem kapsamlı kaynak hakları) ile ortak kontrolden gelir.
 """
 
 from __future__ import annotations
@@ -165,9 +166,60 @@ PROTOCOL_V2_FROZEN = {
     "dondurma_zamani_utc": "2026-10-10T16:28:32+00:00",
     "govde_sha256": "56c41f57c2a49610f072f0016e653a33ca70f98d1212fb5effdb6fee7d333063",
 }
-ACTIVE_PROTOCOL = PROTOCOL_V2_VERSION
-PROTOCOLS = {PROTOCOL_VERSION: (PROTOCOL_BODY, PROTOCOL_FROZEN), PROTOCOL_V2_VERSION: (PROTOCOL_V2_BODY,
-                                                                                      PROTOCOL_V2_FROZEN)}
+
+# ----------------------------------------------------------------------------
+# Protokol v3 (etkin): uygunluk politikası veri-uygunluk-v2 (S3-GATE-02). v1/v2 gövdeleri ve kayıtları değişmez.
+# ----------------------------------------------------------------------------
+
+PROTOCOL_V3_VERSION = "ileriye-donuk-olcum-v3"
+PROTOCOL_V3_BODY = {
+    **{k: v for k, v in PROTOCOL_V2_BODY.items()
+       if k not in ("surum", "onceki_surum", "degisiklik_gerekcesi", "fikstur_kaynagi", "uygunluk",
+                    "veri_uygunluk_politikasi", "veri_haklari")},
+    "surum": PROTOCOL_V3_VERSION,
+    "onceki_surum": (f"{PROTOCOL_VERSION} ve {PROTOCOL_V2_VERSION}: dondurulmuş; gövdeleri ve kayıtları "
+                     "değiştirilmez, değerlendirmede ayrı raporlanır. Sürümler birleştirilmez."),
+    "degisiklik_gerekcesi": ("v2'nin uygunluk politikası (veri-uygunluk-v1) takım adlarını önek/benzerlikle "
+                             "eşleyebiliyor (yanlış takımın geçmişi), kaynak takviminin tamlığını dosyanın kendi takım "
+                             "sayısından çıkarıyor ve belgelenmemiş sonuç kullanımı/model eğitimi hakkıyla tahmini "
+                             "'yerel analiz' olarak kaydediyordu (S3-GATE-02)."),
+    "fikstur_kaynagi": ("Çalışma anında kullanımına izin verilmiş kaynaklar (source_registry.allowed_sources): "
+                        "openfootball (CC0) ve yalnızca kullanıcı onayı varsa football-data.co.uk. Takım adları "
+                        "takim-eslesme-v2 sözleşmesiyle yalnızca KESİN kimlikle eşlenir (bağlamda benzersiz tam ad "
+                        "veya kapsamı tutan doğrulanmış takma ad); belirsiz veya yalnızca benzer adlı maç DÜŞÜRÜLMEZ: "
+                        "kaynak, lig, tarih ve ham takım adlarından türetilen kararlı aday kimlikle (kanonik maç "
+                        "kimliği değildir) üç pazar için TAKIM_ESLESMEDI nedenli TAHMIN_YOK olarak kaydedilir. "
+                        "İzinli fikstür kaynağı olmayan ligde aday maç oluşmaz."),
+    "uygunluk": [
+        "Kayıt anı < hedef karar anı (maç günü 00:00 Europe/Istanbul).",
+        "Maç günü > v3 protokol dondurma günü (İstanbul tarihi).",
+        "Maçın sonucu hesaplama anında veri deposunda yok.",
+        ("Ortak veri uygunluk kontrolü (politika veri-uygunluk-v2, bahis_tahmin/eligibility.py) bu maç ve pazar "
+         "için tahmine izin veriyor: güncellik VERIFIED_CURRENT (bağımsız katılımcı listesiyle doğrulanmış kaynak "
+         "takvimi aralığı ↔ veri deposu ↔ modelin kullandığı lig/takım durumu; takım düzeyinde ve bilgi kesimiyle "
+         "sınırlı; 365 günlük pencere), kesin takım kimliği (başka kaynaktan eşlenmiş fikstür kaynak takviminde "
+         "güncel eşleyiciyle yeniden kurulur), gerekli model girdileri, son 365 günde ligde en az 10 maç ve "
+         "işlem kapsamlı kaynak hakları (erişim onayı + belgeli sonuç kullanımı, model eğitimi ve model kullanımı; "
+         "modelin eğitim verisi kökeni kayıtlı). UNKNOWN uygun sayılmaz."),
+        "Olasılık sonlu ve (0, 1) aralığında.",
+    ],
+    "veri_uygunluk_politikasi": "veri-uygunluk-v2",
+    "takim_eslesme_surumu": "takim-eslesme-v2",
+    "veri_haklari": ("Ölçüm kayıtları bahis adayı değildir (stake 0); ancak 'yerel/kişisel analiz' gerekçesiyle "
+                     "otomatik izin yoktur. Model eğitim verisinin sonuç kullanımı, model eğitimi ve mevcut modelin "
+                     "kullanımı belgeyle doğrulanmamışsa olasılık kaydedilmez; kayıt nedenli TAHMIN_YOK olur ve "
+                     "kaynak kapsamı veri_uygunlugu alanında görünür. Yeniden dağıtım ve ticari kullanım hakkı bu "
+                     "ölçüm için gerekmez."),
+}
+# Dondurma: gerçek sistem saatinden alınan an ve gövde özeti (reports/s3_gate_02/ altındaki JSON ile aynı).
+PROTOCOL_V3_FROZEN = {
+    "dondurma_zamani_utc": "2026-10-10T19:47:01+00:00",
+    "govde_sha256": "b2b0c226ad9a9151c5b5813b3b5bfd2cf7b670ec1f3db9e3083495e79bd3aa76",
+}
+ACTIVE_PROTOCOL = PROTOCOL_V3_VERSION
+PROTOCOLS = {PROTOCOL_VERSION: (PROTOCOL_BODY, PROTOCOL_FROZEN),
+             PROTOCOL_V2_VERSION: (PROTOCOL_V2_BODY, PROTOCOL_V2_FROZEN),
+             PROTOCOL_V3_VERSION: (PROTOCOL_V3_BODY, PROTOCOL_V3_FROZEN)}
 
 LEAGUE_STALE_DAYS = 21
 MIN_TEAM_MATCHES = 10
@@ -347,7 +399,7 @@ def _quote_block(ledger: Ledger | None, eid: str, market: str, target: dt.dateti
 def build_forecast_records(engine, fixtures: pd.DataFrame, matches: pd.DataFrame, ledger: Ledger | None = None,
                            now: dt.datetime | None = None, ctx=None, unmatched: pd.DataFrame | None = None,
                            source_rights: dict | None = None) -> list[dict]:
-    """Fikstürdeki her maç × A/B/C için ``ileriye-donuk-olcum-v2`` kayıt sözlükleri üretir (yazmaz).
+    """Fikstürdeki her maç × A/B/C için etkin protokol (``ACTIVE_PROTOCOL``) kayıt sözlükleri üretir (yazmaz).
 
     ``ctx``: ortak veri uygunluk bağlamı (``eligibility.EligibilityContext``; veri deposu + bu motorun durumu +
     kaynak takvimi + haklar). Verilmezse hiçbir maç uygun sayılmaz (``BAGLAM_YOK``).
@@ -493,7 +545,7 @@ def _cluster_boot(diff: np.ndarray, clusters: np.ndarray, reps: int = N_BOOT, se
 def evaluate_forecasts(ledger: Ledger) -> dict:
     """Sonuçlanmış FORECAST_RECORD kayıtlarının protokol × kohort × pazar değerlendirmesi ve kapsam sayıları.
 
-    Protokol sürümleri (v1 / v2) birleştirilmez; kapsam ve satırlar sürüm başına ayrı raporlanır."""
+    Protokol sürümleri (v1 / v2 / v3) birleştirilmez; kapsam ve satırlar sürüm başına ayrı raporlanır."""
     recs = ledger.predictions()
     invalid = {r["gecersiz_ilan_edilen"] for r in recs if r.get("kayit_turu") == RECORD_INVALIDATION}
     fc = [r for r in recs if r.get("kayit_turu") == RECORD_FORECAST]

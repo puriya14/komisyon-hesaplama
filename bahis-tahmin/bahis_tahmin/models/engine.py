@@ -463,7 +463,9 @@ class PredictionEngine:
         for lg, st in self.states.items():
             g = matches[matches["league"] == lg]
             st.row_digest = rows_digest(g, "mac")
-        self.train_sources = sorted(set(matches["source"].dropna().astype(str))) if "source" in matches else None
+        self.train_sources = (sorted(set(matches["source"].dropna().astype(str))
+                                     | ({"etiketsiz"} if matches["source"].isna().any() else set()))
+                              if "source" in matches else None)
 
         per_season = []
         if not oos.empty:

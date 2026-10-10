@@ -1,13 +1,14 @@
 """Komut satırı gol pazarları komutları (geçici uygulama dizininde, sentetik veriyle)."""
 
 import pandas as pd
+from uygunluk_yardim import register_synthetic_source
 
 from bahis_tahmin.cli import main
 from bahis_tahmin.data.store import DataStore
 from bahis_tahmin.selftest import synthetic_matches
 
 
-def test_goal_cli_commands(tmp_home, capsys):
+def test_goal_cli_commands(tmp_home, capsys, monkeypatch):
     st = DataStore(tmp_home)
     m = synthetic_matches(n_seasons=8, n_teams=16, seed=1, half_time=True)
     st.matches = m
@@ -17,6 +18,12 @@ def test_goal_cli_commands(tmp_home, capsys):
     st.save()
     assert main(["gol-sanal"]) == 0  # kayıt yokken dosya oluşturmaz
     assert not (tmp_home / "gol_pazarlari.sqlite").exists()
+    # S3-GATE-02: kaynak kaydında model eğitimi hakkı belgeli olmayan veriyle eğitim yapılmaz (etiket "sentetik" gerçek
+    # kayıtta yok); model dosyası yazılmaz
+    assert main(["gol-egit"]) == 3
+    assert "kullanım kapsamı doğrulanmadı" in capsys.readouterr().err
+    assert not (tmp_home / "goal_engine.joblib").exists()
+    register_synthetic_source(monkeypatch)  # yalnızca test: açıkça sentetik, hakları belgeli kaynak
     assert main(["gol-egit"]) == 0
     out = capsys.readouterr().out
     assert "M10_ipf_kosullu" in out and "MODEL_NOT_VALIDATED" in out
@@ -29,7 +36,8 @@ def test_goal_cli_commands(tmp_home, capsys):
     assert csv.exists() and len(pd.read_csv(csv)) == 8
 
 
-def test_goal_train_without_halftime_fails_cleanly(tmp_home, capsys):
+def test_goal_train_without_halftime_fails_cleanly(tmp_home, capsys, monkeypatch):
+    register_synthetic_source(monkeypatch)  # hak kapsamı geçilir; ilk yarı verisi kontrolüne ulaşılır
     st = DataStore(tmp_home)
     st.matches = synthetic_matches(n_seasons=5, n_teams=14, seed=1)
     st.save()

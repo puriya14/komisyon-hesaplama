@@ -74,7 +74,7 @@ def test_forecasts_are_recorded_without_any_bet_candidate(engine, ht_matches, ct
                   "feature_version", "model_kohort", "p_low", "p_high", "oran", "veri_kalitesi", "reasons",
                   "fikstur_kaynagi", "protokol_sha256", "hesaplama_ani", "bilgi_kesimi", "veri_uygunlugu"):
             assert k in r
-        assert r["protokol"] == F.PROTOCOL_V2_VERSION
+        assert r["protokol"] == F.ACTIVE_PROTOCOL == F.PROTOCOL_V3_VERSION  # S3-GATE-02: etkin sürüm v3
         assert r["veri_uygunlugu"]["tahmin_uygun"] is True and r["veri_uygunlugu"]["guncellik"] == "VERIFIED_CURRENT"
         assert r["ekonomik_statu"] == "ORAN_YOK"  # gerçek oran yok → ekonomik değerlendirme yok
     led = Ledger(tmp_path / "l.sqlite")
@@ -191,10 +191,10 @@ def test_settlement_and_evaluation_by_cohort(engine, ht_matches, ctx, tmp_path):
     assert out["sonuclanan"] == n_fc  # TAHMIN_YOK kayıtları sonuçlandırılmaz
     ev = F.evaluate_forecasts(led)
     json.dumps(ev, allow_nan=False)  # tek maç günü: aralık hesaplanamaz → boş (NaN değil)
-    cov = ev["kapsam"][F.PROTOCOL_V2_VERSION]  # protokol sürümleri ayrı raporlanır
+    cov = ev["kapsam"][F.PROTOCOL_V3_VERSION]  # protokol sürümleri ayrı raporlanır
     assert cov[F.STATUS_FORECAST] == n_fc and cov["MODEL_YOK"] == len(fx) * 3
     rows = [r for r in ev["kohort_pazar"] if not r["gecersiz_ilanlar_haric"]]
-    assert {r["protokol"] for r in rows} == {F.PROTOCOL_V2_VERSION}
+    assert {r["protokol"] for r in rows} == {F.PROTOCOL_V3_VERSION}
     assert {r["pazar"] for r in rows} == set(PRIMARY_YES)
     for r in rows:
         assert r["sonuclanan"] == len(fx) and r["resmi_degerlendirme_esigi"] is False
@@ -286,12 +286,31 @@ def test_protocol_is_frozen_and_matches_the_report_copy():
 
 
 def test_protocol_v2_is_frozen_separately_and_v1_is_unchanged():
-    """Uygunluk anlamı değiştiği için yeni sürüm (v2); v1 gövdesi, özeti ve dondurma anı aynen (S3-GATE-01)."""
+    """Uygunluk anlamı değiştiği için yeni sürüm (v2); v1 gövdesi, özeti ve dondurma anı aynen (S3-GATE-01).
+    S3-GATE-02 ile etkin sürüm v3 oldu (aşağıdaki ayrı test); v2'nin gövdesi, özeti ve dondurma anı değişmedi."""
     assert F.PROTOCOL_FROZEN == {"dondurma_zamani_utc": "2026-10-10T11:52:58+00:00",
                                  "govde_sha256": "3946a6e2865f4ea5386156e20cb5ccb7ccd8a4c1520c3dc65fdd4e2a6814fddf"}
-    assert F.ACTIVE_PROTOCOL == F.PROTOCOL_V2_VERSION != F.PROTOCOL_VERSION
+    assert F.PROTOCOL_V2_FROZEN == {"dondurma_zamani_utc": "2026-10-10T16:28:32+00:00",
+                                    "govde_sha256": "56c41f57c2a49610f072f0016e653a33ca70f98d1212fb5effdb6fee7d333063"}
+    assert F.ACTIVE_PROTOCOL != F.PROTOCOL_V2_VERSION != F.PROTOCOL_VERSION
     assert F.PROTOCOL_V2_FROZEN["govde_sha256"] == F.protocol_sha256(F.PROTOCOL_V2_BODY)
     assert F.freeze_time(F.PROTOCOL_V2_VERSION) > F.freeze_time(F.PROTOCOL_VERSION)
     doc = json.loads((REPO / "reports" / "s3_gate_01" / "ileriye_donuk_protokol_v2.json").read_text(encoding="utf-8"))
     assert doc == json.loads(json.dumps(F.protocol_document(F.PROTOCOL_V2_VERSION), ensure_ascii=False))
     assert F.PROTOCOL_V2_BODY["karar_penceresi"] == F.PROTOCOL_BODY["karar_penceresi"]  # 00:00 penceresi aynı
+
+
+def test_protocol_v3_is_frozen_separately_and_v1_v2_are_unchanged():
+    """S3-GATE-02: uygunluk anlamı (veri-uygunluk-v2: kesin takım kimliği, bağımsız takvim kanıtı, "yerel analiz"
+    istisnası olmadan hak kapsamı) değiştiği için yeni sürüm v3. Önceki gövdeler/özetler değişmez."""
+    assert F.ACTIVE_PROTOCOL == F.PROTOCOL_V3_VERSION
+    assert F.PROTOCOL_V3_FROZEN["govde_sha256"] == F.protocol_sha256(F.PROTOCOL_V3_BODY)
+    assert F.freeze_time(F.PROTOCOL_V3_VERSION) > F.freeze_time(F.PROTOCOL_V2_VERSION)
+    doc = json.loads((REPO / "reports" / "s3_gate_02" / "ileriye_donuk_protokol_v3.json").read_text(encoding="utf-8"))
+    assert doc == json.loads(json.dumps(F.protocol_document(F.PROTOCOL_V3_VERSION), ensure_ascii=False))
+    assert F.PROTOCOL_V3_BODY["veri_uygunluk_politikasi"] == "veri-uygunluk-v2"
+    assert F.PROTOCOL_V2_BODY["veri_uygunluk_politikasi"] == "veri-uygunluk-v1"
+    assert "yerel kişisel analiz kapsamındadır" in F.PROTOCOL_V2_BODY["veri_haklari"]  # v2 metni aynen korunur
+    assert "otomatik izin yoktur" in F.PROTOCOL_V3_BODY["veri_haklari"]
+    for k in ("karar_penceresi", "olcutler", "orneklem", "durdurma", "model", "pazarlar"):
+        assert F.PROTOCOL_V3_BODY[k] == F.PROTOCOL_V2_BODY[k]  # ölçüm tasarımı değişmedi

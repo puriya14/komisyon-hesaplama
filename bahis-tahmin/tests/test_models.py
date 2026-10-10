@@ -45,7 +45,12 @@ def test_team_name_matching():
     assert match_team("Wolverhampton Wanderers FC", known) == "Wolves"
     assert match_team("Nottingham Forest FC", known) == "Nott'm Forest"
     assert match_team("Arsenal FC", known) == "Arsenal"
-    assert match_team("Coventry City FC", known) == "Coventry"
+    # S3-GATE-02: eskiden önek benzerliğiyle "Coventry" seçiliyordu. Önek/benzerlik artık yalnızca ÖNERİDİR (kimlik
+    # kanıtı değil): doğrulanmış takma ad olmadan takım seçilmez, öneri ayrıca görünür.
+    from bahis_tahmin.data.teams import resolve_team
+
+    assert match_team("Coventry City FC", known) is None
+    assert resolve_team("Coventry City FC", known).suggestions[:1] == ("Coventry",)
     assert match_team("İstanbul Başakşehir", known) == "Buyuksehyr"
     assert match_team("Göztepe", known) == "Goztep"
     assert match_team("Totally Unknown FC", known) is None

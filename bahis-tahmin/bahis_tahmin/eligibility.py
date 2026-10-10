@@ -1,4 +1,4 @@
-"""Ortak veri uygunluk kontrolü (politika ``veri-uygunluk-v1``, S3-GATE-01).
+"""Ortak veri uygunluk kontrolü (politika ``veri-uygunluk-v2``; v1: S3-GATE-01, v2: S3-GATE-02).
 
 Kullanıcıya dönük bütün tahmin ve karar yolları (gol pazarları taraması, maç analizi, elle maç seçimi, 1X2 tahmin
 listeleri, CLI, ileriye dönük ölçüm kaydı, sanal takip kaydı) bu modülün sonucunu kullanır. İki soru ayrıdır:
@@ -21,16 +21,30 @@ Kanıt zinciri (kontrol edilen veri, tahminde KULLANILAN veriye bağlanır):
    eğitim anında donar. Depoda, durumun içermediği ve bilgi kesiminden önce tamamlanmış (modelin işleyeceği) maç
    varsa ``DURUM_DEPODAN_GERIDE`` (KNOWN_STALE). Model parametrelerinin eğitim kesimi tek başına engel değildir;
    karşılaştırma tahminde kullanılan lig/takım durumunun kapsamı üzerinden yapılır.
-2. **Veri deposu ↔ fikstür/sonuç kaynağı.** Kaynağın tam sezon takvimi (ör. openfootball, CC0) ile takımın geçmiş
-   maçları karşılaştırılır. Kaynakta tamamlanmış görünen ama depoda olmayan maç ``DEPODA_EKSIK_MAC`` (KNOWN_STALE).
-   Kontrol depodaki son tarihle sınırlı değildir: ligin yeni maçları depoda olsa bile takımın daha eski bir maçı
-   eksikse yakalanır. Ertelenen/iptal edilen maçlar eksik sayılmaz; geçmiş tarihli, sonucu kaynakta da depoda da
-   olmayan maç ``KAYNAK_DURUMU_BELIRSIZ`` (UNKNOWN) olur.
-3. **Kapsam.** Gerekli pencere (bilgi kesiminden önceki 365 gün, takımın bu ligdeki ilk maçından erken değil) kanıtla
-   kapsanmalıdır: tam bir kaynak sezon takvimi veya depoda takım başına beklenen maç sayısına ulaşmış KAPANMIŞ bir
-   sezon (daha zayıf, iç tutarlılık kanıtı). Ardışık iki kapsanmış sezon arasındaki ara (sezon arası) kapsanmış
-   sayılır; takvim bir aralıkta maç göstermiyorsa (millî maç arası) uzun süre maç oynanmaması veri hatası sayılmaz.
-   Kaynak yoksa, boşsa veya kısmîyse "eksik maç yok" sonucu çıkmaz: UNKNOWN.
+2. **Veri deposu ↔ fikstür/sonuç kaynağı.** Kaynağın sezon takvimi (ör. openfootball, CC0) ile takımın geçmiş
+   maçları karşılaştırılır. Kaynakta tamamlanmış görünen ama depoda olmayan maç ``DEPODA_EKSIK_MAC`` (KNOWN_STALE;
+   kısmi takvim de bilinen eksiği gösterebilir, ama "eksik yok" kanıtı olamaz). Kontrol depodaki son tarihle sınırlı
+   değildir: ligin yeni maçları depoda olsa bile takımın daha eski bir maçı eksikse yakalanır. Ertelenen/iptal
+   edilen maçlar eksik sayılmaz; geçmiş tarihli, sonucu kaynakta da depoda da olmayan maç ``KAYNAK_DURUMU_BELIRSIZ``
+   (UNKNOWN) olur. Doğrulanmış aralıkta depoda olup kaynakta olmayan maç kaynakların çeliştiğini gösterir
+   (``KAYNAK_DEPO_CELISKISI``, UNKNOWN).
+3. **Kapsam (v2).** Kaynak dosyasının kendi takım sayısı kendi tamlığının kanıtı DEĞİLDİR. Takvim kanıtı iki ayrı
+   sorudur: (A) bütün sezon takviminin tamlığı ve (B) gerekli geçmiş aralığın tamlığı. B, bağımsız katılımcı listesi
+   (aynı sezonun başka sağlayıcıdan gelen veri deposundaki takımları; kaynak adları kesin kimlikle eşleşmeli) üzerinde,
+   1. turdan başlayıp ardışık her turu bu katılımcıların tam eşleşmesi olan (her takım turda bir kez) numaralı
+   turlardan kurulur; yinelenen kayıtlar tekilleştirilir, çakışan kayıt turu doğrulanmamış yapar, numaralı olmayan
+   aşamalar (play-off/split) ve eksik turdan sonrası aralığa girmez. A için ayrıca lig formatının beklenen tur sayısı
+   ve eşleşme yapısı (her ikili beklenen sayıda) gerekir. Gelecek fikstürlerin yayımlanmamış olması tek başına B'yi
+   reddetmez. Gerekli pencere (bilgi kesiminden önceki 365 gün; depodaki ilk maç pencereyi kısaltamaz) B
+   aralıklarıyla kapsanmalıdır. Ardışık iki sezon arasındaki ara yalnızca önceki sezonun listelenen takvimi sonuna
+   kadar doğrulanmışsa (split/play-off'lu liglerde hiçbir zaman) ve arada (bilgi kesiminden önce) ne depoda ne
+   kaynakta maç yoksa kapsanmış sayılır; yeni sezon
+   takvimi bilgi kesiminden önce maç göstermiyorsa (sezon başlamadı) ara bilgi kesimine kadar kapsanır. Veri
+   deposunun yalnızca kendi iç tutarlılığı (takım sayısı depodan çıkarılarak) artık kapsam kanıtı sayılmaz. Kaynak
+   yoksa, boşsa, kısmîyse veya bağımsız katılımcı listesi yoksa "eksik maç yok" sonucu çıkmaz: UNKNOWN.
+4. **Takım kimliği (v2).** Fikstür adları ``data.teams`` sözleşmesiyle (``takim-eslesme-v2``) yalnızca kesin kimlikle
+   eşlenir; başka kaynaktan eşlenmiş fikstür (openfootball) uygunluk anında aynı kaynak dosyasında güncel eşleyiciyle
+   yeniden kurulamıyorsa ``TAKIM_ESLESMESI_DOGRULANAMADI`` (eski kayıtlar yeni eşleyiciden geçmiş sayılmaz).
 
 Zaman kuralı (muhafazakâr, maç bitiş/yayın saati bilinmediği için): değerlendirme anının İstanbul takvim günü ``D``
 ise yalnızca tarihi ``D``'den ÖNCE olan maç sonuçları erişilebilir sayılır; aynı günün sonuçları beklenmez. Kaynak
@@ -40,11 +54,15 @@ Model durumu ``D`` veya sonrasına tarihli maç içeriyorsa ve durumun değerlen
 bilinmiyorsa ``DURUM_KARAR_ANINDAN_SONRA``. Depoya sonradan eklenen sonuçlar geçmiş bir değerlendirmenin sonucunu
 değiştirmez (bütün karşılaştırmalar bilgi kesimiyle sınırlıdır).
 
-Kaynak hakları (``data.source_registry.USE_RIGHTS``): erişim (kullanıcı onayı), sonuç verisini kullanma, model
-eğitimi ve yeniden dağıtım ayrı alanlardır. Tahmin (yerel, kişisel analiz; dağıtılmaz) için erişim izni gerekir.
-Bahis adayı için sonuç kullanımı ve model eğitimi haklarının belgeyle doğrulanmış olması gerekir; doğrulanmamışsa
-``KAYNAK_SONUC_KULLANIMI_DOGRULANAMADI`` / ``KAYNAK_EGITIM_HAKKI_DOGRULANAMADI`` görünür engel olur. Kullanıcı onayı
-yalnızca erişimi kapsar; arayüz onayı veya komut satırı bayrağı bu alanları doğrulanmış yapamaz.
+Kaynak hakları (``data.source_registry.USE_RIGHTS``, işlem kapsamları ``OPERATION_SCOPES``): kullanıcı indirme
+onayı, kaynak erişim koşulları, sonuç verisinin analizde kullanımı, model eğitimi, mevcut modelin kullanımı, ticari
+kullanım ve yeniden dağıtım ayrı alanlardır. v2'de "yerel analiz" istisnası yoktur: kullanıcıya gösterilen tahmin/
+olasılık ve tahmin kaydı için de (bahis adayıyla aynı) sonuç kullanımı, model eğitimi ve mevcut modelin kullanımı
+belgeyle doğrulanmış ve modelin eğitim verisi kökeni kayıtlı olmalıdır; aksi halde tahmin üretilmez (nedenli,
+olasılıksız kayıt ve kaynak kapsamı açıklaması gösterilir). Gerçek veriyle model eğitimi ``training_rights_codes``
+ile aynı kayıttan denetlenir. Yeniden dağıtım ve ticari kullanım bu işlemler için gerekmez ve engel değildir.
+Kullanıcı onayı yalnızca erişimi kapsar; arayüz onayı, komut satırı bayrağı veya kaynak etiketi bu alanları
+doğrulanmış yapamaz (etiket, kaynağın gerçekten sağladığı veri türüyle de denetlenir).
 
 Bu modül olasılık hesaplamaz ve modelin matematiğini değiştirmez.
 """
@@ -55,14 +73,18 @@ import datetime as dt
 import hashlib
 import json
 import math
+import re
+import unicodedata
+from collections import Counter
 from dataclasses import asdict, dataclass, field
 
 import numpy as np
 import pandas as pd
 
+from .data.teams import MATCHING_VERSION
 from .timeutil import ISTANBUL
 
-POLICY_VERSION = "veri-uygunluk-v1"
+POLICY_VERSION = "veri-uygunluk-v2"  # v1 (S3-GATE-01) sonuçları karar denetiminde bu sürümle eşleşmez
 
 VERIFIED_CURRENT = "VERIFIED_CURRENT"
 KNOWN_STALE = "KNOWN_STALE"
@@ -76,6 +98,8 @@ PAIR_DAY_TOLERANCE = 3  # kaynak ile depo arasında aynı eşleşme için tarih 
 NOT_PLAYED_STATUSES = frozenset({"POSTPONED", "CANCELLED", "ABANDONED", "SUSPENDED"})
 FINISHED = "FINISHED"
 SCHEDULED_OR_UNKNOWN = "SCHEDULED_OR_UNKNOWN"
+# Takım adları veri deposundan farklı olan ve ``data.teams`` ile eşlenen fikstür kaynakları (fikstür etiketi)
+MAPPED_FIXTURE_SOURCES = frozenset({"openfootball"})
 
 # ----------------------------------------------------------------------------
 # Neden kodları
@@ -102,8 +126,14 @@ REASONS: dict[str, Reason] = {
     "MODEL_YOK": Reason("Eğitilmiş model yok.", "tahmin", None, "Modeli eğitin."),
     "LIG_MODEL_KAPSAMI_DISI": Reason("Lig modelin durumunda yok.", "tahmin", None,
                                      "Bu ligin verisini indirip modeli yeniden eğitin."),
-    "TAKIM_ESLESMEDI": Reason("Fikstürdeki takım adı veri deposundaki bir takımla eşleştirilemedi.", "tahmin", None,
-                              "Takım adı eşlemesini (data/teams.py ALIASES) düzeltin."),
+    "TAKIM_ESLESMEDI": Reason(
+        "Fikstürdeki takım adı veri deposundaki bir takımla kesin olarak eşleştirilemedi (bulunamadı, belirsiz veya "
+        "yalnızca benzer ad).", "tahmin", None,
+        "Doğrulanmış takma ad (data/teams.py) gerekir; benzer ad önerisi kimlik kanıtı değildir."),
+    "TAKIM_ESLESMESI_DOGRULANAMADI": Reason(
+        "Başka kaynaktan eşlenmiş fikstürün takım kimliği güncel eşleyiciyle kaynak takviminde yeniden kurulamadı "
+        "(eski kayıt veya kaynak dosyası yok).", "tahmin", UNKNOWN,
+        "Verileri güncelleyin (fikstür güncel eşleyiciyle yeniden eşlenir)."),
     "TAKIM_DURUMDA_YOK": Reason("Takım modelin lig durumunda yok (geçmişi olmayan veya eğitimden sonra gelen takım).",
                                 "tahmin", None, "Takımın bu ligdeki geçmiş verisi ve güncel model gerekir."),
     "DURUM_KARAR_ANINDAN_SONRA": Reason(
@@ -134,8 +164,10 @@ REASONS: dict[str, Reason] = {
     "KAYNAK_KAPSAMI_YOK": Reason("Bu lig için güncelliği doğrulayacak fikstür/sonuç kaynağı (tam sezon takvimi) yok.",
                                  "tahmin", UNKNOWN,
                                  "Ligin openfootball sezon dosyası (veya başka tam takvim kaynağı) gerekir."),
-    "KAYNAK_KAPSAMI_KISMI": Reason("Kaynak dosyası boş, okunamadı veya sezon takvimi eksik.", "tahmin", UNKNOWN,
-                                   "Tam sezon takvimi içeren kaynak dosyası gerekir."),
+    "KAYNAK_KAPSAMI_KISMI": Reason(
+        "Kaynak takvimi boş, okunamadı, eksik veya bağımsız katılımcı listesiyle doğrulanamıyor (tamlık kanıtı yok).",
+        "tahmin", UNKNOWN,
+        "Bağımsız katılımcı listesiyle (aynı sezonun veri deposu) doğrulanabilen tur bilgili sezon takvimi gerekir."),
     "KAYNAK_KARAR_ANINDAN_SONRA": Reason("Kaynak dosyası değerlendirme anından sonra alınmış; o anın kanıtı olamaz.",
                                          "tahmin", UNKNOWN, "Geçmiş an için o anda alınmış kaynak gerekir."),
     "KAYNAK_ARALIK_DISI": Reason("Takımın gerekli geçmiş pencere aralığı kaynak veya tam sezon kanıtıyla kapsanmıyor.",
@@ -145,6 +177,9 @@ REASONS: dict[str, Reason] = {
         "tahmin", UNKNOWN, "Kaynak ve veriler güncellendikten sonra yeniden deneyin."),
     "KAYNAK_ESLESME_BELIRSIZ": Reason("Takımın maçları kaynak takviminde güvenilir biçimde eşleştirilemedi.", "tahmin",
                                       UNKNOWN, "Takım adı eşlemesini düzeltin."),
+    "KAYNAK_DEPO_CELISKISI": Reason(
+        "Doğrulanmış takvim aralığında depoda olan maç kaynak takviminde yok (kaynaklar çelişiyor).", "tahmin",
+        UNKNOWN, "Kaynak dosyası ve veriler güncellendikten sonra yeniden deneyin."),
     "KAYNAK_ESLESMEMIS_ADLAR": Reason("Kaynak takviminde eşleşmeyen takım adları var (lig düzeyi bilgi).", "yok", None,
                                       "Takım adı eşlemesini düzeltin."),
     "GEREKLI_ALAN_EKSIK": Reason("Modelin bu pazar için gerektirdiği girdiler (yarı bazlı takım güçleri) yok.",
@@ -157,12 +192,23 @@ REASONS: dict[str, Reason] = {
                                      "Kaynak kullanım koşullarını uygulamada onaylayın."),
     "KAYNAK_HAKKI_BILINMIYOR": Reason("Kullanılan verinin kaynağı kayıtlı değil; kullanım hakkı bilinmiyor.", "tahmin",
                                       None, "Kaynağı belgeleriyle kaynak kaydına (source_registry) ekleyin."),
+    # v2: "yerel analiz" istisnası kaldırıldı — doğrulanmamış hak tahmini de (yalnızca bahsi değil) engeller
+    "KAYNAK_ETIKETI_UYUMSUZ": Reason(
+        "Verinin kaynak etiketi, bu kaynağın uygulamada sağladığı veri türüyle uyuşmuyor (etiketle hak aşılamaz).",
+        "tahmin", None, "Veriyi kaynağın kendi adaptörüyle yeniden indirin."),
     "KAYNAK_SONUC_KULLANIMI_DOGRULANAMADI": Reason(
-        "Sonuç verisinin kaynağında kullanım hakkı belgeyle doğrulanmadı; bahis adayı üretilmez.", "bahis", None,
-        "Kaynağın lisans/izin belgesini kaynak kaydına ekleyin (uygulamadaki onay yeterli değildir)."),
+        "Sonuç verisinin kaynağında analizde kullanım hakkı belgeyle doğrulanmadı; tahmin ve bahis adayı üretilmez.",
+        "tahmin", None, "Kaynağın lisans/izin belgesini kaynak kaydına ekleyin (uygulamadaki onay yeterli değildir)."),
     "KAYNAK_EGITIM_HAKKI_DOGRULANAMADI": Reason(
-        "Modelin eğitildiği verinin kaynağında model eğitimi hakkı belgeyle doğrulanmadı; bahis adayı üretilmez.",
-        "bahis", None, "Kaynağın lisans/izin belgesini kaynak kaydına ekleyin (uygulamadaki onay yeterli değildir)."),
+        "Modelin eğitildiği verinin kaynağında model eğitimi hakkı belgeyle doğrulanmadı; tahmin ve bahis adayı "
+        "üretilmez.", "tahmin", None,
+        "Kaynağın lisans/izin belgesini kaynak kaydına ekleyin (uygulamadaki onay yeterli değildir)."),
+    "KAYNAK_MODEL_KULLANIMI_DOGRULANAMADI": Reason(
+        "Bu veriyle eğitilmiş modelin kullanım hakkı belgeyle doğrulanmadı; tahmin ve bahis adayı üretilmez.",
+        "tahmin", None, "Kaynağın lisans/izin belgesini kaynak kaydına ekleyin (uygulamadaki onay yeterli değildir)."),
+    "MODEL_EGITIM_KOKENI_YOK": Reason(
+        "Model dosyasında eğitim verisinin kaynak kökeni yok; modelin izinli kullanımı doğrulanamıyor (eski model).",
+        "tahmin", None, "Hakları belgeli veriyle modeli yeniden eğitin (eski model dosyasına köken uydurulmaz)."),
     "OLASILIK_GECERSIZ": Reason("Model olasılığı geçersiz (NaN, sonsuz veya [0,1] dışı).", "tahmin", None,
                                 "Model ve girdi verisi denetlenmeli."),
 }
@@ -170,12 +216,15 @@ REASONS: dict[str, Reason] = {
 # Kullanıcıya gösterilecek birincil nedenin sırası: önce bağlam ve yapısal engeller (tahmin hiç kurulamaz), sonra
 # bilinen eksik veri, sonra doğrulanamayan kapsam, sonra gerekli alanlar ve haklar; en son yalnızca bahsi engelleyenler.
 LEAD_ORDER = (
-    "BAGLAM_YOK", "BAGLAM_UYUSMUYOR", "TAKIM_ESLESMEDI", "MAC_GECMISTE", "MODEL_YOK", "LIG_MODEL_KAPSAMI_DISI",
-    "TAKIM_DURUMDA_YOK", "DURUM_KARAR_ANINDAN_SONRA", "DEPODA_EKSIK_MAC", "DEPODA_GECERSIZ_SKOR",
-    "DURUM_DEPODAN_GERIDE", "LIG_DURUMU_EKSIK", "DURUM_KOKENI_YOK", "DURUM_VERIYLE_UYUSMUYOR", "KAYNAK_KAPSAMI_YOK", "KAYNAK_KAPSAMI_KISMI", "KAYNAK_KARAR_ANINDAN_SONRA", "KAYNAK_ESLESME_BELIRSIZ",
-    "KAYNAK_DURUMU_BELIRSIZ", "KAYNAK_ARALIK_DISI", "LIG_DURUMU_BELIRSIZ", "OLASILIK_GECERSIZ", "GEREKLI_ALAN_EKSIK",
-    "TAKIM_GECMISI_YETERSIZ", "KAYNAK_ERISIM_IZNI_YOK", "KAYNAK_HAKKI_BILINMIYOR",
-    "KAYNAK_SONUC_KULLANIMI_DOGRULANAMADI", "KAYNAK_EGITIM_HAKKI_DOGRULANAMADI", "LIG_IY_ORANI_DUSUK",
+    "BAGLAM_YOK", "BAGLAM_UYUSMUYOR", "TAKIM_ESLESMEDI", "TAKIM_ESLESMESI_DOGRULANAMADI", "MAC_GECMISTE", "MODEL_YOK",
+    "LIG_MODEL_KAPSAMI_DISI", "TAKIM_DURUMDA_YOK", "DURUM_KARAR_ANINDAN_SONRA", "DEPODA_EKSIK_MAC",
+    "DEPODA_GECERSIZ_SKOR", "DURUM_DEPODAN_GERIDE", "LIG_DURUMU_EKSIK", "DURUM_KOKENI_YOK", "DURUM_VERIYLE_UYUSMUYOR",
+    "KAYNAK_KAPSAMI_YOK", "KAYNAK_KAPSAMI_KISMI", "KAYNAK_KARAR_ANINDAN_SONRA", "KAYNAK_ESLESME_BELIRSIZ",
+    "KAYNAK_DEPO_CELISKISI", "KAYNAK_DURUMU_BELIRSIZ", "KAYNAK_ARALIK_DISI", "LIG_DURUMU_BELIRSIZ",
+    "OLASILIK_GECERSIZ", "GEREKLI_ALAN_EKSIK", "TAKIM_GECMISI_YETERSIZ", "KAYNAK_ERISIM_IZNI_YOK",
+    "KAYNAK_HAKKI_BILINMIYOR", "KAYNAK_ETIKETI_UYUMSUZ", "MODEL_EGITIM_KOKENI_YOK",
+    "KAYNAK_SONUC_KULLANIMI_DOGRULANAMADI", "KAYNAK_EGITIM_HAKKI_DOGRULANAMADI", "KAYNAK_MODEL_KULLANIMI_DOGRULANAMADI",
+    "LIG_IY_ORANI_DUSUK",
 )
 
 
@@ -259,14 +308,20 @@ class ScheduledMatch:
     date: dt.date
     raw_home: str
     raw_away: str
-    home: str | None
+    home: str | None  # yalnızca KESİN kimlikle eşlenmiş ad; aksi halde None
     away: str | None
     status: str  # FINISHED / POSTPONED / CANCELLED / ABANDONED / SUSPENDED / SCHEDULED_OR_UNKNOWN
+    round: str | None = None  # kaynağın tur/aşama etiketi (ör. "Matchday 7")
 
 
 @dataclass(frozen=True)
 class SourceCoverage:
-    """Bir lig-sezon için kaynağın takvim kanıtı. ``complete``: takvim sezonun tamamını içeriyor."""
+    """Bir lig-sezon için kaynağın takvim kanıtı.
+
+    ``complete`` (A): listelenen sezon takvimi bağımsız katılımcı listesine ve lig formatına göre baştan sona tam.
+    ``windows`` (B): kanıtla tam olduğu bilinen tarih aralıkları (gün numarası). ``None`` yalnızca doğrudan kurulan
+    (sentetik test) kapsam içindir: o zaman ``complete`` ise bütün takvim aralığı, değilse hiçbir aralık sayılır.
+    ``reaches_end``: B aralığı listelenen takvimin sonuna kadar doğrulandı (sezonlar arası köprü için)."""
     league: str
     source: str
     season: str
@@ -276,6 +331,10 @@ class SourceCoverage:
     detail: str
     sha256: str
     unmapped_names: tuple[str, ...] = ()
+    windows: tuple[tuple[int, int], ...] | None = None
+    reaches_end: bool | None = None
+    matching_version: str = ""
+    participants: int | None = None
 
     @property
     def window(self) -> tuple[int, int] | None:
@@ -284,12 +343,122 @@ class SourceCoverage:
         days = [day_number(m.date) for m in self.matches]
         return min(days), max(days)
 
+    @property
+    def verified_windows(self) -> tuple[tuple[int, int], ...]:
+        if self.windows is not None:
+            return tuple(self.windows)
+        return (self.window,) if (self.complete and self.window is not None) else ()
+
+    @property
+    def season_end_verified(self) -> bool:
+        return bool(self.complete if self.reaches_end is None else self.reaches_end)
+
 
 def expected_per_team(league: str, n_teams: int) -> int:
     """Takım başına normal sezon maç sayısı (dizi araştırmasıyla aynı tek kaynak)."""
     from .sequences.timeline import REGULAR_LEN_OVERRIDE
 
     return int(REGULAR_LEN_OVERRIDE.get(league, 2 * (n_teams - 1)))
+
+
+# Normal sezondan sonra şampiyonluk/küme aşaması (split veya play-off) olan ligler (bugünkü format). Bu liglerde
+# listelenen takvim sezonun sonunu kanıtlamaz (aşamanın toplam tur sayısı doğrulanmış bir kaynaktan bilinmiyor):
+# tam sezon (A) kurulmaz ve sezonlar arası köprü yoktur. Liste yalnızca daha sıkı sonuç verir; geçmiş sezonlara
+# "tamlık" yüklemez.
+POST_STAGE_LEAGUES = frozenset({"SC0", "B1", "G1", "AUT", "DNK", "SWZ"})
+
+# Numaralı normal sezon turu etiketleri ("Matchday 7", "7. Spieltag"); başka etiketler ayrı aşama sayılır
+_ROUND_PATTERNS = (
+    re.compile(r"^(?:matchday|match day|round|spieltag|jornada|giornata|journee|speeldag|rodada|fecha|runde|hafta|"
+               r"week|gameweek|matchweek)\s*(\d+)$"),
+    re.compile(r"^(\d+)\s*\.?\s*(?:spieltag|hafta|journee|giornata|jornada|matchday|round|speeldag|runde)$"),
+)
+
+
+def round_number(label) -> int | None:
+    """Kaynağın tur etiketinden normal sezon tur numarası; numaralı tur değilse None."""
+    if label is None:
+        return None
+    s = unicodedata.normalize("NFKD", str(label)).encode("ascii", "ignore").decode("ascii").lower()
+    s = re.sub(r"\s+", " ", s).strip()
+    for p in _ROUND_PATTERNS:
+        m = p.match(s)
+        if m:
+            return int(m.group(1))
+    return None
+
+
+def _verify_calendar(league: str, matches: list[ScheduledMatch], conflicted: set[int],
+                     participants) -> tuple[tuple, bool, str, int]:
+    """(B aralıkları, A tamlığı, açıklama, doğrulanan tur sayısı). Kaynağın kendi takım sayısı kullanılmaz."""
+
+    part = frozenset(participants or ())
+    n = len(part)
+    if n < 4:
+        return (), False, "bağımsız katılımcı listesi yok", 0
+    named = {t for m in matches for t in (m.home, m.away)}
+    if None in named or named != part:
+        return (), False, "kaynak takımları bağımsız katılımcı listesiyle uyuşmuyor", 0
+    regular: dict[int, list[int]] = {}
+    for i, m in enumerate(matches):
+        r = round_number(m.round)
+        if r is not None:
+            regular.setdefault(r, []).append(i)
+
+    def structural(idx):
+        """Turun yapısal kaydı: aynı eşleşmenin oynanmamış (ertelenen/iptal) kaydı, yenisi varsa sayılmaz."""
+        if any(i in conflicted for i in idx):
+            return None
+        pairs: dict[tuple, list[ScheduledMatch]] = {}
+        for i in idx:
+            pairs.setdefault((matches[i].home, matches[i].away), []).append(matches[i])
+        use = []
+        for lst in pairs.values():
+            played = [m for m in lst if m.status not in NOT_PLAYED_STATUSES]
+            use += played or lst[:1]
+        teams = [t for m in use for t in (m.home, m.away)]
+        return use if (len(teams) == len(set(teams)) and len(use) == n // 2) else None
+
+    k, rounds = 0, {}
+    while (k + 1) in regular:
+        use = structural(regular[k + 1])
+        if use is None:
+            break
+        k += 1
+        rounds[k] = use
+    if not k:
+        return (), False, "1. turdan başlayan, katılımcıların tamamını içeren tur yok", 0
+    ver = {i for r in range(1, k + 1) for i in regular[r]}
+    days = [day_number(matches[i].date) for i in ver]
+    start, end = min(days), max(days)
+    unver = [i for i in range(len(matches)) if i not in ver]
+    block = [day_number(matches[i].date) for i in unver if day_number(matches[i].date) >= start]
+    if block:
+        end = min(end, min(block) - 1)
+    windows = ((start, end),) if end >= start else ()
+    per = expected_per_team(league, n)
+    rounds_exp = per if n % 2 == 0 else (per * n // (n - 1) if (per * n) % (n - 1) == 0 else None)
+    why = ""
+    if rounds_exp is None or per % (n - 1):
+        why = "lig formatı bağımsız katılımcı sayısıyla tutarsız"
+    elif unver:
+        why = "doğrulanmamış tur veya aşama maçı var"
+    elif k < rounds_exp:
+        why = f"yalnızca {k}/{rounds_exp} tur listelenmiş"
+    elif league in POST_STAGE_LEAGUES:
+        why = "normal sezon sonrası aşaması (split/play-off) olan lig: sezon sonu takvimden doğrulanamaz"
+    else:
+        kk = per // (n - 1)
+        reg = [m for r in range(1, rounds_exp + 1) for m in rounds[r]]
+        upair = Counter(frozenset((m.home, m.away)) for m in reg)
+        opair = Counter((m.home, m.away) for m in reg)
+        ok = len(upair) == n * (n - 1) // 2 and all(v == kk for v in upair.values())
+        if ok and kk % 2 == 0:
+            ok = len(opair) == n * (n - 1) and all(v == kk // 2 for v in opair.values())
+        if not ok:
+            why = "rakip/iç-dış saha dağılımı lig formatıyla uyuşmuyor"
+    reaches = not why
+    return windows, reaches, why, k
 
 
 def _status_of(m: dict) -> str:
@@ -307,53 +476,85 @@ def _status_of(m: dict) -> str:
     return SCHEDULED_OR_UNKNOWN
 
 
+def _score_of(m: dict):
+    score = m.get("score")
+    if isinstance(score, dict):
+        score = score.get("ft")
+    if isinstance(score, (list, tuple)):
+        return tuple(score[:2])
+    return (m.get("score1"), m.get("score2"))
+
+
 def coverage_from_openfootball(data: bytes, league: str, season: str, retrieved_at: dt.datetime,
-                               known_teams) -> SourceCoverage:
-    """openfootball/football.json sezon dosyasından kapsam kanıtı (ağ isteği yapmaz)."""
-    from .data.teams import match_team
+                               known_teams, participants=None) -> SourceCoverage:
+    """openfootball/football.json sezon dosyasından kapsam kanıtı (ağ isteği yapmaz).
+
+    ``known_teams``: ad eşlemesinin bağlamı (ligin son iki sezonundaki depo takımları). ``participants``: bu sezonun
+    BAĞIMSIZ katılımcı listesi (aynı sezonun başka sağlayıcıdan gelen veri deposundaki takımları); verilmezse tamlık
+    (A/B) kanıtı kurulmaz. Tekilleştirme: kaynak maç kimliği varsa onunla, yoksa (tur, tarih, ev, deplasman) anahtarıyla;
+    aynı anahtarlı farklı içerik çakışmadır (birleştirilmez, turu doğrulanmamış yapar)."""
+    from .data.teams import resolve_teams
 
     raw_bytes = data if isinstance(data, bytes) else str(data).encode("utf-8")
     sha = hashlib.sha256(raw_bytes).hexdigest()
+    base = dict(league=league, source="openfootball", season=season, retrieved_at=retrieved_at, sha256=sha,
+                matching_version=MATCHING_VERSION, windows=(), reaches_end=False,
+                participants=len(set(participants)) if participants else None)
     try:
         obj = json.loads(raw_bytes.decode("utf-8-sig"))
         raw = obj.get("matches", []) if isinstance(obj, dict) else []
         if not isinstance(raw, list):
             raw = []
     except (ValueError, UnicodeDecodeError):
-        return SourceCoverage(league, "openfootball", season, retrieved_at, (), False, "dosya okunamadı", sha)
-    known = sorted(set(known_teams))
-    cache: dict[str, str | None] = {}
-
-    def mapped(name: str) -> str | None:
-        if name not in cache:
-            cache[name] = match_team(name, known) if known else None
-        return cache[name]
-
-    out = []
+        return SourceCoverage(matches=(), complete=False, detail="dosya okunamadı", **base)
+    rows, seen, conflicts, dup = [], {}, set(), 0
     for m in raw:
         if not isinstance(m, dict):
             continue
         t1, t2 = m.get("team1"), m.get("team2")
         t1 = t1.get("name") if isinstance(t1, dict) else t1
         t2 = t2.get("name") if isinstance(t2, dict) else t2
-        d = pd.to_datetime(m.get("date"), errors="coerce")
-        if not t1 or not t2 or pd.isna(d):
+        raw_date = m.get("date")
+        try:
+            d = pd.to_datetime(raw_date, errors="coerce") if isinstance(raw_date, str) else pd.NaT
+        except (TypeError, ValueError, OverflowError):
+            d = pd.NaT
+        if not t1 or not t2 or pd.isna(d) or not str(t1).strip() or not str(t2).strip():
             continue
-        out.append(ScheduledMatch(d.date(), str(t1), str(t2), mapped(str(t1)), mapped(str(t2)), _status_of(m)))
-    unmapped = tuple(sorted(n for n, v in cache.items() if v is None))
+        t1, t2, rnd = str(t1).strip(), str(t2).strip(), (None if m.get("round") is None else str(m.get("round")))
+        pid = m.get("id")
+        key = (("id", str(pid)) if isinstance(pid, (str, int)) and not isinstance(pid, bool)
+               else ("olay", rnd, d.date(), t1, t2))
+        content = (rnd, d.date(), t1, t2, _status_of(m), _score_of(m))
+        if key in seen:
+            if seen[key] == content:
+                dup += 1  # birebir yinelenen kayıt: sayımı artırmaz
+                continue
+            conflicts.add(key)
+        else:
+            seen[key] = content
+        rows.append((key, d.date(), t1, t2, _status_of(m), rnd))
+    known = sorted(set(known_teams or ()))
+    res = resolve_teams([r[2] for r in rows] + [r[3] for r in rows], known, league, "openfootball")
+    out, bad = [], set()
+    for _, day, t1, t2, status, rnd in rows:
+        h = res[t1].team if res[t1].exact else None
+        a = res[t2].team if res[t2].exact else None
+        if h is not None and h == a:  # ev sahibi ve deplasman aynı takıma düşüyor: ikisi de güvenilmez
+            bad |= {t1, t2}
+            h = a = None
+        out.append(ScheduledMatch(day, t1, t2, h, a, status, rnd))
+    unmapped = tuple(sorted({n for n, v in res.items() if not v.exact} | bad))
     if not out:
-        return SourceCoverage(league, "openfootball", season, retrieved_at, (), False, "dosyada maç yok", sha, unmapped)
-    teams = sorted({m.raw_home for m in out} | {m.raw_away for m in out})
-    need = expected_per_team(league, len(teams))
-    per = dict.fromkeys(teams, 0)
-    for m in out:
-        per[m.raw_home] += 1
-        per[m.raw_away] += 1
-    short = [t for t, n in per.items() if n < need]
-    complete = not short and len(teams) >= 4
-    detail = (f"{len(out)} maç, {len(teams)} takım, takım başına beklenen ≥ {need}"
-              + ("" if complete else f"; takvimi eksik takım: {len(short)}"))
-    return SourceCoverage(league, "openfootball", season, retrieved_at, tuple(out), complete, detail, sha, unmapped)
+        return SourceCoverage(matches=(), complete=False, detail="dosyada maç yok", unmapped_names=unmapped, **base)
+    conflicted = {i for i, r in enumerate(rows) if r[0] in conflicts}
+    windows, complete, why, k = _verify_calendar(league, out, conflicted, participants)
+    rng = (f"{day_to_date(windows[0][0])}–{day_to_date(windows[0][1])}" if windows else "yok")
+    detail = (f"{len(out)} maç ({dup} yinelenen kayıt elendi, {len(conflicts)} çakışan anahtar); bağımsız katılımcı: "
+              f"{base['participants'] or 'yok'}; doğrulanan ardışık tur: {k}; geçmiş aralık kanıtı: {rng}; tam sezon "
+              f"takvimi: {'evet' if complete else 'hayır (' + why + ')'}")
+    return SourceCoverage(matches=tuple(out), complete=complete, detail=detail, unmapped_names=unmapped,
+                          **{**base, "windows": windows, "reaches_end": complete})
 
 
 # ----------------------------------------------------------------------------
@@ -459,19 +660,41 @@ def state_view(engine) -> StateView | None:
 
 @dataclass(frozen=True)
 class SourceUse:
+    """Bir kaynak etiketinin kullanım kapsamı. Alanlar ayrıdır; belgelenmemiş alan izinli sayılmaz (varsayılanlar
+    kapalıdır: doğrudan kurulan nesne eksik alanla hak kazanmaz)."""
     label: str
     key: str | None
-    erisim: str  # IZINLI / ONAY_VAR / ONAY_YOK / BILINMIYOR
-    sonuc_kullanimi: str  # IZINLI_BELGELI / DOGRULANAMADI / BILINMIYOR
+    erisim: str  # kullanıcı indirme onayı: IZINLI (onay gerekmez) / ONAY_VAR / ONAY_YOK / BILINMIYOR
+    sonuc_kullanimi: str  # sonuç verisinin analizde kullanımı: IZINLI_BELGELI / DOGRULANAMADI / BILINMIYOR
     model_egitimi: str
     yeniden_dagitim: str
+    model_kullanimi: str = "BILINMIYOR"  # bu veriyle eğitilmiş mevcut modelin kullanımı
+    erisim_kosullari: str = "BILINMIYOR"  # kaynağın erişim/indirme koşulları (indirme onayından ayrı)
+    ticari_kullanim: str = "BILINMIYOR"
+    saglar: tuple[str, ...] = ()  # kaynağın uygulamada sağladığı veri türleri ("sonuc", "fikstur", "takvim")
+
+
+# İşlem -> gerekli kapsam. "veri": işlemde kullanılan sonuç verisinin etiketleri; "model": modelin eğitim verisinin
+# etiketleri. Yeniden dağıtım ve ticari kullanım bu işlemlerin hiçbiri için gerekmez (uygulama veri dağıtmaz,
+# ticari hizmet vermez); gerekmeyen hak işlemi engellemez.
+OPERATION_SCOPES: dict[str, dict[str, tuple[str, ...]]] = {
+    "tahmin": {"veri": ("sonuc_kullanimi",), "model": ("model_egitimi", "model_kullanimi")},
+    "bahis": {"veri": ("sonuc_kullanimi",), "model": ("model_egitimi", "model_kullanimi")},
+    "egitim": {"veri": ("sonuc_kullanimi", "model_egitimi"), "model": ()},
+}
+_SCOPE_CODES = {"sonuc_kullanimi": "KAYNAK_SONUC_KULLANIMI_DOGRULANAMADI",
+                "model_egitimi": "KAYNAK_EGITIM_HAKKI_DOGRULANAMADI",
+                "model_kullanimi": "KAYNAK_MODEL_KULLANIMI_DOGRULANAMADI"}
 
 
 @dataclass(frozen=True)
 class RightsStatus:
     by_label: dict  # etiket -> SourceUse
 
-    def codes(self, data_labels, train_labels) -> list[str]:
+    def codes(self, data_labels, train_labels, operation: str = "tahmin") -> list[str]:
+        """``operation`` için engel kodları. Etiketin hakkı, yalnızca kaynağın uygulamada gerçekten sağladığı sonuç
+        verisi için geçerlidir (ör. yalnızca fikstür sağlayan kaynağın etiketiyle sonuç satırı hak kazanamaz)."""
+        scope = OPERATION_SCOPES[operation]
         data_labels, train_labels = set(data_labels), set(train_labels)
         out = []
         for lb in data_labels | train_labels:
@@ -479,12 +702,14 @@ class RightsStatus:
             if u is None or u.key is None:
                 out.append("KAYNAK_HAKKI_BILINMIYOR")
                 continue
+            if "sonuc" not in u.saglar:
+                out.append("KAYNAK_ETIKETI_UYUMSUZ")
             if u.erisim not in ("IZINLI", "ONAY_VAR"):
                 out.append("KAYNAK_ERISIM_IZNI_YOK")
-            if lb in data_labels and u.sonuc_kullanimi != "IZINLI_BELGELI":
-                out.append("KAYNAK_SONUC_KULLANIMI_DOGRULANAMADI")
-            if lb in train_labels and u.model_egitimi != "IZINLI_BELGELI":
-                out.append("KAYNAK_EGITIM_HAKKI_DOGRULANAMADI")
+            need = (scope["veri"] if lb in data_labels else ()) + (scope["model"] if lb in train_labels else ())
+            for f in dict.fromkeys(need):
+                if getattr(u, f) != "IZINLI_BELGELI":
+                    out.append(_SCOPE_CODES[f])
         return sorted(set(out))
 
     def summary(self, labels) -> dict:
@@ -504,8 +729,25 @@ def rights_from_registry(labels, consent: dict | None) -> RightsStatus:
             continue
         r = USE_RIGHTS[key]
         erisim = "IZINLI" if not SOURCES[key].requires_consent else ("ONAY_VAR" if key in consent else "ONAY_YOK")
-        out[lb] = SourceUse(lb, key, erisim, r["sonuc_kullanimi"], r["model_egitimi"], r["yeniden_dagitim"])
+        out[lb] = SourceUse(lb, key, erisim, r["sonuc_kullanimi"], r["model_egitimi"], r["yeniden_dagitim"],
+                            r.get("model_kullanimi", "BILINMIYOR"), r.get("erisim_kosullari", "BILINMIYOR"),
+                            r.get("ticari_kullanim", "BILINMIYOR"), tuple(r.get("saglar", ())))
     return RightsStatus(out)
+
+
+def training_rights_codes(matches: pd.DataFrame | None, consent: dict | None) -> list[str]:
+    """Gerçek veriyle model eğitimi için engel kodları (boş = eğitime hak açısından engel yok).
+
+    Eğitim verisinin her satırının kaynağı kayıtlı olmalı ve kaynak kaydında sonuç kullanımı ile model eğitimi hakkı
+    belgeli olmalıdır. Kullanıcı onayı yalnızca erişimi kapsar; onay kutusu veya bayrak bu kontrolü aşamaz."""
+    if matches is None or len(matches) == 0:
+        return []
+    if "source" not in matches:
+        return ["KAYNAK_HAKKI_BILINMIYOR"]
+    src = matches["source"]
+    out = ["KAYNAK_HAKKI_BILINMIYOR"] if src.isna().any() else []
+    labels = set(src.dropna().astype(str))
+    return sorted(set(out) | set(rights_from_registry(labels, consent).codes(labels, (), "egitim")))
 
 
 # ----------------------------------------------------------------------------
@@ -674,8 +916,10 @@ class EligibilityContext:
             h.update(str(state.available_since).encode())
         for lg in sorted(self.coverages):
             for c in self.coverages[lg]:
-                h.update(f"{lg}|{c.season}|{c.sha256}|{c.retrieved_at.isoformat()}".encode())
+                h.update(f"{lg}|{c.season}|{c.sha256}|{c.retrieved_at.isoformat()}|{c.matching_version}|"
+                         f"{c.verified_windows}|{c.season_end_verified}|{c.participants}".encode())
         h.update(_digest({k: asdict(v) for k, v in self.rights.by_label.items()}).encode())
+        h.update(f"{POLICY_VERSION}|{MATCHING_VERSION}".encode())
         self.fingerprint = h.hexdigest()
         self._cache: dict = {}
         self._rows_cache: dict = {}
@@ -715,8 +959,8 @@ class EligibilityContext:
         pcodes = None if prediction_codes is None else tuple(sorted(prediction_codes))
         live = self._live(as_of)
         usable = tuple(sorted(c.sha256 for c in self.coverages.get(league, ()) if c.retrieved_at <= as_of))
-        key = (self.fingerprint, league, str(pd.Timestamp(date).date()), home, away, bool(mapped), raw_home,
-               raw_away, source, pcodes, markets, cut, live, usable, event_id)
+        key = (self.fingerprint, MATCHING_VERSION, league, str(pd.Timestamp(date).date()), home, away, bool(mapped),
+               raw_home, raw_away, source, pcodes, markets, cut, live, usable, event_id)
         hit = self._cache.get(key)
         if hit is None:
             hit = self._evaluate(league, date, home, away, as_of, cut, live, markets, source, mapped, raw_home,
@@ -745,9 +989,11 @@ class EligibilityContext:
         g_all = self.league_matches(league)
         g = g_all[g_all["day"] < cut_day]  # bilgi kesiminden ÖNCE erişilebilir sonuçlar
         labels = sorted(set(g["source"].dropna().astype(str)))
-        # Model eğitim verisinin kaynakları: model dosyasında kayıtlıysa o; değilse (ör. 1X2 motoru) depodaki bütün
-        # kaynaklar (model tüm liglerle eğitildiği için ihtiyatlı varsayım; köken bilgisi uydurulmaz)
-        train = (sorted(self.state.train_sources) if (self.state is not None and self.state.train_sources is not None)
+        unlabeled = bool(g["source"].isna().any())  # kaynağı kayıtsız satır: hakkı bilinemez
+        # Model eğitim verisinin kaynakları: model dosyasında kayıtlıysa o; değilse (eski model dosyası) depodaki bütün
+        # kaynaklar ihtiyatla denetlenir ve ayrıca MODEL_EGITIM_KOKENI_YOK engeli konur (köken bilgisi uydurulmaz)
+        provenance = self.state is not None and bool(self.state.train_sources)  # boş küme = köken bilinmiyor
+        train = (sorted(self.state.train_sources) if provenance
                  else sorted(set(self.matches["source"].dropna().astype(str))))
         base = dict(candidate_id=eid, canonical_id=bool(mapped), league=league, home=home, away=away,
                     match_date=str(pd.Timestamp(date).date()), evaluated_at="", info_cutoff=str(cut),
@@ -762,7 +1008,24 @@ class EligibilityContext:
         if not mapped:
             codes.append("TAKIM_ESLESMEDI")
             return _finalize(base, codes, markets, {}, evidence_checked=False, required_checked=False)
-        codes += self.rights.codes(labels, train)
+        codes += self.rights.codes(labels, train, "tahmin")
+        if unlabeled or (not provenance and self.matches["source"].isna().any()):
+            codes.append("KAYNAK_HAKKI_BILINMIYOR")
+        if self.state is not None and not provenance:
+            codes.append("MODEL_EGITIM_KOKENI_YOK")
+        # 0) Başka kaynaktan eşlenmiş fikstürün kimliği: aynı kaynak dosyasında güncel eşleyiciyle yeniden kurulmalı
+        if home == away:
+            codes.append("TAKIM_ESLESMESI_DOGRULANAMADI")
+        elif source in MAPPED_FIXTURE_SOURCES:
+            fx_date = pd.Timestamp(date).date()
+            ok = any(m.date == fx_date and m.home == home and m.away == away
+                     for c in self.coverages.get(league, ()) if c.retrieved_at <= as_of and c.source == source
+                     for m in c.matches)
+            base["team_mapping"] = "ESLESTI" if ok else "DOGRULANAMADI"
+            base["data_scope"]["eslesme"] = {"surum": MATCHING_VERSION, "kaynak": source,
+                                             "kaynak_takviminde_yeniden_kuruldu": ok}
+            if not ok:
+                codes.append("TAKIM_ESLESMESI_DOGRULANAMADI")
         # 1) Model durumu ↔ depo (yalnızca modelin işlediği satırlar)
         gi = g[g["ingest"]]
         if self.state is None:
@@ -818,25 +1081,32 @@ class EligibilityContext:
         # 2) Depo ↔ kaynak takvimi ve kapsam
         covs = self.coverages.get(league, ())
         usable = [c for c in covs if c.retrieved_at <= as_of]
-        complete = [c for c in usable if c.complete]
-        evidence_checked = bool(complete)
+        evidence = [c for c in usable if c.verified_windows]  # (B) kanıtla tam olduğu bilinen aralığı olan takvimler
+        evidence_checked = bool(evidence)
         if not covs:
             codes.append("KAYNAK_KAPSAMI_YOK")
         elif not usable:
             codes.append("KAYNAK_KARAR_ANINDAN_SONRA")
-        elif not complete:
+        elif not evidence:
             codes.append("KAYNAK_KAPSAMI_KISMI")
         for c in usable:
             base["data_scope"]["kapsam_kanitlari"].append({
-                "kaynak": c.source, "sezon": c.season, "alinma": c.retrieved_at.isoformat(), "tam": c.complete,
+                "kaynak": c.source, "sezon": c.season, "alinma": c.retrieved_at.isoformat(),
+                "tam": c.complete,  # (A) tam sezon takvimi; geriye uyumlu anahtar
+                "gecmis_aralik_kaniti": [[str(day_to_date(s)), str(day_to_date(e))] for s, e in c.verified_windows],
+                "bagimsiz_katilimci": c.participants, "eslesme_surumu": c.matching_version or None,
                 "aciklama": c.detail, "ozet": c.sha256[:16]})
-        if complete:
-            near = g_all[g_all["day"] < cut_day + PAIR_DAY_TOLERANCE]  # aynı maçın yerel tarih farkı (sınırda da)
-            self._check_against_source(home, away, near[near["ingest"]], near, complete, cut_day, codes, detail, base)
+        near = g_all[g_all["day"] < cut_day + PAIR_DAY_TOLERANCE]  # aynı maçın yerel tarih farkı (sınırda da)
+        partial = [c for c in usable if not c.verified_windows]
+        if partial:  # kısmi takvim "eksik yok" kanıtı olamaz ama bilinen eksiği gösterebilir
+            self._missing_in_partial(home, away, near[near["ingest"]], near, partial, cut_day, codes, detail)
+        if evidence:
+            self._check_against_source(home, away, near[near["ingest"]], near, evidence, cut_day, codes, detail, base)
+            self._store_vs_source(home, away, g, evidence, cut_day, codes, detail)
             for t in (home, away):
-                if not any(t in (m.home, m.away) for c in complete for m in c.matches):
+                if not any(t in (m.home, m.away) for c in evidence for m in c.matches):
                     codes.append("KAYNAK_ESLESME_BELIRSIZ")
-                elif not self._window_covered(league, t, gi, complete, cut_day):  # modelin işlediği satırlar
+                elif not self._window_covered(t, g, usable, evidence, cut_day):
                     codes.append("KAYNAK_ARALIK_DISI")
         # 3) Modelin gerçek girdi bağımlılığı (motorun yapılandırılmış kodlarından; metin aranmaz)
         per_market: dict[str, tuple] = {}
@@ -950,56 +1220,106 @@ class EligibilityContext:
             detail["eslesmeyen_kaynak_adi_sayisi"] = len(unmapped)
 
     @staticmethod
-    def _store_season_complete(league: str, sg: pd.DataFrame) -> bool:
-        """Depodaki kapanmış bir sezon, kaynak takvimi olmadan SEZON düzeyinde tam sayılabilir mi?
+    def _missing_in_partial(home, away, g_pair, g_any, partial, cut_day, codes, detail) -> None:
+        """Tamlığı kanıtlanmamış (kısmi) takvimden yalnızca BİLİNEN eksik: kaynakta tamamlanmış, kesin kimlikle eşlenmiş
+        ve depoda olmayan maç. "Eksik yok" iddiası ve sayım özeti üretilmez."""
+        def idx(df):
+            out: dict[tuple, list[int]] = {}
+            for h, a, d in zip(df["home"], df["away"], df["day"]):
+                out.setdefault((h, a), []).append(int(d))
+            return out
 
-        Yalnızca yapısı kesin bilinen düz çift devreli sezon kabul edilir: her eşleşme tam iki kez (birer kez iç ve
-        dış saha), her takım tam 2·(n−1) maç. Split/play-off'lu liglerde (``REGULAR_LEN_OVERRIDE``) toplam maç sayısı
-        depodan bilinemediği için depo-içi kanıt kabul edilmez (kaynak takvimi gerekir). Yalnızca hedef takımın tamlığı
-        paylaşılan lig durumunu kanıtlamaz."""
-        from .sequences.timeline import REGULAR_LEN_OVERRIDE
+        ok_days, any_days = idx(g_pair), idx(g_any)
+        missing: dict[str, list[str]] = {}
+        invalid: dict[str, list[str]] = {}
+        for c in partial:
+            for m in c.matches:
+                md = day_number(m.date)
+                if md >= cut_day or m.status != FINISHED or m.home is None or m.away is None:
+                    continue
+                ours = [t for t in (home, away) if t in (m.home, m.away)]
+                if not ours or any(abs(d - md) <= PAIR_DAY_TOLERANCE for d in ok_days.get((m.home, m.away), ())):
+                    continue
+                bucket = invalid if any(abs(d - md) <= PAIR_DAY_TOLERANCE
+                                        for d in any_days.get((m.home, m.away), ())) else missing
+                for t in ours:
+                    bucket.setdefault(t, []).append(str(m.date))
+        if missing:
+            codes.append("DEPODA_EKSIK_MAC")
+            detail["kismi_takvimde_depoda_eksik"] = {t: v[-5:] for t, v in missing.items()}
+        if invalid:
+            codes.append("DEPODA_GECERSIZ_SKOR")
+            detail["kismi_takvimde_gecersiz_skorlu"] = {t: v[-5:] for t, v in invalid.items()}
 
-        if league in REGULAR_LEN_OVERRIDE:
-            return False
-        teams = pd.concat([sg["home"], sg["away"]]).value_counts()
-        n = len(teams)
-        if n < 4 or not (teams == 2 * (n - 1)).all() or len(sg) != n * (n - 1):
-            return False
-        return not sg.duplicated(subset=["home", "away"]).any()
+    @staticmethod
+    def _store_vs_source(home, away, g, evidence, cut_day, codes, detail) -> None:
+        """Ters yön: doğrulanmış takvim aralığında depoda olan maç kaynakta da olmalı (bağımsız iki sağlayıcı)."""
+        idx: dict[tuple, list[int]] = {}
+        for c in evidence:
+            for m in c.matches:
+                if m.home is not None and m.away is not None:
+                    idx.setdefault((m.home, m.away), []).append(day_number(m.date))
+        wins = [(s, min(e, cut_day - 1)) for c in evidence for s, e in c.verified_windows]
+        extra: dict[str, list[str]] = {}
+        for t in (home, away):
+            tg = g[(g["home"] == t) | (g["away"] == t)]
+            for h, a, d in zip(tg["home"], tg["away"], tg["day"]):
+                d = int(d)
+                if not any(s <= d <= e for s, e in wins):
+                    continue
+                if not any(abs(x - d) <= PAIR_DAY_TOLERANCE for x in idx.get((h, a), ())):
+                    extra.setdefault(t, []).append(str(day_to_date(d)))
+        if extra:
+            codes.append("KAYNAK_DEPO_CELISKISI")
+            detail["kaynakta_olmayan_depo_maci"] = {t: v[-5:] for t, v in extra.items()}
 
-    @classmethod
-    def _window_covered(cls, league: str, team: str, g: pd.DataFrame, complete: list, cut_day: int) -> bool:
-        """Takımın gerekli pencere aralığı kanıtla kapsanıyor mu?"""
-        tg = g[(g["home"] == team) | (g["away"] == team)]
-        first = int(tg["day"].min()) if len(tg) else cut_day
-        w0 = max(cut_day - LOOKBACK_DAYS, first)
+    @staticmethod
+    def _window_covered(team: str, g: pd.DataFrame, usable: list, evidence: list, cut_day: int) -> bool:
+        """Takımın gerekli pencere aralığı (B) kanıtla kapsanıyor mu?
+
+        Yalnızca kaynak takviminin bağımsız katılımcılarla doğrulanmış aralıkları sayılır (veri deposunun kendi iç
+        tutarlılığı kapsam kanıtı değildir: takım sayısı depodan çıkarılırsa eksik takım/alt küme görünmez). Ardışık
+        sezonlar arasındaki ara, önceki sezonun listelenen takvimi sonuna kadar doğrulandıysa ve arada (bilgi
+        kesiminden önce) ne depoda ne kaynakta maç yoksa kapsanır; yeni sezonun takvimi bilgi kesiminden önce maç
+        göstermiyorsa (sezon başlamadı) ara bilgi kesimine kadar kapsanır."""
+        # Pencerenin başı depodaki ilk maçtan alınmaz (eksik önceki sezonlar pencereyi kısaltamaz): her zaman 365 gün.
+        # Ligde yeni olan takımın önceki dönemi, takımın yer almadığı doğrulanmış lig takvimiyle kapsanır.
+        w0 = cut_day - LOOKBACK_DAYS
         w1 = cut_day - 1
-        if w0 > w1:
-            return True
-        intervals: list[tuple[int, int, str]] = []
-        for c in complete:
-            if c.window is not None:
-                intervals.append((c.window[0], c.window[1], c.season))
-        cov_seasons = {c.season for c in complete}
-        for season, sg in g.groupby(g["season"].astype(str)):
-            if season in cov_seasons or season in ("None", "nan"):
-                continue
-            if int(sg["day"].max()) >= cut_day - 1:
-                continue  # süren sezon yalnızca kaynak takvimiyle doğrulanır
-            if cls._store_season_complete(league, sg):  # kapanmış sezon depoda sezon düzeyinde tam (iç tutarlılık)
-                intervals.append((int(sg["day"].min()), int(sg["day"].max()), season))
-        if not intervals:
+        iv = sorted(((s, e, c) for c in evidence for s, e in c.verified_windows), key=lambda x: (x[0], x[1]))
+        if not iv:
             return False
-        intervals.sort()
-        merged = [list(intervals[0])]
-        for s, e, season in intervals[1:]:
-            ps, pe, pseason = merged[-1]
-            if s <= pe + 1 or _next_season(pseason) == season:  # bitişik veya ardışık sezon (sezon arası)
-                merged[-1] = [ps, max(pe, e), season]
-            else:
-                merged.append([s, e, season])
-        return any(s <= w0 and e >= w1 for s, e, _ in merged)
+        store_days = g["day"].astype(int).to_numpy()
+        source_days = [day_number(m.date) for c in usable for m in c.matches]
 
+        def gap_empty(a: int, b: int) -> bool:
+            b = min(b, cut_day - 1)  # bilgi kesiminden sonrası bilinemez ve pencereye girmez
+            if a > b:
+                return True
+            return not ((store_days >= a) & (store_days <= b)).any() and not any(a <= d <= b for d in source_days)
+
+        def final(c, e) -> bool:
+            return c.season_end_verified and e == max(we for _, we in c.verified_windows)
+
+        def not_started(c) -> bool:
+            days = [day_number(m.date) for m in c.matches]
+            return (bool(days) and min(days) >= cut_day and any(round_number(m.round) == 1 for m in c.matches)
+                    and any(team in (m.home, m.away) for m in c.matches))
+
+        merged: list[list] = []
+        for s, e, c in iv:
+            if merged:
+                ps, pe, pc = merged[-1]
+                if s <= pe + 1 or (_next_season(pc.season) == c.season and final(pc, pe) and gap_empty(pe + 1, s - 1)):
+                    merged[-1] = [ps, max(pe, e), c if e >= pe else pc]
+                    continue
+            merged.append([s, e, c])
+        for item in merged:  # sezon henüz başlamadı: önceki sezon sonundan bilgi kesimine kadar
+            ps, pe, pc = item
+            if pe < w1 and final(pc, pe) and gap_empty(pe + 1, w1) and any(
+                    c.season == _next_season(pc.season) and not_started(c) for c in usable):
+                item[1] = w1
+        return any(s <= w0 and e >= w1 for s, e, _ in merged)
 
 def _next_season(season: str) -> str:
     s = str(season)
@@ -1117,10 +1437,12 @@ def reason_texts(codes) -> str:
 # Uygulama ve CLI için: önbellekteki kaynak dosyalarından kapsam (ağ isteği yok)
 # ----------------------------------------------------------------------------
 
-def cached_coverages(raw_dir, leagues, today: dt.date, known_teams_by_league: dict) -> dict:
-    """Veri güncellemesinin önbelleğe aldığı openfootball sezon dosyaları (içinde bulunulan ve önceki sezon).
+def cached_coverages(raw_dir, leagues, today: dt.date, known_teams_by_league: dict,
+                     participants_by_season: dict | None = None) -> dict:
+    """Veri güncellemesinin önbelleğe aldığı openfootball sezon dosyaları (içinde bulunulan ve önceki iki sezon).
 
-    Alınma anı dosyanın değiştirilme zamanıdır (güncellemenin dosyayı yazdığı an)."""
+    Alınma anı dosyanın değiştirilme zamanıdır (güncellemenin dosyayı yazdığı an). ``participants_by_season``:
+    (lig, sezon) -> o sezonun bağımsız katılımcıları (veri deposu); yoksa takvim tamlığı kanıtlanmaz."""
     from pathlib import Path
 
     from .data.leagues import LEAGUES, openfootball_season
@@ -1130,16 +1452,17 @@ def cached_coverages(raw_dir, leagues, today: dt.date, known_teams_by_league: di
         lg = LEAGUES.get(code)
         if lg is None or not lg.openfootball:
             continue
-        prev = today - dt.timedelta(days=365)
-        for season in sorted({openfootball_season(today, lg.calendar_year),
-                              openfootball_season(prev, lg.calendar_year)}):
+        # 365 günlük pencere sezon arasında üç sezona dokunabilir (yalnızca önbellekteki dosyalar; indirme yok)
+        for season in sorted({openfootball_season(today - dt.timedelta(days=d), lg.calendar_year)
+                              for d in (0, 365, 730)}):
             path = Path(raw_dir) / "openfootball" / season / f"{lg.openfootball}.json"
             if not path.is_file():
                 continue
             at = dt.datetime.fromtimestamp(path.stat().st_mtime, tz=dt.timezone.utc)
+            label = _norm_season(season, lg.calendar_year)
             out.setdefault(code, []).append(coverage_from_openfootball(
-                path.read_bytes(), code, _norm_season(season, lg.calendar_year), at,
-                known_teams_by_league.get(code, ())))
+                path.read_bytes(), code, label, at, known_teams_by_league.get(code, ()),
+                (participants_by_season or {}).get((code, label))))
     return out
 
 
@@ -1151,6 +1474,18 @@ def _norm_season(season: str, calendar_year: bool) -> str:
     return f"{y}/{(y + 1) % 100:02d}"
 
 
+def season_participants(matches: pd.DataFrame | None) -> dict:
+    """(lig, sezon) -> veri deposunda o sezonda maçı olan takımlar: kaynak takviminin BAĞIMSIZ katılımcı listesi
+    (başka sağlayıcı). Bir takımın açılış maçı henüz depoda yoksa liste eksik kalır ve takvim tamlığı kanıtlanmaz."""
+    if matches is None or matches.empty or "season" not in matches:
+        return {}
+    m = matches.dropna(subset=["season"])
+    out: dict = {}
+    for (lg, season), g in m.groupby([m["league"], m["season"].astype(str)]):
+        out[(lg, season)] = frozenset(g["home"]) | frozenset(g["away"])
+    return out
+
+
 def build_context(store, engine, consent: dict | None, today: dt.date | None = None) -> EligibilityContext:
     """Uygulama/CLI için bağlam: veri deposu + motorun durumu + önbellekteki kaynak takvimleri + kayıtlı haklar."""
     today = today or dt.datetime.now(ISTANBUL).date()
@@ -1159,7 +1494,7 @@ def build_context(store, engine, consent: dict | None, today: dt.date | None = N
     leagues = sorted(set(matches["league"].unique())) if matches is not None and not matches.empty else []
     tmp = EligibilityContext(matches, None, rights=RightsStatus({}))
     known = {lg: tmp.recent_teams(lg) for lg in leagues}
-    covs = cached_coverages(getattr(store, "raw_dir", "."), leagues, today, known)
+    covs = cached_coverages(getattr(store, "raw_dir", "."), leagues, today, known, season_participants(matches))
     return EligibilityContext(matches, sv, covs, consent=consent)
 
 

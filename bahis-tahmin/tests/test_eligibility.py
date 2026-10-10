@@ -542,9 +542,19 @@ def test_t16_unknown_rights_cannot_be_verified_by_consent_or_flag(m, eng, teams,
     by = c.evaluate(league="T1", date=FIXTURE_DAY, home=teams[0], away=teams[1], as_of=AS_OF,
                     markets=E.GOAL_MARKETS, prediction_codes=())
     for e in by.values():
-        assert e.forecast_ok and not e.bet_ok  # tahmin (yerel analiz) evet, bahis adayı hayır
-        assert {"KAYNAK_EGITIM_HAKKI_DOGRULANAMADI", "KAYNAK_SONUC_KULLANIMI_DOGRULANAMADI"} <= set(e.reasons)
+        # veri-uygunluk-v2 (S3-GATE-02): "yerel analiz" istisnası kaldırıldı. v1 burada tahmine izin veriyordu
+        # (yalnızca bahis engelliydi); belgelenmemiş sonuç kullanımı/model eğitimi/model kullanımı artık tahmini de
+        # engeller. Onay yalnızca erişimi açtığı için KAYNAK_ERISIM_IZNI_YOK yoktur.
+        assert not e.forecast_ok and not e.bet_ok and e.status_key == "ENGELLI"
+        assert {"KAYNAK_EGITIM_HAKKI_DOGRULANAMADI", "KAYNAK_SONUC_KULLANIMI_DOGRULANAMADI",
+                "KAYNAK_MODEL_KULLANIMI_DOGRULANAMADI"} <= set(e.reasons)
+        assert "KAYNAK_ERISIM_IZNI_YOK" not in e.reasons
         assert e.source_use["football-data.co.uk"]["model_egitimi"] == "DOGRULANAMADI"
+    # İzin verme durumu: aynı veri ve kapsam, hakları belgeli (açıkça sentetik) kaynakla tahmin ve bahis verisi uygun
+    ok = full_context(m, eng, AS_OF, FIXTURE_DAY).evaluate(league="T1", date=FIXTURE_DAY, home=teams[0],
+                                                           away=teams[1], as_of=AS_OF, markets=E.GOAL_MARKETS,
+                                                           prediction_codes=())
+    assert all(e.forecast_ok and e.bet_ok for e in ok.values())
     # Kayıtlı olmayan kaynak etiketi: hak bilinmiyor → tahmin de yok
     unk = E.rights_from_registry({"bilinmeyen-kaynak"}, {"football-data": "x"})
     assert unk.codes({"bilinmeyen-kaynak"}, set()) == ["KAYNAK_HAKKI_BILINMIYOR"]
@@ -633,13 +643,13 @@ def test_t20_existing_records_stay_readable_and_unchanged(eng, ctx, teams, tmp_p
     led.record_prediction(old_fc)
     led.record_prediction(old_dec)
     before = [row for row in led.conn.execute("SELECT id, created_at, payload, hash FROM predictions")]
-    # Yeni kod yolları: v2 kaydı ekle, oku, dışa aktar, değerlendir, sonuçlandır
+    # Yeni kod yolları: etkin protokol kaydı ekle, oku, dışa aktar, değerlendir, sonuçlandır
     F.record_forecasts(led, F.build_forecast_records(eng, fixtures(teams, n=1), recent_synthetic(), now=AS_OF,
                                                      ctx=ctx))
     rows = ledger_rows(led)
     assert rows[0]["Veri uygunluğu"].startswith("- (kayıt veri uygunluk") and rows[0]["Olasılık"] == 0.31
     ev = F.evaluate_forecasts(led)
-    assert set(ev["kapsam"]) == {F.PROTOCOL_VERSION, F.PROTOCOL_V2_VERSION}  # sürümler ayrı
+    assert set(ev["kapsam"]) == {F.PROTOCOL_VERSION, F.ACTIVE_PROTOCOL}  # sürümler ayrı (etkin: v3)
     settle_pending(led, pd.DataFrame([{"league": "T1", "date": pd.Timestamp("2026-10-20"), "home": "Takım A",
                                        "away": "Takım B", "fthg": 3, "ftag": 1, "hthg": 1, "htag": 0}]))
     after = [row for row in led.conn.execute("SELECT id, created_at, payload, hash FROM predictions")][:2]
@@ -800,23 +810,32 @@ def test_league_share_is_per_season_and_not_diluted_by_more_evidence(m, teams):
     assert "LIG_DURUMU_EKSIK" in e.reasons and not e.forecast_ok  # 6 sezonluk kanıt eşiği seyreltmez
 
 
-def test_previous_season_store_evidence_must_be_complete_for_the_whole_league(m, teams):
+def test_previous_season_needs_independent_calendar_not_store_self_consistency(m, teams):
+    """veri-uygunluk-v2 (S3-GATE-02): v1 bu senaryoda depodaki kapanmış sezonun kendi iç tutarlılığını (takım sayısı
+    depodan çıkarılan tam çift devre) kapsam kanıtı sayıp tahmine izin veriyordu. Takım sayısı kanıtın kendisinden
+    çıkarıldığı için eksik takım/alt küme görünmez; artık önceki sezon için bağımsız katılımcılarla doğrulanmış kaynak
+    takvimi gerekir. Hem engelleme hem izin verme durumu sınanır."""
     summer = dt.datetime(2026, 7, 20, 12, tzinfo=UTC)
     first = dt.date(2026, 8, 10)
     retrieved = summer - dt.timedelta(hours=1)
-    from uygunluk_yardim import next_season_schedule
+    from uygunluk_yardim import next_season_schedule, season_coverage
 
     nxt = next_season_schedule(m, first, retrieved, "2026/27")
     kw = dict(league="T1", date=first, home=teams[0], away=teams[1], as_of=summer, markets=("FT_OVER_3_5",),
               prediction_codes=())
     e = E.EligibilityContext(m, E.state_view(engine_for(m)), {"T1": [nxt]}, rights=synthetic_rights()).evaluate(**kw)
     e = e["FT_OVER_3_5"]
-    assert e.forecast_ok, e.reasons  # depoda sezon düzeyinde tam kapanmış sezon + yeni sezon takvimi
+    assert "KAYNAK_ARALIK_DISI" in e.reasons and e.freshness == E.UNKNOWN and not e.forecast_ok  # yalnızca depo
+    # 365 günlük pencerenin kapsadığı önceki iki sezonun (sentetik) bağımsız takvimi
+    prev = [season_coverage(m, x, retrieved) for x in ("2024/25", "2025/26")]
+    e = E.EligibilityContext(m, E.state_view(engine_for(m)), {"T1": [*prev, nxt]},
+                             rights=synthetic_rights()).evaluate(**kw)["FT_OVER_3_5"]
+    assert e.forecast_ok, e.reasons
     others = m[(m["season"] == "2025/26") & ~m["home"].isin(teams[:2]) & ~m["away"].isin(teams[:2])].index[:20]
     store = m.drop(index=others)
-    e = E.EligibilityContext(store, E.state_view(engine_for(store)), {"T1": [nxt]},
+    e = E.EligibilityContext(store, E.state_view(engine_for(store)), {"T1": [*prev, nxt]},
                              rights=synthetic_rights()).evaluate(**kw)["FT_OVER_3_5"]
-    assert "KAYNAK_ARALIK_DISI" in e.reasons and not e.forecast_ok  # diğer takımların eksikleri gizlenmez
+    assert "LIG_DURUMU_EKSIK" in e.reasons and not e.forecast_ok  # diğer takımların eksikleri gizlenmez
 
 
 def test_quarantined_record_is_not_counted_as_present(m, teams):
@@ -875,10 +894,11 @@ def test_team_history_rule_is_enforced(ctx, teams):
     assert all("TAKIM_GECMISI_YETERSIZ" in x.reasons and not x.forecast_ok for x in by.values())
 
 
-def test_unverified_rights_block_every_bet_path_but_keep_forecast(m, eng, teams, validated, tmp_path,
-                                                                   trained_engine):
-    """bet_ok=False (doğrulanamayan sonuç kullanımı / model eğitimi hakkı) karar, kayıt ve 1X2 değer yollarına
-    gerçekten uygulanır; tahmin (yerel analiz) gösterilebilir."""
+def test_unverified_rights_block_forecast_and_every_bet_path(m, eng, teams, validated, tmp_path, trained_engine):
+    """veri-uygunluk-v2 (S3-GATE-02): v1'de doğrulanamayan sonuç kullanımı / model eğitimi hakkı yalnızca bahsi
+    engelliyor, tahmin "yerel analiz" olarak gösteriliyordu (bu testin eski adı ..._but_keep_forecast). İstisna
+    kaldırıldı: tahmin/olasılık gösterilmez, karar ve kayıtlar olasılıksız ve stake 0 olur; 1X2 değer satırı yoktur.
+    Hakları belgeli (sentetik) kaynakla aynı yol tahmin ve aday üretebilir (izin verme durumu)."""
     real = m.assign(source="football-data.co.uk")
     consented = E.rights_from_registry({"football-data.co.uk"}, {"football-data": "x"})
     base = full_context(real, eng, AS_OF, FIXTURE_DAY, rights=consented)
@@ -887,24 +907,37 @@ def test_unverified_rights_block_every_bet_path_but_keep_forecast(m, eng, teams,
     led = Ledger(tmp_path / "hak.sqlite")
     for v in gated_goal_predictions(eng, c, fixtures(teams, n=4), AS_OF):
         pred = v.prediction
-        assert v.all_usable(AS_OF) and not any(e.bet_ok for e in v.by_market.values())
+        assert not v.any_usable(AS_OF) and not any(e.forecast_ok or e.bet_ok for e in v.by_market.values())
+        assert all(e.lead_code == "KAYNAK_SONUC_KULLANIMI_DOGRULANAMADI" for e in v.by_market.values())
         led.add_odds([quote(pred.event_id, k, generous_odds(pred, k)) for k in PRIMARY_YES])
         decs = decisions_for(pred, eng, led, AS_OF, eligibility=v)
-        assert all(d.status == "DATA_NOT_ELIGIBLE" and np.isfinite(d.p) for d in decs)
+        assert all(d.status == "DATA_NOT_ELIGIBLE" and not np.isfinite(d.p) for d in decs)
         assert any("KAYNAK_SONUC_KULLANIMI_DOGRULANAMADI" in r for d in decs for r in d.reasons)
         record_decisions(led, pred, decs, eng, record_time=AS_OF)
-    assert not any(r["kayit_turu"] == F.RECORD_BET or r["stake_units"] for r in led.predictions())
+    recs = led.predictions()
+    assert not any(r["kayit_turu"] == F.RECORD_BET or r["stake_units"] or r["p"] is not None for r in recs)
+    assert all(r["veri_uygunlugu"]["nedenler"] for r in recs)  # olasılıksız ama nedenli kayıt
     led.close()
+    # İzin verme durumu: hakları belgeli kaynakla aynı fikstürler gösterilir ve aday kararına ulaşılabilir
+    ok_ctx = full_context(m, eng, AS_OF, FIXTURE_DAY)
+    led2 = Ledger(tmp_path / "hak_ok.sqlite")
+    statuses = set()
+    for v in gated_goal_predictions(eng, ok_ctx, fixtures(teams, n=4), AS_OF):
+        assert v.all_usable(AS_OF)
+        led2.add_odds([quote(v.prediction.event_id, k, generous_odds(v.prediction, k)) for k in PRIMARY_YES])
+        statuses |= {d.status for d in decisions_for(v.prediction, eng, led2, AS_OF, eligibility=v)}
+    assert "VALUE_CANDIDATE" in statuses
+    led2.close()
     from bahis_tahmin.config import Settings
 
     p1 = trained_engine.predict_match("T1", "Takım A", "Takım B", "2026-11-04")
-    p1.eligibility = verified(p1.event_id, "1X2", AS_OF, bet_ok=False, state_digest=p1.state_digest,
-                              reasons=("KAYNAK_SONUC_KULLANIMI_DOGRULANAMADI",))
+    p1.eligibility = verified(p1.event_id, "1X2", AS_OF, forecast_ok=False, bet_ok=False,
+                              state_digest=p1.state_digest, reasons=("KAYNAK_SONUC_KULLANIMI_DOGRULANAMADI",))
     s = Settings()
     key = max(("1", "X", "2"), key=lambda k: p1.markets[k])
     odds = {key: min(s.max_odds, round((1 + s.min_ev + 0.10) / p1.markets[key], 2))}
     rows = p1.value_rows(s, odds, now=AS_OF)
-    assert p1.forecast_ok_at(AS_OF) and not any(r["value"] for r in rows) and all(r["stake"] == 0 for r in rows)
+    assert not p1.forecast_ok_at(AS_OF) and not any(r["value"] for r in rows) and all(r["stake"] == 0 for r in rows)
     assert rows[0]["veri_engeli"] == ["KAYNAK_SONUC_KULLANIMI_DOGRULANAMADI"]
     assert p1.best_value(s, now=AS_OF) is None
 
@@ -943,13 +976,25 @@ def test_league_share_early_season_is_not_diluted_by_previous_season(m, teams):
 
 
 # ============================================ ikinci doğrulama turu bulguları için ek testler
-def test_store_only_season_evidence_requires_exact_double_round_robin(m):
-    sg = m[m["season"] == "2024/25"]
-    assert E.EligibilityContext._store_season_complete("T1", sg)
-    assert not E.EligibilityContext._store_season_complete("T1", sg.drop(index=sg.index[:1]))  # bir maç eksik
-    assert not E.EligibilityContext._store_season_complete("T1", pd.concat([sg, sg.head(1)]))  # fazladan maç
-    # Split/play-off'lu lig: toplam maç sayısı depodan bilinemez → depo-içi kanıt kabul edilmez
-    assert not E.EligibilityContext._store_season_complete("SC0", sg.assign(league="SC0"))
+def test_store_only_season_is_never_completeness_evidence(m, teams):
+    """veri-uygunluk-v2: v1'de depo-içi kanıt, depodan çıkarılan takım sayısıyla "tam çift devre" ise kabul ediliyordu
+    (bu test o kuralın birim testiydi). Karşı örnek: daha büyük ligin 4 takımlık alt kümesi kendi içinde kusursuz çift
+    devredir. Artık depo yalnızca kendi kendini doğrulayamaz; aynı alt küme ve tam sezon da kapsam kanıtı değildir."""
+    summer = dt.datetime(2026, 7, 20, 12, tzinfo=UTC)
+    first = dt.date(2026, 8, 10)
+    from uygunluk_yardim import next_season_schedule
+
+    four = teams[:4]
+    sub = m[(m["season"] == "2025/26") & m["home"].isin(four) & m["away"].isin(four)]
+    assert len(sub) == 12 and (pd.concat([sub["home"], sub["away"]]).value_counts() == 6).all()  # 4·3, kusursuz
+    store = pd.concat([m[m["season"] != "2025/26"], sub])
+    nxt = next_season_schedule(store, first, summer - dt.timedelta(hours=1), "2026/27")
+    for st in (store, m):
+        e = E.EligibilityContext(st, E.state_view(engine_for(st)), {"T1": [nxt]}, rights=synthetic_rights()).evaluate(
+            league="T1", date=first, home=four[0], away=four[1], as_of=summer, markets=("FT_OVER_3_5",),
+            prediction_codes=())["FT_OVER_3_5"]
+        assert "KAYNAK_ARALIK_DISI" in e.reasons and not e.forecast_ok
+    assert not hasattr(E.EligibilityContext, "_store_season_complete")
 
 
 def test_score_change_after_training_is_a_state_mismatch(m, eng, teams):

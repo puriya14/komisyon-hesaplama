@@ -432,8 +432,14 @@ class GoalsPage(Page):
             return "<b>Veri uygunluğu:</b> değerlendirilmedi (uygun değil)."
         st = e.state_scope or {}
         ev = (e.data_scope or {}).get("kapsam_kanitlari") or []
-        kan = ", ".join(f"{x['kaynak']} {x['sezon']} ({'tam' if x['tam'] else 'kısmi'}, alınma {x['alinma'][:16]})"
-                        for x in ev) or "yok"
+        def _araliklar(x) -> str:
+            ar = x.get("gecmis_aralik_kaniti")
+            if ar is None:
+                return ""
+            return "; geçmiş aralık kanıtı " + (", ".join(f"{a}–{b}" for a, b in ar) or "yok")
+
+        kan = ", ".join(f"{x['kaynak']} {x['sezon']} ({'tam sezon takvimi' if x['tam'] else 'tam sezon doğrulanmadı'}"
+                        f"{_araliklar(x)}, alınma {x['alinma'][:16]})" for x in ev) or "yok"
         rows = "".join(f"<br>· {k}: {x.status_label} — {', '.join(x.reasons) or 'neden yok'}"
                        for k, x in v.by_market.items())
         return (f"<b>Veri uygunluğu</b> (politika {e.policy_version}; değerlendirme {e.evaluated_at[:16]} UTC; "

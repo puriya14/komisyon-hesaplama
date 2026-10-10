@@ -107,20 +107,35 @@ IMPLEMENTED = ("football-data", "github-mirror", "openfootball")
 # Veri deposundaki ``source`` etiketi -> kaynak anahtarı
 SOURCE_LABELS = {"football-data.co.uk": "football-data", "github-yedek": "github-mirror", "openfootball": "openfootball"}
 
-# Kullanım kapsamının yapılandırılmış hâli (veri uygunluk kontrolü bunu okur; S3-GATE-01). Değerler yukarıdaki
-# SOURCES metinlerinin aynısıdır, YENİ HAK VERMEZ: belge yoksa "DOGRULANAMADI" kalır. Erişim (kullanıcı onayı),
-# sonuç verisini kullanma, model eğitimi ve yeniden dağıtım ayrı alanlardır; kullanıcının uygulamadaki onayı yalnızca
-# erişimi (indirme ve yerel kişisel analiz) kapsar, diğer alanları doğrulanmış yapmaz.
+# Kullanım kapsamının yapılandırılmış hâli (veri uygunluk kontrolü bunu okur; S3-GATE-01, kapsamlar S3-GATE-02).
+# Değerler yukarıdaki SOURCES metinlerinin aynısıdır, YENİ HAK VERMEZ: belge yoksa "DOGRULANAMADI" kalır. Ayrı alanlar:
+# kullanıcı indirme onayı (ayarlar; burada değil), kaynak erişim koşulları, sonuç verisinin analizde kullanımı, model
+# eğitimi, bu veriyle eğitilmiş mevcut modelin kullanımı, ticari kullanım ve yeniden dağıtım. Kullanıcının
+# uygulamadaki onayı yalnızca indirmeyi (erişimi) kapsar; diğer alanları doğrulanmış yapmaz ve "yerel/kişisel analiz"
+# gerekçesiyle otomatik izin verilmez (S3-GATE-02). Hangi işlemin hangi alanları gerektirdiği:
+# ``eligibility.OPERATION_SCOPES``. ``saglar``: kaynağın uygulamada GERÇEKTEN sağladığı veri türleri; bir etiketin
+# hakkı yalnızca bu türler için geçerlidir (ör. yalnızca fikstür sağlayan kaynağın etiketiyle sonuç verisi hak
+# kazanamaz). GitHub yedeğinin depo lisansı (MIT) asıl kaynağın haklarını kanıtlamaz.
 #   IZINLI_BELGELI   : lisans belgesi kayıtlı (``belge``)
-#   DOGRULANAMADI    : açık izin belgesi bulunamadı
+#   DOGRULANAMADI    : açık izin belgesi bulunamadı veya belgeye erişilemedi
 #   IZIN_VARSAYILMAZ : izin varsayılmıyor (uygulama bu kullanımı yapmaz)
-USE_RIGHTS: dict[str, dict[str, str]] = {
-    "football-data": {"sonuc_kullanimi": "DOGRULANAMADI", "model_egitimi": "DOGRULANAMADI",
-                      "yeniden_dagitim": "IZIN_VARSAYILMAZ", "belge": ""},
-    "github-mirror": {"sonuc_kullanimi": "DOGRULANAMADI", "model_egitimi": "DOGRULANAMADI",
-                      "yeniden_dagitim": "IZIN_VARSAYILMAZ", "belge": ""},
-    "openfootball": {"sonuc_kullanimi": "IZINLI_BELGELI", "model_egitimi": "IZINLI_BELGELI",
-                     "yeniden_dagitim": "IZINLI_BELGELI", "belge": SOURCES["openfootball"].terms_url},
+USE_RIGHTS: dict[str, dict] = {
+    "football-data": {"erisim_kosullari": "DOGRULANAMADI", "sonuc_kullanimi": "DOGRULANAMADI",
+                      "model_egitimi": "DOGRULANAMADI", "model_kullanimi": "DOGRULANAMADI",
+                      "ticari_kullanim": "DOGRULANAMADI", "yeniden_dagitim": "IZIN_VARSAYILMAZ", "belge": "",
+                      "saglar": ("sonuc", "fikstur"),
+                      "belge_denetimi": ("2026-10-10 (S3-GATE-02): data.php ve contact.php bu ortamdan açılamadı (ad "
+                                         "çözümlenemedi); koşul metni okunamadığı için hiçbir alan izinli sayılmadı.")},
+    "github-mirror": {"erisim_kosullari": "DOGRULANAMADI", "sonuc_kullanimi": "DOGRULANAMADI",
+                      "model_egitimi": "DOGRULANAMADI", "model_kullanimi": "DOGRULANAMADI",
+                      "ticari_kullanim": "DOGRULANAMADI", "yeniden_dagitim": "IZIN_VARSAYILMAZ", "belge": "",
+                      "saglar": ("sonuc",),
+                      "belge_denetimi": "Depo lisansı (MIT) asıl kaynağın (football-data.co.uk) haklarını kanıtlamaz."},
+    "openfootball": {"erisim_kosullari": "IZINLI_BELGELI", "sonuc_kullanimi": "IZINLI_BELGELI",
+                     "model_egitimi": "IZINLI_BELGELI", "model_kullanimi": "IZINLI_BELGELI",
+                     "ticari_kullanim": "IZINLI_BELGELI", "yeniden_dagitim": "IZINLI_BELGELI",
+                     "belge": SOURCES["openfootball"].terms_url, "saglar": ("fikstur", "takvim"),
+                     "belge_denetimi": "CC0 1.0 lisans dosyası (S2 denetimi)."},
 }
 
 

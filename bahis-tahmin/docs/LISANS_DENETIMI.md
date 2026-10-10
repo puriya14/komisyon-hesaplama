@@ -5,8 +5,9 @@ Denetim tarihi: 2026-10-10. Kod karşılığı: `bahis_tahmin/data/source_regist
 **Önemli sınırlama:** Bu denetim, geliştirme ortamının ağ politikası nedeniyle football-data.co.uk ve
 the-odds-api.com sitelerine **doğrudan erişilemeden** yapıldı (vekil sunucu 403). Aşağıdaki özetler,
 erişilebilen depo lisans dosyalarına ve genel bilgilere dayanır; **hukuki görüş değildir**. Kullanım
-hakkı belirsiz kaynaklar varsayılan olarak **kapalıdır** ve yalnızca kullanıcının açık onayıyla,
-kişisel ve ticari olmayan analiz için kullanılır.
+hakkı belirsiz kaynaklar varsayılan olarak **kapalıdır**; kullanıcının açık onayı yalnızca indirmeyi (erişimi) açar.
+S3-GATE-02'den itibaren "kişisel/yerel analiz" gerekçesiyle otomatik kullanım izni yoktur: sonuç kullanımı, model
+eğitimi ve model kullanımı belgeyle doğrulanmadıkça bu verilerle tahmin gösterilmez ve model eğitilmez.
 
 | Kaynak | Ne için | Lisans durumu | Otomatik indirme | Model eğitimi | Yeniden dağıtım | Uygulamadaki durum |
 |---|---|---|---|---|---|---|
@@ -27,14 +28,21 @@ kişisel ve ticari olmayan analiz için kullanılır.
   KG oranı içermez. Bu oranlar başka pazarlardan türetilmez; kullanıcı kendi gördüğü oranı girer veya
   şemaya uygun CSV ile içe aktarır.
 
-- Kullanım kapsamı yapılandırılmış olarak `source_registry.USE_RIGHTS`'ta tutulur (erişim, sonuç kullanımı, model
-  eğitimi ve yeniden dağıtım ayrı) ve ortak veri uygunluk kontrolü karar verirken bunu okur: belgelenmemiş sonuç
-  kullanımı/model eğitimi hakkıyla eğitilen modelden **bahis adayı üretilmez**; kullanıcı onayı yalnızca erişimi
-  kapsar (S3-GATE-01, [`VERI_UYGUNLUK.md`](VERI_UYGUNLUK.md)).
+- Kullanım kapsamı yapılandırılmış olarak `source_registry.USE_RIGHTS`'ta tutulur (erişim koşulları, sonuç kullanımı,
+  model eğitimi, model kullanımı, ticari kullanım, yeniden dağıtım ve kaynağın sağladığı veri türleri ayrı) ve ortak
+  veri uygunluk kontrolü işlem kapsamına göre (`eligibility.OPERATION_SCOPES`) okur: belgelenmemiş sonuç kullanımı/
+  model eğitimi/model kullanımı hakkıyla **tahmin gösterilmez, bahis adayı üretilmez ve gerçek veriyle model
+  eğitilmez**; yeniden dağıtım ve ticari kullanım bu yerel işlemler için gerekmez. Kullanıcı onayı yalnızca erişimi
+  kapsar; onay kutusu, bayrak veya kaynak etiketi bu kontrolü aşamaz (S3-GATE-02, [`VERI_UYGUNLUK.md`](VERI_UYGUNLUK.md)).
+- 2026-10-10 (S3-GATE-02): football-data.co.uk `data.php` ve `contact.php` sayfaları bu ortamdan yeniden denendi;
+  alan adı çözümlenemedi (ENOTFOUND), belge okunamadı. Veri indirilmedi, kaynak sahibine mesaj gönderilmedi, ücretli
+  üyelik başlatılmadı. Belge okunamadığı için hiçbir alan "izinli" sayılmadı. GitHub yedeğinin depo lisansı (MIT) asıl
+  kaynağın haklarını kanıtlamaz.
 
 ## Açık konular (kullanıcı kararı gerekir)
 
-1. football-data.co.uk koşullarının site üzerinden okunması ve kişisel kullanımın uygun olduğunun teyidi.
+1. football-data.co.uk koşullarının site üzerinden okunması; sonuç kullanımı, model eğitimi ve model kullanımı
+   kapsamının belgeyle teyidi (belge kayda eklenmeden bu verilerle tahmin gösterilmez).
 2. Ticari kullanım/yeniden dağıtım planlanıyorsa yazılı izin veya lisanslı veri sağlayıcı.
 3. Gerçek oranlı geçmiş getiri doğrulaması isteniyorsa A/B/C pazarlarını kapsayan, kullanım hakkı açık
    (büyük olasılıkla ücretli) bir oran kaynağı — bu, kullanıcının açık onayı olmadan başlatılmadı.

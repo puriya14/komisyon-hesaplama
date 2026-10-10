@@ -6,15 +6,19 @@ getiri iddiası değildir; gerçek para kullanılmaz.
 
 ## Protokol
 
-- **Etkin sürüm `ileriye-donuk-olcum-v2`** (S3-GATE-01): veri uygunluğu ortak kontrolden gelir
-  ([`VERI_UYGUNLUK.md`](VERI_UYGUNLUK.md), politika `veri-uygunluk-v1`). Gerçek sistem saatinde
-  **2026-10-10T16:28:32Z** donduruldu; gövde SHA-256 `56c41f57c2a49610f072f0016e653a33ca70f98d1212fb5effdb6fee7d333063`.
-  Tam metin: [`reports/s3_gate_01/ileriye_donuk_protokol_v2.json`](../reports/s3_gate_01/ileriye_donuk_protokol_v2.json).
-- Önceki sürüm `ileriye-donuk-olcum-v1` **değiştirilmedi**: 2026-10-10T11:52:58Z, gövde SHA-256
+- **Etkin sürüm `ileriye-donuk-olcum-v3`** (S3-GATE-02): veri uygunluğu ortak kontrolden gelir
+  ([`VERI_UYGUNLUK.md`](VERI_UYGUNLUK.md), politika `veri-uygunluk-v2`: kesin takım kimliği `takim-eslesme-v2`,
+  bağımsız katılımcılarla doğrulanan takvim aralığı, "yerel analiz" istisnası olmadan işlem kapsamlı kaynak hakları).
+  Dondurma anı ve gövde SHA-256: [`reports/s3_gate_02/ileriye_donuk_protokol_v3.json`](../reports/s3_gate_02/ileriye_donuk_protokol_v3.json)
+  (kodda `PROTOCOL_V3_FROZEN`; ikisinin eşitliği testle denetlenir).
+- Önceki sürümler **değiştirilmedi**: `ileriye-donuk-olcum-v2` (S3-GATE-01; 2026-10-10T16:28:32Z, gövde SHA-256
+  `56c41f57c2a49610f072f0016e653a33ca70f98d1212fb5effdb6fee7d333063`,
+  [`reports/s3_gate_01/ileriye_donuk_protokol_v2.json`](../reports/s3_gate_01/ileriye_donuk_protokol_v2.json)) ve
+  `ileriye-donuk-olcum-v1` (2026-10-10T11:52:58Z, gövde SHA-256
   `3946a6e2865f4ea5386156e20cb5ccb7ccd8a4c1520c3dc65fdd4e2a6814fddf`,
-  [`reports/kabul_s2_01/ileriye_donuk_protokol_v1.json`](../reports/kabul_s2_01/ileriye_donuk_protokol_v1.json).
-  v1 ve v2 kayıtları değerlendirmede ayrı raporlanır ve birleştirilmez
-  (`python -m bahis_tahmin gol-olcum-degerlendir --protokol` iki belgeyi de yazdırır). Kod: `bahis_tahmin/goals/forecast_log.py`.
+  [`reports/kabul_s2_01/ileriye_donuk_protokol_v1.json`](../reports/kabul_s2_01/ileriye_donuk_protokol_v1.json)).
+  Sürümlerin kayıtları değerlendirmede ayrı raporlanır ve birleştirilmez
+  (`python -m bahis_tahmin gol-olcum-degerlendir --protokol` belgeleri yazdırır). Kod: `bahis_tahmin/goals/forecast_log.py`.
 - Hedef karar anı: **maç günü 00:00 Europe/Istanbul**. Kayıt anı (defterin `created_at`'i) bundan önce olmalı; değilse
   olasılık yazılmaz (`PENCERE_KACIRILDI`). Kaçırılan pencere sonradan doldurulmaz.
 - Dondurma gününden önceki veya sonucu bilinen maçlar ileriye dönük örnekleme girmez.
@@ -37,10 +41,13 @@ getiri iddiası değildir; gerçek para kullanılmaz.
 | `KARAR_KAYDI` | Karar motorunun diğer kararları |
 | `FORECAST_GECERSIZ_ILAN` | Bir tahmini gerekçeyle geçersiz ilan eden ayrı kayıt (orijinal değişmez; değerlendirme dahil/hariç iki sayım verir) |
 
-Neden kodları (v2): zaman kodları `PENCERE_KACIRILDI`, `MAC_SONUCU_BILINIYOR`, `PROTOKOLDEN_ONCE` ve ortak
+Neden kodları (v2/v3): zaman kodları `PENCERE_KACIRILDI`, `MAC_SONUCU_BILINIYOR`, `PROTOKOLDEN_ONCE` ve ortak
 uygunluk kontrolünün kodları (birincil neden `reasons[0]`; tamamı `veri_uygunlugu.nedenler`), ör. `DEPODA_EKSIK_MAC`,
 `DURUM_DEPODAN_GERIDE`, `KAYNAK_KAPSAMI_YOK`, `TAKIM_ESLESMEDI`, `GEREKLI_ALAN_EKSIK`, `TAKIM_GECMISI_YETERSIZ`,
-`OLASILIK_GECERSIZ`. Takım adı eşleşmeyen fikstür, aday kimlikle (`aday:…`, `kanonik_kimlik: false`) üç pazar için
+`OLASILIK_GECERSIZ`; v3'te ayrıca `TAKIM_ESLESMESI_DOGRULANAMADI`, `KAYNAK_DEPO_CELISKISI`,
+`KAYNAK_SONUC_KULLANIMI_DOGRULANAMADI`, `KAYNAK_EGITIM_HAKKI_DOGRULANAMADI`, `KAYNAK_MODEL_KULLANIMI_DOGRULANAMADI`,
+`MODEL_EGITIM_KOKENI_YOK` (bunlar artık olasılıksız `TAHMIN_YOK` kaydına yol açar). Takım adı kesin olarak eşleşmeyen
+(bulunamadı, belirsiz veya yalnızca benzer) fikstür, aday kimlikle (`aday:…`, `kanonik_kimlik: false`) üç pazar için
 `TAKIM_ESLESMEDI` kaydı alır. v1'in `VERI_GUNCEL_DEGIL` kuralı (son kayıtlı lig maçından sonra oynanmış maç veya 21 gün)
 yalnızca eski kayıtların anlamı için belgede kalır. Kayıtlarda ayrıca `hesaplama_ani`, `bilgi_kesimi` ve
 `veri_uygunlugu` (güncellik, tahmin/bahis uygunluğu, nedenler, veri kesimi, durum özeti) alanları vardır.
@@ -65,7 +72,8 @@ yalnızca eski kayıtların anlamı için belgede kalır. Kayıtlarda ayrıca `h
   takvimi olmayan liglerde güncellik doğrulanamaz (`KAYNAK_KAPSAMI_YOK`) ve tahmin yazılmaz.
 - Takım adı eşleşmeyen fikstür v2'de aday kimlikli `TAHMIN_YOK` kaydı alır (v1'de deftere girmiyordu).
 - Başlama saati olmayan fikstürlerde karar anı yine maç günü 00:00 İstanbul'dur.
-- Model eğitim verisinin (football-data.co.uk / GitHub yedeği) kullanım hakları belgeyle doğrulanmadı; ölçüm kişisel
-  analiz kapsamındadır.
+- Model eğitim verisinin (football-data.co.uk / GitHub yedeği) sonuç kullanımı, model eğitimi ve model kullanımı
+  hakları belgeyle doğrulanmadı. v3'te "kişisel analiz" istisnası yoktur: bu veriyle eğitilmiş modelden olasılık
+  kaydedilmez (nedenli `TAHMIN_YOK`), gerçek veriyle yeni eğitim de yapılmaz.
 - Bu ortamda (10.10.2026) veri 03.09.2026'da bittiği için gerçek fikstürlerin hepsi `VERI_GUNCEL_DEGIL` ya da
   `PENCERE_KACIRILDI` oldu; bu nedenle henüz hiçbir ileriye dönük tahmin kaydı yoktur (bkz. `reports/kabul_s2_01/`).

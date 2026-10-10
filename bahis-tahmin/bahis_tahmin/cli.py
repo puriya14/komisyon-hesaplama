@@ -71,6 +71,18 @@ def _now_utc():
     return _dt.datetime.now(_dt.timezone.utc)
 
 
+def _training_blocked(st) -> bool:
+    """Gerçek veriyle model eğitimi hak kapsamı (S3-GATE-02): eğitim verisinin kaynaklarında sonuç kullanımı ve model
+    eğitimi hakkı belgeli değilse eğitim yapılmaz. Onay veya bayrak bu kontrolü aşamaz."""
+    from .eligibility import reason_texts, training_rights_codes
+
+    codes = training_rights_codes(st.matches, Settings.load().source_consent)
+    if codes:
+        print("Model eğitimi yapılmadı (veri kaynağının kullanım kapsamı doğrulanmadı): " + reason_texts(codes),
+              file=sys.stderr)
+    return bool(codes)
+
+
 def _blocked_line(e) -> str:
     return f"TAHMİN YOK — {e.short_text()}" if e is not None else "TAHMİN YOK — uygunluk değerlendirilmedi"
 
@@ -117,6 +129,8 @@ def cmd_train(a) -> int:
     if not st.has_data:
         print("Veri yok. Önce 'update' çalıştırın.", file=sys.stderr)
         return 2
+    if _training_blocked(st):
+        return 3
     s = Settings.load()
     eng = PredictionEngine()
     t = time.time()
@@ -218,6 +232,8 @@ def cmd_goal_train(a) -> int:
     if not st.has_data:
         print("Veri yok. Önce 'update' çalıştırın.", file=sys.stderr)
         return 2
+    if _training_blocked(st):
+        return 3
     eng = GoalEngine()
     t = time.time()
     try:
@@ -518,6 +534,8 @@ def cmd_seq_research(a) -> int:
               "statü için geçerli sayılmaz, yalnızca deneme çalıştırmasıdır.")
     t = time.time()
     log = lambda s: print(f"[{time.time() - t:7.0f} sn] {s}", flush=True)  # noqa: E731
+    if _training_blocked(st):  # S0 modeli ve araştırma gerçek sonuç verisiyle eğitilir/çalışır (S3-GATE-02)
+        return 3
     s0 = pd.read_pickle(a.s0) if a.s0 else load_or_build_s0(st.matches, out, progress=log)
     res = run_research(st.matches, out, s0=s0, R=a.R, placebo_seeds=a.plasebo_tohum, R_placebo=a.plasebo_R,
                        workers=a.isci, families=fams, progress=log, record=True,

@@ -347,12 +347,32 @@ def assign_seasons(df: pd.DataFrame) -> pd.Series:
 # openfootball (yedek fikstür kaynağı)
 # ----------------------------------------------------------------------------
 
-def parse_openfootball(data: bytes, league: str) -> pd.DataFrame:
-    """openfootball/football.json biçimindeki sezon dosyasından oynanmamış maçlar."""
+def openfootball_team_names(data: bytes) -> list[str]:
+    """Sezon dosyasındaki (oynanmış ve oynanmamış) bütün takım adları: ad eşlemesinin bağlamı."""
     try:
         obj = json.loads(decode_bytes(data))
     except ValueError:
-        return pd.DataFrame(columns=FIXTURE_COLUMNS)
+        return []
+    names: dict[str, None] = {}
+    for m in obj.get("matches", []) if isinstance(obj, dict) else []:
+        if not isinstance(m, dict):
+            continue
+        for t in (m.get("team1"), m.get("team2")):
+            t = t.get("name") if isinstance(t, dict) else t
+            if t and str(t).strip():
+                names[str(t).strip()] = None
+    return list(names)
+
+
+def parse_openfootball(data: bytes, league: str, keep_provider_id: bool = False) -> pd.DataFrame:
+    """openfootball/football.json biçimindeki sezon dosyasından oynanmamış maçlar.
+
+    ``keep_provider_id``: kaynakta maç kimliği (``id``) varsa ``provider_id`` sütununda tutulur (yoksa boş)."""
+    cols = FIXTURE_COLUMNS + (["provider_id"] if keep_provider_id else [])
+    try:
+        obj = json.loads(decode_bytes(data))
+    except ValueError:
+        return pd.DataFrame(columns=cols)
     rows = []
     for m in obj.get("matches", []):
         score = m.get("score")
@@ -371,17 +391,19 @@ def parse_openfootball(data: bytes, league: str) -> pd.DataFrame:
             t2 = t2.get("name")
         if not t1 or not t2 or not m.get("date"):
             continue
+        pid = m.get("id")
         rows.append({
             "league": league,
             "date": m.get("date"),
             "time": str(m.get("time") or "")[:5],
             "home": t1,
             "away": t2,
+            "provider_id": str(pid) if isinstance(pid, (str, int)) and not isinstance(pid, bool) else None,
         })
     if not rows:
-        return pd.DataFrame(columns=FIXTURE_COLUMNS)
+        return pd.DataFrame(columns=cols)
     out = pd.DataFrame(rows)
     out["date"] = pd.to_datetime(out["date"], errors="coerce").dt.normalize()
     out["time"] = _clean_time(out["time"])
     out["source"] = "openfootball"
-    return _finish(out, FIXTURE_COLUMNS)
+    return _finish(out, cols)

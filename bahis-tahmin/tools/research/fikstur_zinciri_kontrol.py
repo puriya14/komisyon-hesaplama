@@ -5,7 +5,7 @@ A/B/C kaydı → değişmez defter.
 * Geçmiş veri ve model dosyası yalnızca bu görevde üretilmiş, kaynağı bilinen dosyalardan okunur (CSV + kendi
   eğittiğimiz motor). Uygulamanın gerçek ana klasörüne dokunulmaz; yazma yalnızca ``--ev`` altındadır.
 * Veri güncel değilse tahmin ÜRETİLMEZ; kayıtlar olasılıksız ``TAHMIN_YOK`` + gerekçe olarak yazılır. Uygunluk ortak
-  kontrolden gelir (``bahis_tahmin.eligibility``, protokol ``ileriye-donuk-olcum-v2``; S3-GATE-01). Motorun teknik
+  kontrolden gelir (``bahis_tahmin.eligibility``; etkin protokol ``forecast_log.ACTIVE_PROTOCOL``). Motorun teknik
   olarak sonlu olasılık üretip üretmediği ayrıca sayılır; değerler rapora veya deftere yazılmaz.
 
 Kullanım: python -I fikstur_zinciri_kontrol.py --ev <izole_klasör> --motor <goal_engine.joblib> --maclar <csv.gz>
@@ -108,9 +108,9 @@ def main() -> int:
         "baslama_saati_bilinen": int(sum(k is not None for k in ko)),
         "motor": {"yuklendi": eng is not None, "hata": err, "kohort": F.model_cohort(eng) if eng else None},
         "veri_son_tarih_lig": last, "eksik_oynanmis_mac_lig": missing,
-        "protokol": {"surum": F.ACTIVE_PROTOCOL, "govde_sha256": F.protocol_sha256(F.PROTOCOL_V2_BODY),
-                     "dondurma_zamani_utc": F.PROTOCOL_V2_FROZEN["dondurma_zamani_utc"],
-                     "veri_uygunluk_politikasi": F.PROTOCOL_V2_BODY["veri_uygunluk_politikasi"]},
+        "protokol": {"surum": F.ACTIVE_PROTOCOL, "govde_sha256": F.protocol_sha256(F.PROTOCOLS[F.ACTIVE_PROTOCOL][0]),
+                     "dondurma_zamani_utc": F.PROTOCOLS[F.ACTIVE_PROTOCOL][1]["dondurma_zamani_utc"],
+                     "veri_uygunluk_politikasi": F.PROTOCOLS[F.ACTIVE_PROTOCOL][0]["veri_uygunluk_politikasi"]},
         "eksik_oynanmis_mac_lig_v1_bilgi": "v1 kuralı yalnızca bilgi; uygunluk kararını vermez",
         "kayit_adaylari": len(recs), "neden_dagilimi": reasons,
         "teknik_yol_sonlu_olasilik_mac": finite,

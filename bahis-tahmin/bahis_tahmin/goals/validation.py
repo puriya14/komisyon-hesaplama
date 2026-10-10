@@ -174,7 +174,9 @@ def data_manifest(matches: pd.DataFrame) -> dict:
         "leagues": sorted(matches["league"].unique().tolist()),
         "first_date": str(matches["date"].min().date()),
         "last_date": str(matches["date"].max().date()),
-        "sources": sorted(matches["source"].dropna().unique().tolist()),
+        # Kaynak etiketi olmayan satırlar açıkça "etiketsiz" kaydedilir (köken bilinmiyor; uygunlukta hak engeli)
+        "sources": sorted(matches["source"].dropna().astype(str).unique().tolist()
+                          + (["etiketsiz"] if matches["source"].isna().any() else [])),
         "sha256": h.hexdigest(),
     }
 

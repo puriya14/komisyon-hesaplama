@@ -20,12 +20,13 @@ from .parsers import (
     normalize_fixtures,
     normalize_main,
     normalize_mirror,
+    openfootball_team_names,
     parse_openfootball,
     read_csv_robust,
 )
 from .source_registry import SOURCES, allowed_sources
 from .sources import FD_BASE, MIRROR_URL, OPENFOOTBALL_BASE, Downloader, DownloadError
-from .teams import match_team
+from .teams import BELIRSIZ, MATCHING_VERSION, resolve_teams
 
 log = logging.getLogger(__name__)
 
@@ -110,8 +111,11 @@ class DataStore:
 
     @property
     def unmatched_fixtures(self) -> pd.DataFrame:
-        """Takım adı eşleşmeyen yaklaşan maçlar (ham adlarla; kanonik maç kimliği yok)."""
-        cols = ["league", "date", "time", "raw_home", "raw_away", "source"]
+        """Takım adı kesin olarak eşleşmeyen yaklaşan maçlar (ham adlarla; kanonik maç kimliği yok).
+
+        Eşleme durumu/sürümü ve sağlayıcı kimliği S3-GATE-02'den itibaren yazılır; eski kayıtlarda boştur."""
+        cols = ["league", "date", "time", "raw_home", "raw_away", "source", "provider_id", "eslesme_durumu",
+                "eslesme_surumu"]
         rows = self.meta.get("eslesmeyen_fikstur") or []
         df = pd.DataFrame(rows, columns=cols)
         if not df.empty:
@@ -294,27 +298,44 @@ class DataStore:
                 data = dl.get(url, f"openfootball/{season}/{lg.openfootball}.json", 6.0, force)
             except DownloadError:
                 continue
-            of = parse_openfootball(data, code)
+            of = parse_openfootball(data, code, keep_provider_id=True)
             of = of[(of["date"] >= lo) & (of["date"] <= hi)]
             if pd.notna(last_fd):
                 of = of[of["date"] > last_fd]
             if of.empty:
                 continue
             of = of.copy()
-            raw_home, raw_away = of["home"].copy(), of["away"].copy()
-            of["home"] = [match_team(t, known) for t in of["home"]]
-            of["away"] = [match_team(t, known) for t in of["away"]]
-            unmatched = of["home"].isna() | of["away"].isna()
+            # Kimlik bağlamı: dosyadaki bütün adlar (ters çakışma denetimi) + ligin son iki sezonundaki takımlar.
+            # Yalnızca KESİN kimlik eşleşir; belirsiz/benzer adlar eşleşmemiş olarak ham adlarıyla saklanır.
+            res = resolve_teams(openfootball_team_names(data) + list(of["home"]) + list(of["away"]), known, code,
+                                "openfootball")
+            hm = [res[str(t)] for t in of["home"]]
+            am = [res[str(t)] for t in of["away"]]
+            ok = pd.Series([h.exact and a.exact and h.team != a.team for h, a in zip(hm, am)], index=of.index)
+            of["raw_home"], of["raw_away"] = of["home"].astype(str), of["away"].astype(str)
+            of["eslesme"] = [f"{h.evidence()}|{a.evidence()}" for h, a in zip(hm, am)]
+            of["home"] = [h.team if k else None for h, k in zip(hm, ok)]
+            of["away"] = [a.team if k else None for a, k in zip(am, ok)]
+            unmatched = ~ok
             if unmatched.any():
                 report.warnings.append(
-                    f"{lg.label}: {int(unmatched.sum())} fikstür maçında takım adı eşleştirilemedi "
+                    f"{lg.label}: {int(unmatched.sum())} fikstür maçında takım adı kesin olarak eşleştirilemedi "
                     "(nedenli 'tahmin yok' olarak gösterilir)."
                 )
-                for i in of.index[unmatched]:
+                for i, h, a, k in zip(of.index, hm, am, ok):
+                    if k:
+                        continue
+                    status = ("AYNI_TAKIM" if h.exact and a.exact else
+                              BELIRSIZ if BELIRSIZ in (h.status, a.status) else "BULUNAMADI")
+                    pid = of.at[i, "provider_id"]
                     self._last_unmatched.append({
                         "league": code, "date": str(pd.Timestamp(of.at[i, "date"]).date()),
                         "time": str(of.at[i, "time"] or "") if "time" in of else "",
-                        "raw_home": str(raw_home[i]), "raw_away": str(raw_away[i]), "source": "openfootball"})
+                        "raw_home": h.name, "raw_away": a.name, "source": "openfootball",
+                        "provider_id": None if pd.isna(pid) else str(pid), "eslesme_durumu": status,
+                        "eslesme_surumu": MATCHING_VERSION,
+                        "oneriler": {"ev": list(h.suggestions or h.candidates),
+                                     "deplasman": list(a.suggestions or a.candidates)}})
             extra.append(of[~unmatched])
         fx = pd.concat([fd] + extra, ignore_index=True) if extra else fd
         if fx.empty:

@@ -12,6 +12,7 @@ from PySide6.QtCore import QObject, QThread, QTimer, Signal
 
 from ..config import Settings, app_home
 from ..data.store import DataStore
+from ..eligibility import training_rights_codes
 from ..goals.engine import GoalDataError, GoalEngine, GoalPrediction
 from ..goals.ledger import Ledger
 from ..goals.validation import data_manifest
@@ -265,7 +266,11 @@ class AppController(QObject):
             )
             engine = old_engine
             sig = PredictionEngine.signature(store.matches, s.margin_method)
-            if store.has_data and (engine is None or engine.data_signature != sig):
+            blocked = training_rights_codes(store.matches, s.source_consent) if store.has_data else []
+            if blocked:  # hak kapsamı doğrulanmayan gerçek veriyle eğitim yapılmaz (S3-GATE-02)
+                report.warnings.append("Model eğitimi yapılmadı: veri kaynağının kullanım kapsamı doğrulanmadı ("
+                                       + ", ".join(blocked) + ").")
+            elif store.has_data and (engine is None or engine.data_signature != sig):
                 engine = PredictionEngine()
 
                 def p2(p, m):
@@ -275,7 +280,8 @@ class AppController(QObject):
                 progress(70, "Model kaydediliyor...")
                 engine.save(home / ENGINE_FILE)
             goal = gerr = None
-            if store.has_data and (old_goal is None or old_goal.data_sha != data_manifest(store.matches)["sha256"]):
+            if store.has_data and not blocked and (old_goal is None
+                                                   or old_goal.data_sha != data_manifest(store.matches)["sha256"]):
                 goal, gerr = _train_goal(store.matches, home, lambda p, m: progress(70 + int(p * 0.29), m))
             return store, engine, report, (goal, gerr)
 
@@ -299,9 +305,21 @@ class AppController(QObject):
 
         return self._run(work, done, "Veriler güncelleniyor...")
 
+    def _training_blocked(self) -> bool:
+        """Gerçek veriyle eğitimin hak kapsamı (onay kutusu bu kontrolü aşamaz)."""
+        from ..eligibility import reason_texts
+
+        codes = training_rights_codes(self.store.matches, self.settings.source_consent)
+        if codes:
+            self.message.emit("warn", "Model eğitimi yapılmadı; veri kaynağının kullanım kapsamı doğrulanmadı:\n"
+                              + reason_texts(codes))
+        return bool(codes)
+
     def retrain(self) -> bool:
         if not self.store.has_data:
             self.message.emit("warn", "Önce verileri indirin.")
+            return False
+        if self._training_blocked():
             return False
         matches = self.store.matches
         method = self.settings.margin_method
@@ -327,6 +345,8 @@ class AppController(QObject):
         """Yalnızca gol pazarları modelini eğitir (maç sonucu modeline dokunmaz)."""
         if not self.store.has_data:
             self.message.emit("warn", "Önce verileri indirin.")
+            return False
+        if self._training_blocked():
             return False
         matches = self.store.matches
         home = self.home
