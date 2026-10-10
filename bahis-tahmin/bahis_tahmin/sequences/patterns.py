@@ -35,6 +35,7 @@ from .features import G as _G
 from .features import M as _M
 from .features import outcome_codes
 from .frame import TARGET_TEAM_CELLS
+from .odds_status import ODDS_STATUS
 from .timeline import RAW_TO_TEAM_CELL
 
 Q1_LABEL = "Sorgu 1 (maç öncesi)"
@@ -562,7 +563,7 @@ def falsification(fr, target: str, condition, mask, p0_market: np.ndarray | None
         ok5 = direction != 0 and ((st5["lift_lo"] > 1) if direction > 0 else (st5["lift_hi"] < 1))
         out["checks"]["5_piyasa"] = {"durum": "run", "n": st5["n"], "lift": st5["lift"], "lift_lo": st5["lift_lo"],
                                      "lift_hi": st5["lift_hi"], "z": st5["z"], "passed": bool(ok5),
-                                     "sonuc": None if ok5 else "NO_ADDED_VALUE"}
+                                     "sonuc": None if ok5 else "NO_ADDED_VALUE", "oran_statusu": ODDS_STATUS}
 
     # 6) en büyük 20 karşı örnek
     out["counter_examples"] = _counter_examples(fr, s, direction)

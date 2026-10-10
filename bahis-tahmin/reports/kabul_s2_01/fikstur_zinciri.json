@@ -1,0 +1,151 @@
+{
+ "baslangic_utc": "2026-10-10T11:53:20+00:00",
+ "bugun": "2026-10-10",
+ "pencere_gun": 10,
+ "fikstur_kaynagi": "openfootball (CC0)",
+ "ag_istegi": {
+  "indirilen": 0,
+  "onbellek": 0,
+  "dosya_bulundu": {
+   "T1": false,
+   "E0": true,
+   "E1": true,
+   "E2": false,
+   "E3": false,
+   "SC0": false,
+   "D1": true,
+   "D2": false,
+   "I1": true,
+   "I2": false,
+   "SP1": true,
+   "SP2": false,
+   "F1": true,
+   "F2": false,
+   "N1": true,
+   "B1": false,
+   "P1": true,
+   "G1": false
+  }
+ },
+ "eslesme_uyarilari": [
+  "Fransa - Ligue 1: 2 fikstür maçında takım adı eşleştirilemedi.",
+  "Hollanda - Eredivisie: 2 fikstür maçında takım adı eşleştirilemedi.",
+  "Portekiz - Liga Portugal: 1 fikstür maçında takım adı eşleştirilemedi."
+ ],
+ "fikstur_sayisi": 148,
+ "lig_bazinda_fikstur": {
+  "E1": 36,
+  "E0": 20,
+  "I1": 20,
+  "SP1": 19,
+  "D1": 17,
+  "N1": 15,
+  "F1": 15,
+  "P1": 6
+ },
+ "baslama_saati_bilinen": 148,
+ "motor": {
+  "yuklendi": true,
+  "hata": null,
+  "kohort": {
+   "model_version": "goal-joint-1.0/M10_ipf_kosullu",
+   "feature_version": "goal-feat-1.0",
+   "data_sha256": "281e3ea2454f4aa8a71d51e594554d6a76fba87752566146360db407d89e7a2f",
+   "trained_at": "2026-10-10T11:48:23",
+   "data_cutoff": "2026-09-03",
+   "kohort": "c22874f1013ecb07"
+  }
+ },
+ "veri_son_tarih_lig": {
+  "B1": "2026-09-03",
+  "D1": "2026-08-30",
+  "D2": "2026-08-30",
+  "E0": "2026-08-31",
+  "E1": "2026-09-02",
+  "E2": "2026-09-02",
+  "E3": "2026-09-01",
+  "EC": "2026-09-01",
+  "F1": "2026-09-03",
+  "F2": "2026-08-31",
+  "G1": "2026-08-31",
+  "I1": "2026-08-31",
+  "I2": "2026-08-30",
+  "N1": "2026-08-30",
+  "P1": "2026-08-31",
+  "SC0": "2026-09-03",
+  "SC1": "2026-08-29",
+  "SC2": "2026-08-29",
+  "SC3": "2026-08-29",
+  "SP1": "2026-09-03",
+  "SP2": "2026-08-31",
+  "T1": "2026-08-31"
+ },
+ "eksik_oynanmis_mac_lig": {
+  "E0": 30,
+  "E1": 47,
+  "D1": 27,
+  "I1": 30,
+  "SP1": 38,
+  "F1": 26,
+  "N1": 30,
+  "P1": 29
+ },
+ "protokol": {
+  "surum": "ileriye-donuk-olcum-v1",
+  "govde_sha256": "3946a6e2865f4ea5386156e20cb5ccb7ccd8a4c1520c3dc65fdd4e2a6814fddf",
+  "dondurma_zamani_utc": "2026-10-10T11:52:58+00:00"
+ },
+ "kayit_adaylari": 444,
+ "neden_dagilimi": {
+  "PENCERE_KACIRILDI": 120,
+  "VERI_GUNCEL_DEGIL": 324
+ },
+ "teknik_yol_sonlu_olasilik_mac": 148,
+ "teknik_yol_notu": "Olasılık değerleri rapora/deftere yazılmadı; veri güncel değilse tahmin sayılmaz.",
+ "defter_yazimi": {
+  "yazilan": 444,
+  "atlanan_mukerrer": 0,
+  "gec_kalan": 0
+ },
+ "zincir": [
+  true,
+  "Zincir doğrulandı"
+ ],
+ "ornek_kayit": {
+  "kayit_turu": "FORECAST_RECORD",
+  "protokol": "ileriye-donuk-olcum-v1",
+  "event_id": "E0|2026-10-10|Arsenal|Leeds",
+  "league": "E0",
+  "home": "Arsenal",
+  "away": "Leeds",
+  "mac_tarihi": "2026-10-10",
+  "baslama_utc_kayitta": "2026-10-10T11:30:00+00:00",
+  "baslama_saati_biliniyor": true,
+  "decision_time": "2026-10-09T21:00:00+00:00",
+  "hedef_karar_ani": "2026-10-09T21:00:00+00:00",
+  "fikstur_kaynagi": "openfootball",
+  "fikstur_kaynak_hak_durumu": "CC0 (openfootball/football.json)",
+  "model_version": "goal-joint-1.0/M10_ipf_kosullu",
+  "feature_version": "goal-feat-1.0",
+  "model_kohort": "c22874f1013ecb07",
+  "model_egitim_zamani": "2026-10-10T11:48:23",
+  "model_veri_sha256": "281e3ea2454f4aa8a71d51e594554d6a76fba87752566146360db407d89e7a2f",
+  "data_cutoff": "2026-09-03",
+  "stake_units": 0.0,
+  "strategy_version": "ileriye-donuk-olcum-v1",
+  "market_key": "BTTS_BOTH_HALVES_YES",
+  "p": null,
+  "p_low": null,
+  "p_high": null,
+  "referans_p": null,
+  "decision_status": "TAHMIN_YOK",
+  "uygun": false,
+  "reasons": [
+   "PENCERE_KACIRILDI",
+   "kayıt anı 2026-10-10T11:53:29+00:00 ≥ hedef 2026-10-09T21:00:00+00:00"
+  ],
+  "veri_kalitesi": "PENCERE_KACIRILDI",
+  "oran": null,
+  "ekonomik_statu": "TAHMIN_YOK"
+ }
+}

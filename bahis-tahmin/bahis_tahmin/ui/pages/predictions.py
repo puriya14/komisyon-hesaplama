@@ -57,7 +57,7 @@ class PredictionsPage(Page):
         }
         self.model.tooltips = {
             "league": lambda v, r: league_name(v),
-            "odds": lambda v, r: "Piyasa ortalaması oranlarıyla harmanlandı" if r["has_market"] else "Oran yok: yalnızca model",
+            "odds": lambda v, r: "Piyasa oranlarıyla harmanlandı (ortalama; yedek veri setinde tek bahisçi)" if r["has_market"] else "Oran yok: yalnızca model",
         }
         self.view, self.proxy = make_table(self.model)
         self.view.setMinimumHeight(520)

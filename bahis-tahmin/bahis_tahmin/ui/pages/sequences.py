@@ -59,6 +59,12 @@ def _date(v) -> str:
     return pd.Timestamp(v).strftime("%d.%m.%Y")
 
 
+
+def _gap_text(flags: str) -> str:
+    from ...sequences.timeline import GAP_FLAG_TEXT
+
+    return "; ".join(GAP_FLAG_TEXT.get(f, f) for f in flags.split(",") if f) if flags else ""
+
 class SequencesPage(Page):
     title = "Dizi Araştırması"
     subtitle = ("Maç sonuçlarının çevresindeki diziler, olay öncesi/sonrası ve tekrarlar. Araştırma statüsündedir: "
@@ -131,7 +137,8 @@ class SequencesPage(Page):
         self.ev_model.hidden = {"_row"}
         self.ev_model.headers = {"tarih": "Tarih", "sezon": "Sezon", "rakip": "Rakip", "yer": "Yer", "iy": "İY (ev-dep)",
                                  "ms": "MS (ev-dep)", "takim": "Takım İY→MS", "mac_ara": "Önceki olaydan (maç)",
-                                 "gun_ara": "Önceki olaydan (gün)", "sezon_gecisi": "Sezon geçişi"}
+                                 "gun_ara": "Önceki olaydan (gün)", "sezon_gecisi": "Sezon geçişi",
+                                 "aralik": "Aralıkta veri boşluğu"}
         self.ev_model.formatters = {"mac_ara": lambda v: "-" if v != v else str(int(v)),
                                     "gun_ara": lambda v: "-" if v != v else str(int(v))}
         self.ev_view, self.ev_proxy = make_table(self.ev_model, sortable=False)
@@ -219,6 +226,7 @@ class SequencesPage(Page):
                 "ms": _score(*((r["gf_ft"], r["ga_ft"]) if home else (r["ga_ft"], r["gf_ft"]))),
                 "takim": f"{r['ht_res'] or '?'}→{r['ft_res'] or '?'}", "mac_ara": r["onceki_olaydan_mac"],
                 "gun_ara": r["onceki_olaydan_gun"], "sezon_gecisi": "evet" if r["sezon_gecisi"] else "",
+                "aralik": _gap_text(r.get("aralik_durumu", "")),
             })
         self.ev_model.set_frame(pd.DataFrame(rows))
         tail = ev.attrs.get("censored_tail", {})
@@ -229,8 +237,9 @@ class SequencesPage(Page):
             f"<b>{team}</b> · {label}: <b>{len(ev)}</b> olay / {int(known.sum())} sonucu bilinen lig maçı "
             f"(%{100 * rate:.1f}; tanımlayıcı, olay seçimli). Son olay: {tail.get('son_olay_tarihi') or '-'} · "
             f"açık (sansürlü) aralık: <b>{tail.get('acik_aralik_mac', '-')}</b> maç, gözlem sonu nedeni: "
-            f"{tail.get('bitis_nedeni') or '-'}. Açık aralık 'olmayacak' anlamına gelmez; 'uzun süredir olmadı, olmalı' "
-            "kuralı kurulmaz.")
+            f"{tail.get('bitis_nedeni') or '-'}{' (' + _gap_text(tail['aralik_durumu']) + ')' if tail.get('aralik_durumu') else ''}. "
+            "Açık aralık 'olmayacak' anlamına gelmez; 'uzun süredir olmadı, olmalı' kuralı kurulmaz. Aralıklar veride "
+            "<i>gözlenen</i> lig maçı sayısıdır; veri boşluğu işaretli aralıklar gerçek sayıdan farklı olabilir.")
         for state, model in self.card_models.values():
             state.setText("")
             model.set_frame(pd.DataFrame())

@@ -79,8 +79,23 @@ galip", deplasmanın aynı maçı ise "İY önde → MS mağlup"tur.
   `reports/dizi_f1_hipotezler.csv`, `reports/dizi_sozlesme_kirmizi_takim.json` (sözleşme incelemesi). Depoya tekil
   maç anomali listesi yazılmaz; yalnızca tür/durum/dönem sayıları.
 
-## Geri alma
+## Geri alma ve veri koruma
 
-- Araştırma çıktıları: `dizi_arastirma` klasörünü silin (ana modeller, gol pazarları ve sanal takip etkilenmez).
-- Kod: ilgili commit'i `git revert` ile geri alın. Modül ana tahmin modellerini, karar motorunu veya mevcut
-  kayıtları değiştirmez; üç ana pazarın tahminleri altın regresyon testiyle korunur.
+> Düzeltme (S2-KABUL-01, belge sürümü 1.1): Önceki sürüm "`dizi_arastirma` klasörünü silin" diyordu. Bu klasör
+> önbellek dışında yeniden üretilemeyen araştırma geçmişi ve kayıt defteri içerir; silmek geri alma yöntemi değildir.
+> Ayrıntı: [`DIZI_ARASTIRMA_DUZELTMELER.md`](DIZI_ARASTIRMA_DUZELTMELER.md).
+
+`dizi_arastirma` klasöründeki dosyaların sınıfı:
+
+| Dosya | Sınıf | Geri alırken |
+|---|---|---|
+| `s0_soy.pkl`, `s0_soy.json`, `s0_kalibre.pkl` | Önbellek (veriden yeniden üretilebilir; süre alır) | Silinmesi gerekmez; sorun varsa yedekleyip başka klasöre taşıyın |
+| `manifest.json`, `sonuclar_tam.json`, `son_sonuclar.json`, `f1_hipotezler.csv`, `anomaliler.json` | Deney sonucu (o çalıştırmanın kaydı; yeniden çalıştırma "temiz test" değildir) | Silmeyin; arşivleyin |
+| `deneyler.jsonl` | Deney geçmişi ve ön-kayıt (yalnızca eklenir) | Silmeyin, düzenlemeyin |
+| `dizi_arastirma.sqlite` | Değişmez kayıt defteri | Silmeyin, düzenlemeyin |
+
+- Modülü devre dışı bırakmak veri silmeyi gerektirmez: arayüzde Dizi Araştırması sayfasını kullanmamak yeterlidir;
+  maç öncesi görünüm `son_sonuclar.json` yoksa yalnızca tanımlayıcı bilgi gösterir.
+- Kod: önce `git log` ile ilgili commit aralığını inceleyin, sonra yalnızca o commit'leri tek tek `git revert`
+  ile geri alın; toplu revert yapmayın. Modül ana tahmin modellerini, karar motorunu veya mevcut kayıtları
+  değiştirmez; üç ana pazarın tahminleri altın regresyon testiyle korunur.

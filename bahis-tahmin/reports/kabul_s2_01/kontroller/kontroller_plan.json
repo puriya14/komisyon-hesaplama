@@ -1,0 +1,50 @@
+{
+ "plan": {
+  "surum": "kontrol-plani-v1",
+  "veri": "YALNIZCA sentetik (bahis_tahmin.sequences.synthetic.synthetic_matches)",
+  "orneklem": {
+   "n_leagues": 4,
+   "n_teams": 20,
+   "n_seasons": 27,
+   "start_year": 2000
+  },
+  "tohumlar": [
+   101,
+   102,
+   103
+  ],
+  "kosullar": {
+   "pozitif": {
+    "comeback_boost": 2.0
+   },
+   "negatif": {
+    "comeback_boost": 1.0
+   },
+   "duyarlilik_kucuk_etki": {
+    "comeback_boost": 1.3
+   }
+  },
+  "S0": "üreticinin etkiyi içermeyen kesin İY/MS olasılıkları",
+  "piyasa": {
+   "marj": 0.05,
+   "lognormal_gurultu_sd": 0.05,
+   "eksik_oran": 0.0,
+   "not": "oranlar etkiyi içermeyen olasılıklardan; piyasa etkiyi bilmez"
+  },
+  "R_inner": 200,
+  "bootstrap": 1000,
+  "destek_esikleri": {
+   "min_n": 500,
+   "min_e": 25.0
+  },
+  "basari_olcutleri": {
+   "pozitif": "Her tohumda, atomları SON_MAC_IY_GERIDE_MS_GALIP veya SON3_IY_GERIDE_MS_GALIP_VAR içeren ve hedefi GALIBIYET ya da IY_GERIDE_MS_GALIP olan en az bir hipotez (a) WY ile anlamlı (p_adj < 0,05 ve MC %99 üst sınır < 0,05) ve (b) OUT_OF_SAMPLE_SUPPORTED olmalı.",
+   "negatif": "Hiçbir tohumda OUT_OF_SAMPLE_SUPPORTED olmamalı; WY anlamlı hipotez sayısı raporlanır.",
+   "duyarlilik_kucuk_etki": "Başarı ölçütü yok; yalnızca güç/MDE için betimsel (yakalanma oranı raporlanır)."
+  },
+  "maliyet_olcumu": "Plan öncesi tek ölçüm (tohum 9001, etkisiz, sonuçlara bakılmadan): çerçeve 22,6 sn, referans süreç R=4 için 0,6 sn (2 işçi) → R=200 ≈ 30 sn/çalıştırma.",
+  "durdurma": "Tohum listesi ve R sabittir; sonuca göre tekrar veya ek tohum yok."
+ },
+ "plan_sha256": "7d29031d5e04df9c8f5ed64270396412e1a8d62273d65d4b5a7d3b9cc3b4d841",
+ "yazilma_zamani_utc": "2026-10-10T11:50:15+00:00"
+}

@@ -31,6 +31,7 @@ from scipy.stats import f as f_dist
 from ..goals.validation import calibration_bins, calibration_slope
 from . import config as C
 from .frame import ResearchFrame
+from .odds_status import ODDS_STATUS
 
 _BLOCKED = "DATA_QUALITY_BLOCKED"
 assert _BLOCKED in C.STATUSES
@@ -682,7 +683,7 @@ def oos_compare(fr: ResearchFrame, event: str, n_boot: int = 1000, seed: int = C
         main = _boot_summary(diff, te["cluster"].to_numpy(), n_boot, seed + k)
         iso = _boot_summary(diff, _iso_week(te["date"]), n_boot, seed + 100 + k)
         fals = _falsification(te, diff, n_boot, seed + 200 + k)
-        fals["5_piyasa"] = _market_check(tr, te, n_boot, seed + 300 + k)
+        fals["5_piyasa"] = {**_market_check(tr, te, n_boot, seed + 300 + k), "oran_statusu": ODDS_STATUS}
         fals["gecti"] = all(v["gecti"] for key, v in fals.items()
                             if isinstance(v, dict) and v.get("gecti") is not None)
         rec.update({

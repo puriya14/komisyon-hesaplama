@@ -1,0 +1,46 @@
+{
+ "protokol": {
+  "surum": "ileriye-donuk-olcum-v1",
+  "amac": "A/B/C pazarlarında maç öncesi model olasılıklarının gerçek zamanında kaydedilip sonradan değerlendirilmesi. Bahis önerisi veya getiri iddiası değildir.",
+  "pazarlar": [
+   "BTTS_BOTH_HALVES_YES",
+   "FT_OVER_3_5",
+   "FH_OVER_1_5"
+  ],
+  "ligler": "Veri deposundaki 22 lig (T1, E0, E1, E2, E3, EC, SC0, SC1, SC2, SC3, D1, D2, I1, I2, SP1, SP2, F1, F2, N1, B1, P1, G1). Hiçbir lig sonuçlara bakılarak çıkarılmaz; tüm ligler birlikte ve lig bazında raporlanır.",
+  "fikstur_kaynagi": "Çalışma anında kullanımına izin verilmiş kaynaklar (source_registry.allowed_sources): openfootball (CC0) ve yalnızca kullanıcı onayı varsa football-data.co.uk. Kaynak ve hak durumu her kayıtta saklanır. İzinli fikstür kaynağı olmayan ligde aday maç oluşmaz; bu ligler kapsam raporunda 'fikstür kaynağı yok' olarak sayılır. Takım adı eşleşmeyen fikstür maçı fikstür katmanında elenir ve deftere girmez; sayısı güncelleme uyarısında görünür (bilinen sınırlama).",
+  "karar_penceresi": {
+   "hedef": "maç günü 00:00 Europe/Istanbul",
+   "gerekce": "Uygulamada otomatik zamanlayıcı yok ve veri günlük/elle güncelleniyor; başlama saati her ligde kaynakta bulunmayabiliyor. T−60 dakika penceresi her maç için elle çalıştırma gerektirir ve mevcut veri akışı bunu desteklemez.",
+   "gec_kayit": "Hedeften sonra yapılan kayıt olasılık içermez (PENCERE_KACIRILDI); geriye dönük doldurma yapılmaz."
+  },
+  "uygunluk": [
+   "Kayıt anı < hedef karar anı.",
+   "Maç günü > protokol dondurma anı (İstanbul tarihi).",
+   "Maçın sonucu kayıt anında veri deposunda yok.",
+   "Model eğitilmiş ve lig modelin kapsamında.",
+   "Geçmiş veri güncel: fikstür kaynağı oynanmış maçları listeliyorsa veri deposunda eksik oynanmış maç yok; listelemiyorsa ligin son kayıtlı maçı karar anından en fazla 21 gün önce.",
+   "Her iki takımın gücü hesaplanabilir ve son 365 günde ligde en az 10 maçı var.",
+   "Olasılık sonlu ve (0, 1) aralığında."
+  ],
+  "model": {
+   "uretim_modeli": "GoalEngine (M10_ipf_kosullu), MODEL_VERSION/FEATURE_VERSION kayıtta",
+   "surum_kohortu": "model sürümü + özellik sürümü + eğitim verisi özeti + eğitim zamanı → kohort kimliği. Yeniden eğitim yeni kohorttur; kohortlar birleştirilmez.",
+   "referans": "Lig taban oranı: karar anından önceki son 3 tamamlanmış sezonun gerçekleşme oranı."
+  },
+  "olcutler": [
+   "log-kayıp ve Brier (model ve referans)",
+   "ΔLL = model_log_kayip − referans_log_kayip (negatif model lehine), maç günü kümeli bootstrap %95 aralığı",
+   "kalibrasyon eğimi/kesişimi ve güvenilirlik bölmeleri",
+   "ekonomik değerlendirme yalnızca zamanı doğrulanmış (quoted_at < hedef karar anı) gerçek oranla; aksi halde ROI_UNAVAILABLE"
+  ],
+  "orneklem": "Kohort × pazar için resmî değerlendirme koşulu: en az 300 sonuçlanmış tahmin ve en az 50 pozitif olay. Karşılanmazsa sonuç 'yetersiz örneklem' olarak açıklanır.",
+  "ara_rapor": "Ayda bir, yalnızca tanımlayıcı (sayılar, kapsam, kalibrasyon tablosu); hipotez testi ve durdurma yok.",
+  "birincil_degerlendirme": "2027-07-01 (2026/27 sezonu sonu). Örneklem eşiği karşılanmadıysa süre uzatılmaz; sonuç açıklanır ve yeni protokol sürümü ayrıca başlatılabilir.",
+  "durdurma": "Yalnızca bütünlük nedenleriyle (kayıt zinciri bozulması, 30 günden uzun veri kesintisi, modelin geçersiz ilanı). Olumlu veya olumsuz sonuç nedeniyle durdurma yok.",
+  "aciklama": "Tüm kohortlar, ligler ve pazarlar sonuç ne olursa olsun raporlanır; başarılı alt kümeler seçilmez.",
+  "veri_haklari": "Model eğitim verisinin (football-data.co.uk / xgabora yedeği) kullanım hakkı belgeyle doğrulanmadı; ölçüm kişisel analiz kapsamındadır ve bu durum raporlarda gösterilir."
+ },
+ "govde_sha256": "3946a6e2865f4ea5386156e20cb5ccb7ccd8a4c1520c3dc65fdd4e2a6814fddf",
+ "dondurma_zamani_utc": "2026-10-10T11:52:58+00:00"
+}

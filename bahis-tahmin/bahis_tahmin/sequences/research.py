@@ -46,6 +46,7 @@ from . import null as N
 from . import patterns as P
 from .aliases import ALIAS_VERSION, AliasMap
 from .frame import ResearchFrame, build_frame
+from .odds_status import ODDS_STATUS, ODDS_STATUS_NOTE
 from .s0 import S0_VARIANT, build_s0, calibrated_cells
 from .timeline import build_team_matches
 
@@ -830,6 +831,7 @@ def run_research(matches: pd.DataFrame, out_dir: Path, s0: pd.DataFrame | None =
         "satir_kumeleri": {k: {"n": int(m.sum()), "sha256": M.rows_sha256(fr, m)} for k, m in masks.items()},
         "hesaplama_butcesi": {"referans_tekrar": int(R), "plasebo": f"{placebo_seeds} × {R_placebo}",
                               "bootstrap": int(n_boot), "acik_uclu_arama": False, "harici_api_cagrisi": 0},
+        "oran_statusu": {"durum": ODDS_STATUS, "not": ODDS_STATUS_NOTE},
     }
     manifest["temiz_test"] = clean_test_status(manifest, prior_experiments)
     results: dict = {"manifest": manifest, "aileler": {}, "s0_kalibrasyon": info["s0_kalibrasyon"]}

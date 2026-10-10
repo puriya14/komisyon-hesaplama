@@ -340,7 +340,8 @@ def team_events(tm: pd.DataFrame, team: str, target: str | None = None, htft_key
     """Mod A (tanımlayıcı, olay seçimli): takımın olayları — takım hedefi (ör. IY_GERIDE_MS_GALIP) veya ham İY/MS.
 
     Olaylar arası gün, lig maçı sayısı ve sezon geçişi eklenir; son olaydan gözlem sonuna kadar olan açık aralık
-    ``censored_tail`` özniteliğinde verilir (gözlem süresi bitmiş olay aralıkları kaybolmaz).
+    ``censored_tail`` özniteliğinde verilir (gözlem süresi bitmiş olay aralıkları kaybolmaz). ``aralik_durumu``:
+    aralığın veri boşluğu işaretleri (``GAP_FLAG_TEXT``); boş = işaretsiz. Maç sayısı veride gözlenen maçtır.
     """
     if (target is None) == (htft_key is None):
         raise ValueError("target veya htft_key'den yalnızca biri verilmeli")
@@ -349,11 +350,15 @@ def team_events(tm: pd.DataFrame, team: str, target: str | None = None, htft_key
     t = tm[(tm["team"] == team) & tm["in_seq"]]
     t = t.assign(seq_no=np.arange(len(t)))
     hit = (t[target] == 1) if target else (t["htft"] == htft_key)
+    known = t[target].notna() if target else t["htft"].notna()
     ev = t[hit.to_numpy()].copy()
     ev["onceki_olaydan_gun"] = pd.to_datetime(ev["date"]).diff().dt.days
     ev["onceki_olaydan_mac"] = ev["seq_no"].diff()
     ev["sezon_gecisi"] = ev["season"].ne(ev["season"].shift()) & ev["season"].shift().notna()
     ev["ayni_dilim"] = ev["spell_id"].eq(ev["spell_id"].shift())
+    pos = ev["seq_no"].to_numpy(dtype=int)
+    ev["aralik_durumu"] = [_gap_flags(t, known, int(pos[i - 1]), int(pos[i]), closed=True) if i else ""
+                           for i in range(len(ev))]
     if len(t):
         last = t.iloc[-1]
         start = ev.iloc[-1] if len(ev) else t.iloc[0]
@@ -362,9 +367,44 @@ def team_events(tm: pd.DataFrame, team: str, target: str | None = None, htft_key
             "son_mac_tarihi": str(pd.Timestamp(last["date"]).date()),
             "acik_aralik_mac": int(last["seq_no"] - start["seq_no"]) + (0 if len(ev) else 1),
             "bitis_nedeni": last["spell_end"],
+            "aralik_durumu": _gap_flags(t, known, int(start["seq_no"]) - (0 if len(ev) else 1), int(last["seq_no"]),
+                                        closed=False),
             "not": "Açık (sansürlü) aralık: olay henüz tekrarlanmadı veya gözlem bitti; 'olmayacak' anlamına gelmez.",
         }
     return ev
+
+
+# Mod A aralık işaretleri: aralık, veride GÖZLENEN lig maçı sayısıdır. Aşağıdaki durumlarda gerçek aralık farklı
+# olabilir (eksik maçlar sayılmaz, bilinmeyen sonuç olaysız sayılır). Planlanan maçların ≥%97'si bulunan
+# lig-sezonlardaki tekil eksik maçlar fikstür listesi olmadan algılanamaz (işaretlenmez).
+GAP_FLAG_TEXT = {
+    "EKSIK_SEZON": "aralık tam olmayan lig-sezondan geçiyor (eksik maçlar sayılmadı)",
+    "DILIM_DEGISTI": "aralık uzun bir kapsam boşluğundan (>400 gün) geçiyor",
+    "SEZON_ATLAMASI": "aralıkta veride olmayan sezon var",
+    "LIG_DEGISTI": "aralıkta lig değişikliği var",
+    "BILINMEYEN_SONUC": "aralıkta sonucu bilinmeyen maç olaysız sayıldı",
+}
+
+
+def _gap_flags(t: pd.DataFrame, known: pd.Series, a: int, b: int, closed: bool) -> str:
+    """t'nin (a, b] satır aralığındaki veri boşluğu işaretleri; boşsa '' (temiz). ``closed``: b bir olay satırı."""
+    w = t.iloc[a + 1:b + 1]  # aralığa giren maçlar (başlangıç olayı hariç)
+    span = t.iloc[max(a, 0):b + 1]  # uçlar dahil: eksik maçlar uçların sezonunda da olabilir
+    if w.empty:
+        return ""
+    inner = known.iloc[a + 1:b] if closed else known.iloc[a + 1:b + 1]
+    flags = []
+    if not span["season_complete"].all():
+        flags.append("EKSIK_SEZON")
+    if span["spell_id"].nunique() > 1:
+        flags.append("DILIM_DEGISTI")
+    if w["season_skip"].any():
+        flags.append("SEZON_ATLAMASI")
+    if w["league_changed"].any():
+        flags.append("LIG_DEGISTI")
+    if (~inner).any():
+        flags.append("BILINMEYEN_SONUC")
+    return ",".join(flags)
 
 
 def coverage_report(tm: pd.DataFrame) -> pd.DataFrame:

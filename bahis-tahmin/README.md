@@ -90,7 +90,13 @@ dokunmaz (`tests/conftest.py`: `BAHIS_TAHMIN_HOME` geçici dizine yönlendirilir
 
 ## Kaldırma / geri alma
 
-- Uygulama verisini silmek: `%LOCALAPPDATA%\BahisTahmin` klasörünü silin (veriler, modeller, sanal takip).
-- Yalnızca gol pazarları: `goal_engine.joblib`, `goal_engine.manifest.json`, `gol_pazarlari.sqlite` dosyalarını silin.
-- Yalnızca dizi araştırması: `dizi_arastirma` klasörünü silin (diğer bölümler etkilenmez).
-- Kod değişikliği: ilgili git commit'ini `git revert` ile geri alın.
+- Uygulamayı tamamen kaldırmak: `%LOCALAPPDATA%\BahisTahmin` klasörü veriler, modeller, sanal takip defterleri ve
+  araştırma geçmişini içerir. Kaldırmadan önce klasörü yedekleyin; defterler (`*.sqlite`) ve `deneyler.jsonl`
+  yeniden üretilemez.
+- Yalnızca gol pazarları modeli: `goal_engine.joblib` ve `goal_engine.manifest.json` yeniden eğitilebilir model
+  dosyalarıdır (yedekleyip taşıyabilirsiniz). `gol_pazarlari.sqlite` sanal takip ve ileriye dönük ölçüm defteridir;
+  geri alma için silinmez.
+- Dizi araştırması: klasör silinmez; dosya sınıfları ve güvenli geri alma için
+  [`docs/DIZI_ARASTIRMA_KULLANIM.md`](docs/DIZI_ARASTIRMA_KULLANIM.md#geri-alma-ve-veri-koruma) (düzeltme:
+  S2-KABUL-01).
+- Kod değişikliği: önce commit aralığını inceleyin, ilgili commit'leri tek tek `git revert` ile geri alın.

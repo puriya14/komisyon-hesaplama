@@ -230,6 +230,94 @@ def cmd_goal_predict(a) -> int:
     return 0
 
 
+def _forecast_inputs():
+    """Ölçüm kaydı girdileri: veri deposu, gol motoru (yüklenebiliyorsa), fikstürler, eksik maç sayıları, hak durumu."""
+    import datetime as _dt
+
+    from .data.leagues import openfootball_season
+    from .data.source_registry import allowed_sources
+    from .goals.engine import GoalEngine
+    from .goals.forecast_log import missing_played_openfootball
+
+    st = _store()
+    eng, err = GoalEngine.load(app_home() / GOAL_ENGINE_FILE)
+    missing = {}
+    for code in st.fixtures["league"].unique() if not st.fixtures.empty else []:
+        lg = LEAGUES.get(code)
+        if not lg or not lg.openfootball:
+            continue
+        # Fikstür güncellemesinin önbelleğe aldığı openfootball dosyası (ağ isteği yapılmaz)
+        path = st.raw_dir / "openfootball" / openfootball_season(_dt.date.today(), lg.calendar_year) / f"{lg.openfootball}.json"
+        if path.exists():
+            n = missing_played_openfootball(path.read_bytes(), st.matches, code)
+            if n is not None:
+                missing[code] = n
+    allowed = allowed_sources(Settings.load().source_consent)
+    rights = {"openfootball": "CC0 (belgeli: openfootball/football.json LICENSE.md)",
+              "football-data.co.uk": ("kullanıcı onayı ile; yeniden kullanım/model eğitimi hakkı belgelenmedi"
+                                      if "football-data" in allowed else "onay yok"),
+              "manuel": "kullanıcı girdisi"}
+    return st, eng, err, missing, rights
+
+
+def cmd_goal_forecast_log(a) -> int:
+    """İleriye dönük ölçüm: yaklaşan maçlar için A/B/C tahmin kayıtları (varsayılan kuru çalıştırma)."""
+    from .goals.forecast_log import PROTOCOL_VERSION, build_forecast_records, record_forecasts
+    from .goals.ledger import Ledger
+
+    st, eng, err, missing, rights = _forecast_inputs()
+    if st.fixtures.empty:
+        print("Yaklaşan maç (fikstür) yok. Önce 'update' çalıştırın; gerçek fikstür olmadan kayıt üretilmez.")
+        return 0
+    if eng is None:
+        print(f"Gol modeli yüklenemedi ({err}); tüm adaylar MODEL_YOK nedeniyle olasılıksız kaydedilir.")
+    led_path = app_home() / LEDGER_FILE
+    led = Ledger(led_path) if (a.uygula or led_path.exists()) else None
+    recs = build_forecast_records(eng, st.fixtures, st.matches, ledger=led, missing_played=missing,
+                                  source_rights=rights)
+    ok = [r for r in recs if r["decision_status"] == "TAHMIN"]
+    print(f"Protokol {PROTOCOL_VERSION}: {len(recs)} aday kayıt ({len(ok)} tahmin, {len(recs) - len(ok)} tahmin yok).")
+    seen = set()
+    for r in recs:
+        key = r["event_id"]
+        if key in seen:
+            continue
+        seen.add(key)
+        neden = "uygun" if r["decision_status"] == "TAHMIN" else ", ".join(r["reasons"][:2])
+        print(f"  {r['mac_tarihi']} {r['league']:4s} {r['home']:>18s} - {r['away']:<18s} {neden}")
+    if not a.uygula:
+        print("Kuru çalıştırma: hiçbir kayıt yazılmadı. Yazmak için --uygula ekleyin (değişmez kayıt).")
+        if led is not None:
+            led.close()
+        return 0
+    res = record_forecasts(led, recs)
+    led.close()
+    print(f"Yazılan: {res['yazilan']} · mükerrer atlanan: {res['atlanan_mukerrer']} · yazma anında geç kalan: {res['gec_kalan']}")
+    return 0
+
+
+def cmd_goal_forecast_eval(a) -> int:
+    import json as _json
+
+    from .goals.forecast_log import evaluate_forecasts, protocol_document
+    from .goals.ledger import Ledger
+
+    if a.protokol:
+        print(_json.dumps(protocol_document(), ensure_ascii=False, indent=1))
+        return 0
+    path = app_home() / LEDGER_FILE
+    if not path.exists():
+        print("Henüz kayıt defteri yok; ileriye dönük ölçüm başlamadı.")
+        return 0
+    led = Ledger(path)
+    res = evaluate_forecasts(led)
+    ok, msg = led.verify_chain()
+    led.close()
+    print(f"Zincir: {msg}")
+    print(_json.dumps(res, ensure_ascii=False, indent=1, default=str))
+    return 0 if ok else 3
+
+
 def cmd_goal_coverage(a) -> int:
     from .goals.coverage import coverage_matrix, coverage_summary
 
@@ -324,11 +412,14 @@ def cmd_seq_events(a) -> int:
         iy = f"{int(r['gf_ht'] if h else r['ga_ht'])}-{int(r['ga_ht'] if h else r['gf_ht'])}" if r["htft"] else "?"
         ms = f"{int(r['gf_ft'] if h else r['ga_ft'])}-{int(r['ga_ft'] if h else r['gf_ft'])}"
         gap = "" if r["onceki_olaydan_mac"] != r["onceki_olaydan_mac"] else f"  (önceki olaydan {int(r['onceki_olaydan_mac'])} maç / {int(r['onceki_olaydan_gun'])} gün)"
+        if r.get("aralik_durumu"):
+            gap += f"  [veri boşluğu: {r['aralik_durumu']}]"
         print(f"  {r['date']:%d.%m.%Y} {r['season']} {'Ev ' if h else 'Dep'} {r['opponent']:<22s} İY {iy}  MS {ms}{gap}")
     tail = ev.attrs.get("censored_tail")
     if tail:
-        print(f"Açık (sansürlü) aralık: {tail['acik_aralik_mac']} maç (son maç {tail['son_mac_tarihi']}, neden {tail['bitis_nedeni']}). "
-              "'Olmayacak' anlamına gelmez.")
+        print(f"Açık (sansürlü) aralık: {tail['acik_aralik_mac']} maç (son maç {tail['son_mac_tarihi']}, neden {tail['bitis_nedeni']}"
+              f"{', veri boşluğu: ' + tail['aralik_durumu'] if tail.get('aralik_durumu') else ''}). 'Olmayacak' anlamına gelmez.")
+    print("Aralıklar veride gözlenen lig maçı sayısıdır; veri boşluğu işaretli aralıklar gerçek sayıdan farklı olabilir.")
     if a.kart is not None and 0 <= a.kart < len(ev):
         card = event_card(tm, int(ev.index[a.kart]), data_meta=st.meta)
         print(f"\nOlay kartı #{a.kart}: {card['kimlik']}")
@@ -473,6 +564,13 @@ def main(argv: list[str] | None = None) -> int:
     go.add_argument("--csv", required=True)
     go.add_argument("--uygula", action="store_true", help="doğrulanan kayıtları sanal takip veritabanına yaz")
     go.set_defaults(fn=cmd_goal_odds_import)
+    gf = sub.add_parser("gol-olcum-kaydet", help="ileriye dönük ölçüm: yaklaşan maçların A/B/C tahmin kayıtları "
+                                                 "(varsayılan kuru çalıştırma)")
+    gf.add_argument("--uygula", action="store_true", help="kayıtları değişmez deftere yaz")
+    gf.set_defaults(fn=cmd_goal_forecast_log)
+    ge = sub.add_parser("gol-olcum-degerlendir", help="ileriye dönük ölçüm kayıtlarının değerlendirmesi (yazma yapmaz)")
+    ge.add_argument("--protokol", action="store_true", help="dondurulmuş protokolü yazdır")
+    ge.set_defaults(fn=cmd_goal_forecast_eval)
     so = sub.add_parser("dizi-olay", help="Mod A: takımın İY/MS olayları, aralıklar ve olay kartı (geçmiş inceleme)")
     so.add_argument("--takim", required=True)
     so.add_argument("--hedef", default="IY_GERIDE_MS_GALIP", help="takım hedefi, ör. IY_GERIDE_MS_GALIP, IY_ONDE_MS_MAGLUP")

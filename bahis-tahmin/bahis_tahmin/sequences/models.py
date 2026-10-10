@@ -41,6 +41,7 @@ from ..goals.value import expected_value
 from . import config as C
 from .features import S1_FEATURES
 from .frame import ResearchFrame
+from .odds_status import ODDS_STATUS
 
 EPS = 1e-9
 EVAL_PLAN = (("parametre", ("kesif",)), ("test", ("kesif", "parametre")))  # (değerlendirme dönemi, uyum dönemleri)
@@ -924,8 +925,8 @@ def compare_models(fr: ResearchFrame, target: str, models: FittedModels | None =
             if name in F3_MODELS:  # 7b yanlışlama uyarlaması (OUT_OF_SAMPLE_SUPPORTED için iki dönemde geçmeli)
                 fals = _falsification(fr, mask, d, y, n_boot, seed + 200 + k)
                 pc = ctrl.get(name)
-                fals["5_piyasa"] = _market_check(y, pc[mask] if pc is not None else None, preds["S0p"][mask], cl,
-                                                 n_boot, seed + 300 + k)
+                fals["5_piyasa"] = {**_market_check(y, pc[mask] if pc is not None else None, preds["S0p"][mask], cl,
+                                                    n_boot, seed + 300 + k), "oran_statusu": ODDS_STATUS}
                 fals["gecti"] = all(v["gecti"] for v in fals.values() if isinstance(v, dict)
                                     and v.get("gecti") is not None)
                 rec["s0_fark"][name]["yanlislama"] = fals

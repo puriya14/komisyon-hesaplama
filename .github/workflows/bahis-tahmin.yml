@@ -2,6 +2,7 @@
 # - push / pull_request: yalnızca testler (Ubuntu, ekransız Qt). Hiçbir paket, ZIP veya sürüm oluşturulmaz.
 # - Elle tetikleme (workflow_dispatch) + "build_exe" işaretliyse: Windows'ta testler ve PyInstaller derlemesinin
 #   başarıyla tamamlandığı doğrulanır. Derleme çıktısı YÜKLENMEZ (yayın paketi oluşturmak ayrı onay gerektirir).
+# - Elle tetikleme + "windows_test" işaretliyse: yalnızca Windows'ta testler (derleme, paket veya .exe YOK).
 name: bahis-tahmin
 
 on:
@@ -17,6 +18,10 @@ on:
     inputs:
       build_exe:
         description: "Windows .exe derlemesini doğrula (çıktı yüklenmez)"
+        type: boolean
+        default: false
+      windows_test:
+        description: "Yalnızca Windows'ta testleri çalıştır (derleme yok)"
         type: boolean
         default: false
 
@@ -49,6 +54,27 @@ jobs:
       - name: Bağımlılıklar
         run: python -m pip install -r requirements.txt pytest
       - name: Testler (ağ testleri hariç)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest -q
+
+  windows-test:
+    if: github.event_name == 'workflow_dispatch' && inputs.windows_test
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: bahis-tahmin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: bahis-tahmin/requirements*.txt
+      - name: Bağımlılıklar
+        run: python -m pip install -r requirements.txt pytest
+      - name: Testler (Windows, ekransız Qt; ağ testleri hariç)
         env:
           QT_QPA_PLATFORM: offscreen
         run: python -m pytest -q

@@ -108,6 +108,35 @@ def test_open_intervals_are_kept(tm):
     assert "olmayacak" in tail["not"]
 
 
+def test_mode_a_intervals_flag_data_gaps():
+    """Mod A aralığı gözlenen maç sayısıdır: eksik maçlı sezondan geçen aralık işaretlenir, tam veride işaret yok."""
+    m, _ = synthetic_matches(n_leagues=1, n_seasons=5, n_teams=8, seed=11)
+    full = build_team_matches(m)
+    team = full["team"].iloc[0]
+    ev_full = team_events(full, team, htft_key="HTFT_X_1")
+    assert len(ev_full) >= 3 and (ev_full["aralik_durumu"] == "").all()
+    assert ev_full.attrs["censored_tail"]["aralik_durumu"] == ""
+    # İki olay arasındaki 3 maçı sil → sezon tam değil, aralık 3 maç kısalır ve işaretlenir
+    a, b = ev_full.index[1], ev_full.index[2]
+    between = full.loc[a:b]
+    between = between[(between["team"] == team) & between["in_seq"]].iloc[1:-1]
+    assert len(between) >= 3
+    drop = set(between["event_id"].iloc[:3])
+    from bahis_tahmin.goals.ledger import event_id
+
+    eids = [event_id(lg, d, h, aw) for lg, d, h, aw in zip(m["league"], m["date"], m["home"], m["away"])]
+    gap = build_team_matches(m[[e not in drop for e in eids]].reset_index(drop=True))
+    ev_gap = team_events(gap, team, htft_key="HTFT_X_1")
+    assert ev_gap["onceki_olaydan_mac"].iloc[2] == ev_full["onceki_olaydan_mac"].iloc[2] - 3
+    assert "EKSIK_SEZON" in ev_gap["aralik_durumu"].iloc[2]
+    # Bilinmeyen sonuç olaysız sayılır → işaretlenir
+    unk = m.copy()
+    row = [i for i, e in enumerate(eids) if e == between["event_id"].iloc[0]][0]
+    unk.loc[row, ["hthg", "htag"]] = np.nan
+    ev_unk = team_events(build_team_matches(unk), team, htft_key="HTFT_X_1")
+    assert "BILINMEYEN_SONUC" in ev_unk["aralik_durumu"].iloc[2]
+
+
 def test_intra_season_split_detection_and_manual_aliases():
     m, _ = synthetic_matches(n_leagues=1, n_seasons=3, n_teams=8, seed=5)
     # sezon ortasında bir takımın kaynak adı değişsin

@@ -43,9 +43,13 @@ def decisions_for(pred: GoalPrediction, engine: GoalEngine, ledger: Ledger | Non
 def record_decisions(ledger: Ledger, pred: GoalPrediction, decisions: list[Decision], engine: GoalEngine,
                      stake_units: float = 1.0) -> list[str]:
     """Kararları değişmez sanal kayıt olarak ekler. Yalnızca VALUE_CANDIDATE için sanal birim stake konur."""
+    from .forecast_log import RECORD_BET, RECORD_DECISION
+
     ids = []
     for d in decisions:
         ids.append(ledger.record_prediction({
+            # Bahis adayı kaydı yalnızca VALUE_CANDIDATE (zamanı doğrulanmış gerçek oranla); diğerleri karar kaydıdır.
+            "kayit_turu": RECORD_BET if d.status == "VALUE_CANDIDATE" else RECORD_DECISION,
             "event_id": d.event_id, "league": pred.league, "home": pred.home, "away": pred.away,
             "kickoff": pred.kickoff_utc.isoformat() if pred.kickoff_utc else str(pred.date.date()),
             "market_key": d.market_key, "decision_time": d.decision_time,
@@ -67,6 +71,8 @@ def settle_pending(ledger: Ledger, matches: pd.DataFrame, source: str = "veri de
     for rec in ledger.predictions():
         if rec["outcome"] is not None and rec["outcome"]["settlement"] in ("WIN", "LOSS", "VOID"):
             continue
+        if rec.get("p") is None or rec.get("market_key") is None:
+            continue  # olasılıksız kayıtlar (TAHMIN_YOK, geçersiz ilan) sonuçlandırılmaz
         r = idx.get(rec["event_id"])
         if r is None:
             pending += 1

@@ -1,0 +1,220 @@
+{
+ "plan_sha256": "7d29031d5e04df9c8f5ed64270396412e1a8d62273d65d4b5a7d3b9cc3b4d841",
+ "plan_yazilma_zamani_utc": "2026-10-10T11:50:15+00:00",
+ "bitis_utc": "2026-10-10T11:56:00+00:00",
+ "karar": {
+  "pozitif_wy_yakalama": "2/3",
+  "pozitif_oos_destek": "2/3",
+  "negatif_oos_destekli_tohum": "0/3",
+  "negatif_wy_anlamli_toplam": 0,
+  "pozitif_olcut_gecti": false,
+  "negatif_olcut_gecti": true,
+  "kucuk_etki_wy_yakalama": "0/3",
+  "kucuk_etki_oos_destek": "0/3",
+  "not": "Sentetik kontrol; gerçek futbol avantajı değildir."
+ },
+ "sonuclar": [
+  {
+   "tohum": 101,
+   "boost": 2.0,
+   "durum": "TAMAM",
+   "sure_sn": 37.8,
+   "kalibrasyon_kapisi": true,
+   "wy_anlamli": 1,
+   "wy_anlamli_hipotezler": [
+    "GALIBIYET|SON3_IY_GERIDE_MS_GALIP_VAR"
+   ],
+   "statu_sayilari": {
+    "INSUFFICIENT_EVIDENCE": 767,
+    "OUT_OF_SAMPLE_SUPPORTED": 1
+   },
+   "ekili_aile_wy_anlamli": [
+    "GALIBIYET|SON3_IY_GERIDE_MS_GALIP_VAR"
+   ],
+   "ekili_aile_oos_destekli": [
+    "GALIBIYET|SON3_IY_GERIDE_MS_GALIP_VAR"
+   ],
+   "oos_destekli_tum": [
+    "GALIBIYET|SON3_IY_GERIDE_MS_GALIP_VAR"
+   ],
+   "adaylar": [
+    {
+     "hyp_id": "GALIBIYET|SON3_IY_GERIDE_MS_GALIP_VAR",
+     "statu": "OUT_OF_SAMPLE_SUPPORTED",
+     "gerekce": "Parametre + test Holm, test ΔLL üst sınırı < 0 ve 7b/1–5 geçti. Test dönemi koşullu örüntüler için ön-kayıtlı; S0 İY/MS kalibrasyonu test döneminde görülmüş (§5). Tamamen temiz kanıt yalnızca ileriye dönük takiptir.",
+     "kesif_lift": 1.129746657357693,
+     "test_lift": 1.1349594746326535,
+     "gosterge_dll": -0.0006309699762859549,
+     "gosterge_dll_ust": -0.00021629162404289995
+    }
+   ],
+   "kosul": "pozitif"
+  },
+  {
+   "tohum": 102,
+   "boost": 2.0,
+   "durum": "TAMAM",
+   "sure_sn": 36.1,
+   "kalibrasyon_kapisi": true,
+   "wy_anlamli": 2,
+   "wy_anlamli_hipotezler": [
+    "GALIBIYET|SON_MAC_IY_GERIDE_MS_GALIP",
+    "MAGLUBIYET|SON_MAC_IY_GERIDE_MS_GALIP"
+   ],
+   "statu_sayilari": {
+    "INSUFFICIENT_EVIDENCE": 766,
+    "OUT_OF_SAMPLE_SUPPORTED": 2
+   },
+   "ekili_aile_wy_anlamli": [
+    "GALIBIYET|SON_MAC_IY_GERIDE_MS_GALIP"
+   ],
+   "ekili_aile_oos_destekli": [
+    "GALIBIYET|SON_MAC_IY_GERIDE_MS_GALIP"
+   ],
+   "oos_destekli_tum": [
+    "GALIBIYET|SON_MAC_IY_GERIDE_MS_GALIP",
+    "MAGLUBIYET|SON_MAC_IY_GERIDE_MS_GALIP"
+   ],
+   "adaylar": [
+    {
+     "hyp_id": "GALIBIYET|SON_MAC_IY_GERIDE_MS_GALIP",
+     "statu": "OUT_OF_SAMPLE_SUPPORTED",
+     "gerekce": "Parametre + test Holm, test ΔLL üst sınırı < 0 ve 7b/1–5 geçti. Test dönemi koşullu örüntüler için ön-kayıtlı; S0 İY/MS kalibrasyonu test döneminde görülmüş (§5). Tamamen temiz kanıt yalnızca ileriye dönük takiptir.",
+     "kesif_lift": 1.4268134964900732,
+     "test_lift": 1.3179141051430294,
+     "gosterge_dll": -0.0010183469279796996,
+     "gosterge_dll_ust": -0.0004085898468828945
+    },
+    {
+     "hyp_id": "MAGLUBIYET|SON_MAC_IY_GERIDE_MS_GALIP",
+     "statu": "OUT_OF_SAMPLE_SUPPORTED",
+     "gerekce": "Parametre + test Holm, test ΔLL üst sınırı < 0 ve 7b/1–5 geçti. Test dönemi koşullu örüntüler için ön-kayıtlı; S0 İY/MS kalibrasyonu test döneminde görülmüş (§5). Tamamen temiz kanıt yalnızca ileriye dönük takiptir.",
+     "kesif_lift": 0.6550118128379442,
+     "test_lift": 0.7052589445516405,
+     "gosterge_dll": -0.0007975797708372539,
+     "gosterge_dll_ust": -0.0002478963480940014
+    }
+   ],
+   "kosul": "pozitif"
+  },
+  {
+   "tohum": 103,
+   "boost": 2.0,
+   "durum": "TAMAM",
+   "sure_sn": 35.7,
+   "kalibrasyon_kapisi": true,
+   "wy_anlamli": 0,
+   "wy_anlamli_hipotezler": [],
+   "statu_sayilari": {
+    "INSUFFICIENT_EVIDENCE": 768
+   },
+   "ekili_aile_wy_anlamli": [],
+   "ekili_aile_oos_destekli": [],
+   "oos_destekli_tum": [],
+   "adaylar": [],
+   "kosul": "pozitif"
+  },
+  {
+   "tohum": 101,
+   "boost": 1.0,
+   "durum": "TAMAM",
+   "sure_sn": 34.9,
+   "kalibrasyon_kapisi": true,
+   "wy_anlamli": 0,
+   "wy_anlamli_hipotezler": [],
+   "statu_sayilari": {
+    "INSUFFICIENT_EVIDENCE": 768
+   },
+   "ekili_aile_wy_anlamli": [],
+   "ekili_aile_oos_destekli": [],
+   "oos_destekli_tum": [],
+   "adaylar": [],
+   "kosul": "negatif"
+  },
+  {
+   "tohum": 102,
+   "boost": 1.0,
+   "durum": "TAMAM",
+   "sure_sn": 37.6,
+   "kalibrasyon_kapisi": true,
+   "wy_anlamli": 0,
+   "wy_anlamli_hipotezler": [],
+   "statu_sayilari": {
+    "INSUFFICIENT_EVIDENCE": 768
+   },
+   "ekili_aile_wy_anlamli": [],
+   "ekili_aile_oos_destekli": [],
+   "oos_destekli_tum": [],
+   "adaylar": [],
+   "kosul": "negatif"
+  },
+  {
+   "tohum": 103,
+   "boost": 1.0,
+   "durum": "TAMAM",
+   "sure_sn": 40.2,
+   "kalibrasyon_kapisi": true,
+   "wy_anlamli": 0,
+   "wy_anlamli_hipotezler": [],
+   "statu_sayilari": {
+    "INSUFFICIENT_EVIDENCE": 768
+   },
+   "ekili_aile_wy_anlamli": [],
+   "ekili_aile_oos_destekli": [],
+   "oos_destekli_tum": [],
+   "adaylar": [],
+   "kosul": "negatif"
+  },
+  {
+   "tohum": 101,
+   "boost": 1.3,
+   "durum": "TAMAM",
+   "sure_sn": 37.0,
+   "kalibrasyon_kapisi": true,
+   "wy_anlamli": 0,
+   "wy_anlamli_hipotezler": [],
+   "statu_sayilari": {
+    "INSUFFICIENT_EVIDENCE": 768
+   },
+   "ekili_aile_wy_anlamli": [],
+   "ekili_aile_oos_destekli": [],
+   "oos_destekli_tum": [],
+   "adaylar": [],
+   "kosul": "duyarlilik_kucuk_etki"
+  },
+  {
+   "tohum": 102,
+   "boost": 1.3,
+   "durum": "TAMAM",
+   "sure_sn": 40.5,
+   "kalibrasyon_kapisi": true,
+   "wy_anlamli": 0,
+   "wy_anlamli_hipotezler": [],
+   "statu_sayilari": {
+    "INSUFFICIENT_EVIDENCE": 768
+   },
+   "ekili_aile_wy_anlamli": [],
+   "ekili_aile_oos_destekli": [],
+   "oos_destekli_tum": [],
+   "adaylar": [],
+   "kosul": "duyarlilik_kucuk_etki"
+  },
+  {
+   "tohum": 103,
+   "boost": 1.3,
+   "durum": "TAMAM",
+   "sure_sn": 37.5,
+   "kalibrasyon_kapisi": true,
+   "wy_anlamli": 0,
+   "wy_anlamli_hipotezler": [],
+   "statu_sayilari": {
+    "INSUFFICIENT_EVIDENCE": 768
+   },
+   "ekili_aile_wy_anlamli": [],
+   "ekili_aile_oos_destekli": [],
+   "oos_destekli_tum": [],
+   "adaylar": [],
+   "kosul": "duyarlilik_kucuk_etki"
+  }
+ ]
+}

@@ -69,7 +69,8 @@ class SettingsPage(Page):
         btn.clicked.connect(self._save)
         self.body.addWidget(btn)
         self.body.addWidget(banner(
-            "<b>Oran türü</b>: 'Piyasa ortalaması' tipik bir bahis şirketini temsil eder. 'En yüksek oran', "
+            "<b>Oran türü</b>: 'Piyasa ortalaması' football-data.co.uk verisinde bahisçilerin ortalamasıdır; GitHub "
+            "yedek veri setinde ise tek bir bahisçinin (veri seti açıklamasına göre Bet365) oranıdır. 'En yüksek oran', "
             "geçmişte onlarca şirket arasındaki en iyi fiyattır; erişilebilirliği doğrulanamadığı için bu seçenekle "
             "hesaplanan değer ve getiriler varsayımsaldır. Kayıp sonrası bahis artırma (martingale vb.) ve kayıp "
             "telafisi önerileri bu uygulamada yoktur."))

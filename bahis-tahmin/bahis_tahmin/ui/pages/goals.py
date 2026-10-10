@@ -626,12 +626,21 @@ class GoalsPage(Page):
         for r in led.predictions():
             o = r.get("outcome") or {}
             t = dt.datetime.fromisoformat(r["decision_time"])
+            status = r["decision_status"]
+            if status == "TAHMIN":
+                karar = "Tahmin kaydı (ölçüm; bahis değil)"
+            elif status == "TAHMIN_YOK":
+                karar = "Tahmin yok: " + ", ".join((r.get("reasons") or ["?"])[:1])
+            else:
+                karar = STATUS_TR.get(status, status)
             rows.append({
+                "Kayıt türü": r.get("kayit_turu", "KARAR_KAYDI"),
                 "Karar zamanı (İstanbul)": t.astimezone(ISTANBUL).strftime("%d.%m.%Y %H:%M"),
+                "Kayıt anı (UTC)": r.get("created_at", ""),
                 "Maç": f"{r.get('home', '')} - {r.get('away', '')}", "Lig": r.get("league", ""),
-                "Pazar": MARKETS[r["market_key"]].name_tr, "Olasılık": r["p"], "Oran": r.get("odds"),
-                "Karar": STATUS_TR.get(r["decision_status"], r["decision_status"]), "Sanal birim": r["stake_units"],
-                "Sonuç": o.get("settlement", "PENDING"), "Model": r["model_version"],
+                "Pazar": MARKETS[r["market_key"]].name_tr, "Olasılık": r.get("p"), "Oran": r.get("odds"),
+                "Karar": karar, "Sanal birim": r["stake_units"],
+                "Sonuç": o.get("settlement", "PENDING" if r.get("p") is not None else "-"), "Model": r["model_version"],
             })
         return pd.DataFrame(rows)
 

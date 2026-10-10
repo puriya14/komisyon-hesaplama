@@ -45,7 +45,7 @@ ODDS_SETS = {
     "pinnacle": ("ps_h", "ps_d", "ps_a", "o_o25", "o_u25"),
 }
 ODDS_TYPE_LABELS = {
-    "avg": "Piyasa ortalaması",
+    "avg": "Piyasa ortalaması (yedek veri setinde: tek bahisçi, Bet365)",
     "max": "En yüksek oran (varsayımsal)",
     "b365": "Bet365",
     "pinnacle": "Pinnacle",
