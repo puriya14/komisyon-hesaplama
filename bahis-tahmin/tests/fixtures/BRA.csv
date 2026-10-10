@@ -1,0 +1,4 @@
+Country,League,Season,Date,Time,Home,Away,HG,AG,Res,PSCH,PSCD,PSCA,MaxCH,MaxCD,MaxCA,AvgCH,AvgCD,AvgCA
+Brazil,Serie A,2024,13/04/2024,21:00,Internacional,Bahia,2,1,H,1.95,3.50,4.20,2.00,3.60,4.40,1.92,3.42,4.05
+Brazil,Serie A,2024,14/04/2024,16:00,Flamengo,Sao Paulo,1,0,H,1.75,3.70,5.10,1.80,3.80,5.40,1.73,3.62,4.90
+Brazil,Serie A,2023,15/04/2023,18:30,Palmeiras,Cuiaba,2,1,H,1.33,5.00,10.50,1.36,5.20,11.00,1.32,4.86,9.90
