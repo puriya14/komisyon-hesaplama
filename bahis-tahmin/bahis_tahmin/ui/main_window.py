@@ -21,9 +21,10 @@ from .. import APP_TITLE, __version__
 from .controller import AppController
 from .pages.about import AboutPage
 from .pages.backtest import BacktestPage
-from .pages.banko import BankoPage
+from .pages.likely import LikelyPage
 from .pages.dashboard import DashboardPage
 from .pages.data import DataPage
+from .pages.goals import GoalsPage
 from .pages.match import MatchPage
 from .pages.predictions import PredictionsPage
 from .pages.ratings import RatingsPage
@@ -32,8 +33,9 @@ from .pages.settings import SettingsPage
 NAV = [
     ("Genel Bakış", DashboardPage),
     ("Tahminler", PredictionsPage),
-    ("Banko (Yüksek Güven)", BankoPage),
+    ("En Olası Seçimler", LikelyPage),
     ("Maç Analizi", MatchPage),
+    ("Gol Pazarları", GoalsPage),
     ("Güç Sıralaması", RatingsPage),
     ("Geriye Dönük Test", BacktestPage),
     ("Veri", DataPage),
@@ -122,6 +124,13 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Hata", text)
         elif kind == "popup":
             QMessageBox.information(self, APP_TITLE, text)
+        elif kind == "consent":
+            from .consent import ask_consent
+
+            if ask_consent(self.ctl, self):
+                self.ctl.update_and_train()
+            else:
+                self.status.setText("Kaynak onayı verilmedi; veri indirilmedi.")
         else:
             self.status.setText(text.splitlines()[0] if text else "")
             self.status.setToolTip(text)

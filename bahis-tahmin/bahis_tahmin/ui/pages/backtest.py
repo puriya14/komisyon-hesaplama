@@ -259,14 +259,21 @@ class BacktestPage(Page):
             else:
                 self.c_clv.set("-", "Kapanış oranı verisi yok")
             sig = s["p_value"] < 0.05 and s["birim_roi"] > 0
-            self.verdict.setObjectName("banner" if sig else "warn")
+            hypothetical = cfg.odds_type == "max"
+            self.verdict.setObjectName("warn" if (hypothetical or not sig) else "banner")
             self.verdict.setStyleSheet("")
-            self.verdict.setText(
-                ("<b>İstatistiksel olarak anlamlı pozitif getiri</b> (p = %.3f). Yine de gerçek oranlara erişim ve "
-                 "bahis limitleri sonucu değiştirebilir." % s["p_value"]) if sig else
-                ("<b>Kanıt yetersiz:</b> bu stratejinin getirisi şanstan ayırt edilemiyor (p = %.2f). "
-                 "Bahis şirketi marjı nedeniyle uzun vadede zarar beklenir." % s["p_value"])
-            )
+            if hypothetical:
+                text = ("<b>VARSAYIMSAL SONUÇ:</b> 'En yüksek oran', geçmişte onlarca bahis şirketi arasındaki en iyi "
+                        "fiyattır; bu oranların o anda sizin için erişilebilir, limitsiz ve askıda olmadığı "
+                        "doğrulanamaz. Bu sonuç uygulanabilir getiri olarak yorumlanmamalıdır (p = %.3f)." % s["p_value"])
+            elif sig:
+                text = ("<b>İstatistiksel olarak anlamlı pozitif getiri</b> (p = %.3f, çoklu deneme düzeltmesi yapılmadı). "
+                        "Gerçek oranlara erişim, limitler ve ileriye dönük sanal takip olmadan kâr iddiası yapılamaz."
+                        % s["p_value"])
+            else:
+                text = ("<b>Kanıt yetersiz:</b> bu stratejinin getirisi şanstan ayırt edilemiyor (p = %.2f). "
+                        "Bahis şirketi marjı nedeniyle uzun vadede zarar beklenir." % s["p_value"])
+            self.verdict.setText(text)
             self.verdict.show()
         else:
             for c in (self.c_hit, self.c_roi, self.c_profit, self.c_dd, self.c_clv):

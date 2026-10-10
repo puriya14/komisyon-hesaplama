@@ -1,6 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 # Windows için paketleme:  pyinstaller --noconfirm --clean BahisTahmin.spec
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 hidden = collect_submodules("bahis_tahmin") + [
     "matplotlib.backends.backend_qtagg",
@@ -10,11 +10,16 @@ hidden = collect_submodules("bahis_tahmin") + [
     "scipy.special._cdflib",
 ]
 
+try:  # Windows'ta zaman dilimi veritabanı (Europe/Istanbul) için
+    tz_datas = collect_data_files("tzdata")
+except Exception:
+    tz_datas = []
+
 a = Analysis(
     ["run_app.py"],
     pathex=["."],
     binaries=[],
-    datas=[("assets/icon.ico", "assets"), ("assets/icon.png", "assets")],
+    datas=[("assets/icon.ico", "assets"), ("assets/icon.png", "assets")] + tz_datas,
     hiddenimports=hidden,
     hookspath=[],
     runtime_hooks=[],

@@ -18,9 +18,9 @@ class DashboardPage(Page):
     def __init__(self, controller, parent=None):
         super().__init__(controller, parent)
         self.first_run = banner(
-            "<b>Hoş geldiniz!</b> Başlamak için son yılların maç verilerini (football-data.co.uk, ücretsiz) "
-            "indirip modeli eğitmeniz gerekiyor. İlk kurulum internet hızına göre birkaç dakika sürer; "
-            "sonraki açılışlarda yalnızca yeni maçlar indirilir."
+            "<b>Hoş geldiniz!</b> Başlamak için son yılların maç verilerini indirip modeli eğitmeniz gerekiyor. "
+            "Verilerin kullanım koşullarını 'Veri' sayfasında okuyup onaylamanız istenecek (onay olmadan veri "
+            "indirilmez). İlk kurulum birkaç dakika sürer; sonraki güncellemelerde yalnızca yeni maçlar indirilir."
         )
         self.body.addWidget(self.first_run)
 
@@ -39,9 +39,9 @@ class DashboardPage(Page):
         grid.setSpacing(12)
         self.c_data = Card("Maç verisi")
         self.c_acc = Card("1X2 isabeti (örneklem dışı)")
-        self.c_banko = Card("Banko isabeti (güven ≥ %90)")
+        self.c_likely = Card("Olasılığı ≥ %90 seçimler: geçmişte gerçekleşme")
         self.c_fix = Card("Yaklaşan maçlar")
-        for i, c in enumerate((self.c_data, self.c_acc, self.c_banko, self.c_fix)):
+        for i, c in enumerate((self.c_data, self.c_acc, self.c_likely, self.c_fix)):
             grid.addWidget(c, 0, i)
         self.body.addLayout(grid)
 
@@ -59,10 +59,10 @@ class DashboardPage(Page):
 
         self.body.addWidget(banner(
             "<b>Dürüst not:</b> Futbolda maç sonucu (1-X-2) tahmininde en iyi bahis şirketlerinin bile isabeti "
-            "yaklaşık %50-53'tür; hiçbir model tüm maçlarda %90 isabet sağlayamaz. Bu uygulama bunun yerine "
-            "olasılıkları doğru (kalibre) tahmin etmeye odaklanır: model bir seçime %90 dediğinde, geçmiş "
-            "testlerde bu seçimler gerçekten ~%90+ oranında tutmuştur. Yüksek isabet kâr anlamına gelmez; "
-            "bu seçimlerin oranları düşüktür. Ayrıntılar için 'Banko' ve 'Geriye Dönük Test' sayfalarına bakın.",
+            "yaklaşık %50-53'tür; hiçbir model tüm maçlarda %90 isabet sağlayamaz. Bu uygulama olasılıkları "
+            "doğru (kalibre) tahmin etmeye odaklanır: model bir seçime %90 dediğinde, geçmiş testlerde bu seçimler "
+            "yaklaşık o sıklıkta gerçekleşmiştir. Yüksek olasılık kâr anlamına gelmez; bu seçimlerin oranları düşüktür. "
+            "Ayrıntılar: 'En Olası Seçimler', 'Gol Pazarları' ve 'Geriye Dönük Test'. 18+ · Bahis bağımlılık yapabilir.",
             "warn",
         ))
         self.body.addStretch(1)
@@ -99,18 +99,18 @@ class DashboardPage(Page):
             conf = eng.report.confidence or {}
             r90 = next((r for r in conf.get("best", []) if abs(r["esik"] - 0.9) < 1e-9), None)
             if r90 and r90["n"]:
-                self.c_banko.set(
+                self.c_likely.set(
                     fmt_pct(r90["isabet"]),
                     f"{r90['n']:,} seçim · maçların {fmt_pct(r90['kapsam'])}'i".replace(",", "."),
                     color=theme.GOOD if r90["isabet"] >= 0.9 else None,
                 )
             else:
-                self.c_banko.set("-", "Model eğitilince hesaplanır")
-            plot_confidence(self.ch_conf, conf.get("best", []), "En güvenli seçim: isabet ve kapsam")
+                self.c_likely.set("-", "Model eğitilince hesaplanır")
+            plot_confidence(self.ch_conf, conf.get("best", []), "En olası seçim: olasılık eşiğine göre gerçekleşme ve kapsam")
             plot_season_quality(self.ch_season, eng.report.per_season)
         else:
             self.c_acc.set("-", "Model henüz eğitilmedi")
-            self.c_banko.set("-", "")
+            self.c_likely.set("-", "")
         preds = self.ctl.predictions
         if preds:
             n_val = sum(1 for p in preds if p.best_value(self.ctl.settings))

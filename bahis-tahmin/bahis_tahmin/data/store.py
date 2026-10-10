@@ -23,6 +23,7 @@ from .parsers import (
     parse_openfootball,
     read_csv_robust,
 )
+from .source_registry import SOURCES, allowed_sources
 from .sources import FD_BASE, MIRROR_URL, OPENFOOTBALL_BASE, Downloader, DownloadError
 from .teams import match_team
 
@@ -46,6 +47,7 @@ class UpdateReport:
     used_mirror: bool = False
     downloaded: int = 0
     from_cache: int = 0
+    blocked_sources: list[str] = field(default_factory=list)  # kullanım koşulları onaylanmamış
 
     def summary(self) -> str:
         lines = [
@@ -54,6 +56,8 @@ class UpdateReport:
         ]
         if self.used_mirror:
             lines.append("football-data.co.uk'a ulaşılamadığı için GitHub yedek veri seti kullanıldı.")
+        for key in self.blocked_sources:
+            lines.append(f"{SOURCES[key].name}: kullanım koşulları onaylanmadığı için kullanılmadı.")
         lines += self.warnings
         return "\n".join(lines)
 
@@ -114,11 +118,20 @@ class DataStore:
         fixture_days: int = 10,
         today: dt.date | None = None,
         downloader: Downloader | None = None,
+        allowed: set[str] | None = None,
     ) -> UpdateReport:
+        """Verileri indirir. ``allowed``: kullanılmasına izin verilen kaynak anahtarları
+        (bkz. ``source_registry``); verilmezse yalnızca onay gerektirmeyen kaynaklar kullanılır."""
         today = today or dt.date.today()
         progress = progress or (lambda p, m: None)
         dl = downloader or Downloader(self.raw_dir)
         report = UpdateReport()
+        allowed = allowed_sources(None) if allowed is None else set(allowed)
+        use_fd = "football-data" in allowed
+        use_mirror_fallback = use_mirror_fallback and "github-mirror" in allowed
+        for key in ("football-data", "github-mirror"):
+            if key not in allowed:
+                report.blocked_sources.append(key)
         starts = recent_season_starts(years_back, today)
         frames: list[pd.DataFrame] = []
         need_mirror: list[str] = []
@@ -129,7 +142,9 @@ class DataStore:
             lg = LEAGUES[code]
             progress(int(80 * i / n_steps), f"{lg.label} verileri alınıyor...")
             got: list[pd.DataFrame] = []
-            if lg.kind == "main":
+            if not use_fd:
+                pass
+            elif lg.kind == "main":
                 for y in starts:
                     sc = season_code(y)
                     url = f"{FD_BASE}/mmz4281/{sc}/{code}.csv"
@@ -152,7 +167,7 @@ class DataStore:
                         continue
                     if not df.empty:
                         got.append(df)
-            else:
+            elif lg.kind == "extra":
                 url = f"{FD_BASE}/new/{lg.fd_file}.csv"
                 try:
                     data = dl.get(url, f"fd/new/{lg.fd_file}.csv", EXTRA_MAX_AGE_H, force)
@@ -171,7 +186,7 @@ class DataStore:
                 report.leagues[code] = "football-data.co.uk"
             elif use_mirror_fallback:
                 need_mirror.append(code)
-            else:
+            elif use_fd:
                 report.warnings.append(f"{lg.label}: veri alınamadı.")
 
         if need_mirror:
@@ -204,7 +219,7 @@ class DataStore:
             matches = self.matches[self.matches["league"].isin(leagues)]
 
         progress(92, "Yaklaşan maçlar (fikstür) alınıyor...")
-        fixtures = self._update_fixtures(dl, leagues, matches, today, fixture_days, report, force)
+        fixtures = self._update_fixtures(dl, leagues, matches, today, fixture_days, report, force, allowed)
 
         self.matches = matches.reset_index(drop=True)
         self.fixtures = fixtures.reset_index(drop=True)
@@ -234,11 +249,11 @@ class DataStore:
         m = m.drop_duplicates(subset=["league", "date", "home", "away"], keep="first")
         return m.sort_values(["date", "league", "time", "home"], kind="mergesort").reset_index(drop=True)
 
-    def _update_fixtures(self, dl, leagues, matches, today, days, report, force) -> pd.DataFrame:
+    def _update_fixtures(self, dl, leagues, matches, today, days, report, force, allowed) -> pd.DataFrame:
         lo = pd.Timestamp(today)
         hi = pd.Timestamp(today) + pd.Timedelta(days=days)
         frames = []
-        for name in ("fixtures.csv", "new_league_fixtures.csv"):
+        for name in ("fixtures.csv", "new_league_fixtures.csv") if "football-data" in allowed else ():
             try:
                 data = dl.get(f"{FD_BASE}/{name}", f"fd/{name}", FIXTURES_MAX_AGE_H, force)
                 frames.append(normalize_fixtures(read_csv_robust(data)))
@@ -250,7 +265,7 @@ class DataStore:
         fd = fd[fd["league"].isin(leagues) & (fd["date"] >= lo) & (fd["date"] <= hi)]
 
         extra = []
-        for code in leagues:
+        for code in leagues if "openfootball" in allowed else ():
             lg = LEAGUES[code]
             if not lg.openfootball:
                 continue

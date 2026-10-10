@@ -5,9 +5,15 @@
     python -m bahis_tahmin update --leagues T1,E0 --years 5
     python -m bahis_tahmin train
     python -m bahis_tahmin predict --league T1
-    python -m bahis_tahmin banko --threshold 0.9
+    python -m bahis_tahmin en-olasi --threshold 0.9
     python -m bahis_tahmin backtest --odds max --min-ev 0.05
     python -m bahis_tahmin self-test
+    python -m bahis_tahmin gol-egit                 # gol pazarları modeli (A/B/C) eğitimi + iç doğrulama
+    python -m bahis_tahmin gol-tahmin --league E0   # yaklaşan maçlar için A/B/C olasılıkları
+    python -m bahis_tahmin gol-kapsam --csv kapsam.csv
+    python -m bahis_tahmin gol-sanal                # sanal takip özeti ve kayıt zinciri doğrulaması
+    python -m bahis_tahmin gol-oran-ice-aktar --csv oranlar.csv            # yalnızca doğrulama
+    python -m bahis_tahmin gol-oran-ice-aktar --csv oranlar.csv --uygula   # doğrulananları ekle
 """
 
 from __future__ import annotations
@@ -20,6 +26,8 @@ from .config import Settings, app_home
 from .data.leagues import LEAGUES, league_name
 
 ENGINE_FILE = "engine.joblib"
+GOAL_ENGINE_FILE = "goal_engine.joblib"
+LEDGER_FILE = "gol_pazarlari.sqlite"
 
 
 def _store():
@@ -52,11 +60,28 @@ def cmd_update(a) -> int:
         s.leagues = [c.strip().upper() for c in a.leagues.split(",") if c.strip().upper() in LEAGUES]
     if a.years:
         s.years_back = a.years
+    if a.accept_terms:
+        import datetime as dt
+
+        from .data.source_registry import SOURCES
+
+        for key in a.accept_terms.split(","):
+            key = key.strip()
+            if key not in SOURCES:
+                print(f"Bilinmeyen kaynak: {key}", file=sys.stderr)
+                return 2
+            print(f"{SOURCES[key].name} kullanım koşulları onaylandı ({SOURCES[key].terms_url}).")
+            s.source_consent[key] = dt.datetime.now().isoformat(timespec="seconds")
     s.save()
+    if not ({"football-data", "github-mirror"} & s.allowed_sources()):
+        print("Geçmiş veri kaynaklarının kullanım koşulları onaylanmadı. Koşulları okuyup onaylamak için:\n"
+              "  python -m bahis_tahmin update --accept-terms football-data[,github-mirror]", file=sys.stderr)
+        return 3
     st = DataStore(app_home())
     st.load()
     rep = st.update(s.leagues, s.years_back, progress=_progress, force=a.force,
-                    use_mirror_fallback=not a.no_mirror, fixture_days=s.fixture_days)
+                    use_mirror_fallback=not a.no_mirror, fixture_days=s.fixture_days,
+                    allowed=s.allowed_sources())
     print(rep.summary())
     print(st.summary().to_string(index=False))
     return 0 if st.has_data else 1
@@ -82,7 +107,7 @@ def cmd_train(a) -> int:
           f"nihai {m.get('ll_final', 0):.4f} · sabit tahmin {m.get('ll_baseline', 0):.4f}")
     for r in rep.confidence.get("best", []):
         if r["n"]:
-            print(f"  güven ≥ %{100 * r['esik']:.0f}: isabet %{100 * r['isabet']:.1f}, kapsam %{100 * r['kapsam']:.1f} ({r['n']} seçim)")
+            print(f"  olasılık ≥ %{100 * r['esik']:.0f}: gerçekleşme %{100 * r['isabet']:.1f}, kapsam %{100 * r['kapsam']:.1f} ({r['n']} seçim)")
     return 0
 
 
@@ -106,7 +131,7 @@ def cmd_predict(a) -> int:
     return 0
 
 
-def cmd_banko(a) -> int:
+def cmd_likely(a) -> int:
     from .models.engine import MARKET_GROUPS, verify_selection
     from .models.markets import MARKETS
 
@@ -115,7 +140,7 @@ def cmd_banko(a) -> int:
     keys = [k for g in MARKET_GROUPS.values() for k in g]
     v = verify_selection(eng.oos, keys, a.threshold, True)
     if v["n"]:
-        print(f"Geçmiş doğrulama (güven ≥ %{100 * a.threshold:.0f}): isabet %{100 * v['isabet']:.1f}, "
+        print(f"Geçmiş doğrulama (olasılık ≥ %{100 * a.threshold:.0f}): gerçekleşme %{100 * v['isabet']:.1f}, "
               f"{v['n']} seçim, maçların %{100 * v['kapsam']:.1f}'i")
     preds = eng.predict_fixtures(st.fixtures, Settings.load().odds_type)
     for p in preds:
@@ -139,6 +164,130 @@ def cmd_backtest(a) -> int:
     return 0
 
 
+def cmd_goal_train(a) -> int:
+    from .goals.engine import GoalDataError, GoalEngine
+    from .goals.markets import MARKETS, PRIMARY_YES
+
+    st = _store()
+    if not st.has_data:
+        print("Veri yok. Önce 'update' çalıştırın.", file=sys.stderr)
+        return 2
+    eng = GoalEngine()
+    t = time.time()
+    try:
+        val = eng.train(st.matches, progress=_progress)
+    except GoalDataError as e:
+        print(str(e), file=sys.stderr)
+        return 2
+    eng.save(app_home() / GOAL_ENGINE_FILE)
+    print(f"Eğitim {time.time() - t:.0f} sn. Model {eng.variant}; veri kesimi {eng.data_cutoff}; "
+          f"iç doğrulama sezonları: {', '.join(str(y) for y in eng.validation_years) or '-'}")
+    for key in PRIMARY_YES:
+        r = val.get(key, {})
+        mm = r.get("modeller", {}).get(eng.variant)
+        if not mm:
+            print(f"  {MARKETS[key].name_tr}: doğrulama yapılamadı → {eng.status_text(key)}")
+            continue
+        print(f"  {MARKETS[key].name_tr}: n={r['n']} taban=%{100 * r['taban_oran']:.1f} "
+              f"ΔLL={mm['ll_fark_ref']:+.5f} [{mm['ll_fark_alt']:+.5f}, {mm['ll_fark_ust']:+.5f}] "
+              f"eğim={mm['kal_egim']:.2f} ECE={mm['ece']:.4f} → {eng.status_text(key)}")
+    return 0
+
+
+def _goal_engine():
+    from .goals.engine import GoalEngine
+
+    eng, err = GoalEngine.load(app_home() / GOAL_ENGINE_FILE)
+    if eng is None:
+        print(f"Gol modeli yüklenemedi ({err}). Önce 'gol-egit' çalıştırın.", file=sys.stderr)
+        sys.exit(2)
+    return eng
+
+
+def cmd_goal_predict(a) -> int:
+    eng = _goal_engine()
+    fx = _store().fixtures
+    if a.league:
+        fx = fx[fx["league"] == a.league.upper()]
+    preds = eng.predict_fixtures(fx)
+    if not preds:
+        print("Yaklaşan maç bulunamadı.")
+        return 0
+    st = {k: ("doğrulandı" if v else "DOĞRULANMADI") for k, v in eng.validated.items()}
+    print(f"Model durumu: A {st.get('BTTS_BOTH_HALVES_YES')} · B {st.get('FT_OVER_3_5')} · C {st.get('FH_OVER_1_5')}. "
+          "Gerçek oran olmadan öneri üretilmez.")
+    for p in preds:
+        iv = {k: p.interval(k) for k in ("BTTS_BOTH_HALVES_YES", "FT_OVER_3_5", "FH_OVER_1_5")}
+        txt = " ".join(
+            f"{s}:%{100 * p.probs[s]:4.1f} [{100 * iv[k][0]:.0f}-{100 * iv[k][1]:.0f}]" if iv[k][0] is not None
+            else f"{s}:%{100 * p.probs[s]:4.1f}"
+            for s, k in (("A", "BTTS_BOTH_HALVES_YES"), ("B", "FT_OVER_3_5"), ("C", "FH_OVER_1_5")))
+        note = "  (veri uyarısı)" if p.data_notes else ""
+        print(f"{p.kickoff_text:>28s} {p.league:4s} {p.home:>18s} - {p.away:<18s} {txt}{note}")
+    return 0
+
+
+def cmd_goal_coverage(a) -> int:
+    from .goals.coverage import coverage_matrix, coverage_summary
+
+    st = _store()
+    if not st.has_data:
+        print("Veri yok. Önce 'update' çalıştırın.", file=sys.stderr)
+        return 2
+    cov = coverage_matrix(st.matches, Settings.load().source_consent, {})
+    summ = coverage_summary(cov)
+    print(summ.to_string(index=False))
+    if a.csv:
+        from .goals.value import safe_csv_cell
+
+        cov.map(safe_csv_cell).to_csv(a.csv, index=False, encoding="utf-8-sig")
+        print(f"Kapsam matrisi yazıldı: {a.csv}")
+    return 0
+
+
+def cmd_goal_ledger(a) -> int:
+    from .goals.ledger import Ledger
+
+    path = app_home() / LEDGER_FILE
+    if not path.exists():
+        print("Henüz sanal takip kaydı yok.")
+        return 0
+    led = Ledger(path)
+    ok, msg = led.verify_chain()
+    s = led.summary()
+    led.close()
+    y = f"{100 * s['yield']:+.1f}%" if s["yield"] is not None else "hesaplanamıyor"
+    print(f"{msg}. {s['kayit']} kayıt · {s['sanal_bahis']} sanal bahis · {s['sonuclanan']} sonuçlandı · "
+          f"net {s['net']:+.2f} birim · yield {y}")
+    return 0 if ok else 1
+
+
+def cmd_goal_odds_import(a) -> int:
+    """Gerçek oran CSV'si içe aktarma. Varsayılan: yalnızca doğrulama (kuru çalıştırma), hiçbir şey yazılmaz."""
+    from pathlib import Path
+
+    from .goals.ledger import Ledger
+    from .goals.value import ODDS_CSV_FIELDS, OddsError, parse_odds_csv
+
+    try:
+        quotes, bad = parse_odds_csv(Path(a.csv).read_bytes())
+    except (OSError, OddsError, UnicodeDecodeError) as e:
+        print(f"Dosya okunamadı: {e}", file=sys.stderr)
+        print(f"Beklenen sütunlar: {', '.join(ODDS_CSV_FIELDS)}", file=sys.stderr)
+        return 2
+    print(f"Geçerli oran kaydı: {len(quotes)} · karantina: {len(bad)}")
+    for line in bad[:20]:
+        print(f"  {line}")
+    if not a.uygula:
+        print("Kuru çalıştırma: hiçbir kayıt yazılmadı. Yazmak için --uygula ekleyin.")
+        return 0
+    led = Ledger(app_home() / LEDGER_FILE)
+    n = led.add_odds(quotes)
+    led.close()
+    print(f"{n} yeni oran kaydı eklendi (aynı kayıtlar tekrar eklenmez).")
+    return 0
+
+
 def cmd_self_test(a) -> int:
     from .selftest import run_self_test
 
@@ -158,20 +307,33 @@ def main(argv: list[str] | None = None) -> int:
     u.add_argument("--years", type=int)
     u.add_argument("--force", action="store_true")
     u.add_argument("--no-mirror", action="store_true", help="GitHub yedek veri setini kullanma")
+    u.add_argument("--accept-terms", help="kullanım koşullarını okuyup onayladığınız kaynaklar, ör. football-data")
     u.set_defaults(fn=cmd_update)
     sub.add_parser("train", help="modeli eğit").set_defaults(fn=cmd_train)
     pr = sub.add_parser("predict", help="yaklaşan maç tahminleri")
     pr.add_argument("--league")
     pr.add_argument("--top", type=int, default=200)
     pr.set_defaults(fn=cmd_predict)
-    b = sub.add_parser("banko", help="yüksek güvenli seçimler")
+    b = sub.add_parser("en-olasi", help="model olasılığı yüksek seçimler (avantaj listesi değildir)")
     b.add_argument("--threshold", type=float, default=0.9)
-    b.set_defaults(fn=cmd_banko)
+    b.set_defaults(fn=cmd_likely)
     bt = sub.add_parser("backtest", help="geriye dönük test")
     bt.add_argument("--odds", default="avg", choices=["avg", "max", "b365", "pinnacle"])
     bt.add_argument("--min-ev", type=float, default=0.05)
     bt.add_argument("--source", default="final", choices=["final", "model"])
     bt.set_defaults(fn=cmd_backtest)
     sub.add_parser("self-test", help="kurulum kontrolü").set_defaults(fn=cmd_self_test)
+    sub.add_parser("gol-egit", help="gol pazarları modelini eğit ve iç doğrulama yap").set_defaults(fn=cmd_goal_train)
+    gp = sub.add_parser("gol-tahmin", help="yaklaşan maçlar için iki yarıda KG / 3.5 Üst / İY 1.5 Üst olasılıkları")
+    gp.add_argument("--league")
+    gp.set_defaults(fn=cmd_goal_predict)
+    gk = sub.add_parser("gol-kapsam", help="lig-sezon veri kapsam özeti")
+    gk.add_argument("--csv", help="kapsam matrisini bu CSV dosyasına yaz")
+    gk.set_defaults(fn=cmd_goal_coverage)
+    sub.add_parser("gol-sanal", help="sanal takip özeti ve kayıt zinciri doğrulaması").set_defaults(fn=cmd_goal_ledger)
+    go = sub.add_parser("gol-oran-ice-aktar", help="gerçek oran CSV'sini doğrula (varsayılan) veya --uygula ile ekle")
+    go.add_argument("--csv", required=True)
+    go.add_argument("--uygula", action="store_true", help="doğrulanan kayıtları sanal takip veritabanına yaz")
+    go.set_defaults(fn=cmd_goal_odds_import)
     a = p.parse_args(argv)
     return a.fn(a)

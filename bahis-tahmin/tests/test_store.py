@@ -6,7 +6,10 @@ import pytest
 from conftest import fixture_bytes
 
 from bahis_tahmin.data.sources import FD_BASE, MIRROR_URL, OPENFOOTBALL_BASE, DownloadError
+from bahis_tahmin.data.source_registry import SOURCES, allowed_sources
 from bahis_tahmin.data.store import DataStore
+
+ALL = {"football-data", "github-mirror", "openfootball"}
 
 
 class FakeDownloader:
@@ -57,7 +60,7 @@ def test_update_from_football_data(tmp_home):
         f"{FD_BASE}/fixtures.csv": fixture_bytes("fixtures.csv"),
     }
     st = DataStore(tmp_home)
-    rep = st.update(["T1", "E0"], 10, today=dt.date(2026, 10, 10), downloader=FakeDownloader(files))
+    rep = st.update(["T1", "E0"], 10, today=dt.date(2026, 10, 10), downloader=FakeDownloader(files), allowed=ALL)
     assert rep.n_matches == 7
     assert rep.leagues == {"T1": "football-data.co.uk", "E0": "football-data.co.uk"}
     assert set(st.fixtures["league"]) == {"T1", "E0"}
@@ -77,7 +80,7 @@ def test_mirror_fallback_and_openfootball_fixtures(tmp_home):
         ),
     }
     st = DataStore(tmp_home)
-    rep = st.update(["T1"], 3, today=dt.date(2026, 10, 10), downloader=FakeDownloader(files, fd_down=True))
+    rep = st.update(["T1"], 3, today=dt.date(2026, 10, 10), downloader=FakeDownloader(files, fd_down=True), allowed=ALL)
     assert rep.used_mirror
     assert rep.leagues["T1"] == "GitHub yedek veri seti"
     assert len(st.matches) == 12
@@ -90,10 +93,10 @@ def test_mirror_fallback_and_openfootball_fixtures(tmp_home):
 def test_no_data_keeps_previous(tmp_home):
     st = DataStore(tmp_home)
     files = {f"{FD_BASE}/mmz4281/2425/E0.csv": fixture_bytes("E0_2425.csv")}
-    st.update(["E0"], 3, today=dt.date(2025, 3, 1), downloader=FakeDownloader(files))
+    st.update(["E0"], 3, today=dt.date(2025, 3, 1), downloader=FakeDownloader(files), allowed=ALL)
     assert len(st.matches) == 4
     rep = st.update(["E0"], 3, today=dt.date(2025, 3, 1), downloader=FakeDownloader({}, fd_down=True),
-                    use_mirror_fallback=False)
+                    use_mirror_fallback=False, allowed=ALL)
     assert len(st.matches) == 4
     assert any("korunuyor" in w for w in rep.warnings)
 
@@ -104,9 +107,34 @@ def test_real_download_football_data(tmp_home):
     from bahis_tahmin.data.sources import Downloader
 
     st = DataStore(tmp_home)
-    rep = st.update(["T1", "E0"], 2, downloader=Downloader(tmp_home / "raw"), use_mirror_fallback=False)
+    rep = st.update(["T1", "E0"], 2, downloader=Downloader(tmp_home / "raw"), use_mirror_fallback=False,
+                    allowed={"football-data"})
     assert rep.leagues.get("T1") == "football-data.co.uk", rep.summary()
     assert rep.leagues.get("E0") == "football-data.co.uk", rep.summary()
     assert len(st.matches) > 500
     assert st.matches["o_h"].notna().mean() > 0.9
     assert st.matches["h_sot"].notna().mean() > 0.9
+
+
+def test_sources_without_consent_are_not_used(tmp_home):
+    """Kullanım koşulları onaylanmamış kaynak etkinleşmez (indirme isteği bile yapılmaz)."""
+    files = {
+        f"{FD_BASE}/mmz4281/2425/E0.csv": fixture_bytes("E0_2425.csv"),
+        MIRROR_URL: _mirror_csv(),
+    }
+    dl = FakeDownloader(files)
+    st = DataStore(tmp_home)
+    rep = st.update(["E0"], 3, today=dt.date(2025, 3, 1), downloader=dl)  # allowed verilmedi
+    assert rep.n_matches == 0
+    assert set(rep.blocked_sources) == {"football-data", "github-mirror"}
+    assert not any(u.startswith(FD_BASE) or u == MIRROR_URL for u in dl.requested)
+    assert "kullanım koşulları onaylanmadığı" in rep.summary()
+
+
+def test_allowed_sources_policy():
+    assert allowed_sources(None) == {"openfootball"}
+    assert allowed_sources({"football-data": "2026-10-10T10:00:00"}) == {"openfootball", "football-data"}
+    # Entegre edilmemiş/ücretli kaynak onaylansa bile etkinleşmez
+    assert "the-odds-api" not in allowed_sources({"the-odds-api": "x"})
+    assert SOURCES["openfootball"].requires_consent is False
+    assert SOURCES["football-data"].requires_consent is True

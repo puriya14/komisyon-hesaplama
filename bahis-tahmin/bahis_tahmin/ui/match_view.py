@@ -153,6 +153,8 @@ class MatchDetail(QWidget):
         df = pd.DataFrame(rows)
         df["need"] = df["fair"] * (1 + s.min_ev)
         df = df[["market", "group", "label", "prob", "fair", "need", "odds", "ev", "stake", "kelly", "value"]]
+        if not getattr(s, "stake_suggestions", False):
+            df = df.drop(columns=["stake"])
         self.mk_model.set_frame(df)
 
         self.heat.set_matrix(p.matrix)

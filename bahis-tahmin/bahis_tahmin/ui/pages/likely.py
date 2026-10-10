@@ -1,4 +1,7 @@
-"""Banko (yüksek güven) seçimleri: geçmişte doğrulanmış isabet oranlarıyla."""
+"""En olası seçimler: model olasılığı yüksek seçimler ve aynı eşiğin geçmiş (örneklem dışı) isabeti.
+
+Bu görünüm "en olası" sonuçları listeler; oranına göre avantaj adayı DEĞİLDİR.
+"""
 
 from __future__ import annotations
 
@@ -16,26 +19,15 @@ from ..widgets import Card, DataFrameModel, banner, fmt_num, fmt_pct, fmt_signed
 from .base import Page
 
 
-def _dc_odds(odds: dict, key: str) -> float | None:
-    """1X2 oranlarından yaklaşık Çifte Şans oranı."""
-    pairs = {"1X": ("1", "X"), "12": ("1", "2"), "X2": ("X", "2")}
-    if key not in pairs:
-        return None
-    a, b = (odds.get(k) for k in pairs[key])
-    if not a or not b:
-        return None
-    return 1.0 / (1.0 / a + 1.0 / b)
-
-
-class BankoPage(Page):
-    title = "Banko – Yüksek Güvenli Seçimler"
-    subtitle = ("Modelin çok yüksek olasılık verdiği seçimler. Üstteki kartlar, aynı ayarların geçmiş sezonlarda "
-                "(model o maçları görmeden) ne kadar tuttuğunu gösterir.")
+class LikelyPage(Page):
+    title = "En Olası Seçimler"
+    subtitle = ("Model olasılığı yüksek seçimler. Bu liste 'oranına göre avantaj' listesi değildir. Üstteki kartlar, "
+                "aynı eşiğin geçmiş sezonlarda (model o maçları görmeden) ne sıklıkla gerçekleştiğini gösterir.")
 
     def __init__(self, controller, parent=None):
         super().__init__(controller, parent)
         ctrl = QHBoxLayout()
-        ctrl.addWidget(QLabel("Güven eşiği (en az):"))
+        ctrl.addWidget(QLabel("Model olasılığı en az:"))
         self.sp_thr = QDoubleSpinBox()
         self.sp_thr.setRange(0.60, 0.99)
         self.sp_thr.setSingleStep(0.01)
@@ -56,18 +48,18 @@ class BankoPage(Page):
 
         grid = QGridLayout()
         grid.setSpacing(12)
-        self.c_hit = Card("Geçmiş isabet oranı")
+        self.c_hit = Card("Geçmişte gerçekleşme oranı")
         self.c_cov = Card("Kapsam")
         self.c_odds = Card("Ortalama adil oran")
-        self.c_roi = Card("Yaklaşık getiri (ROI)")
+        self.c_roi = Card("Gerçek oranla geçmiş getiri")
         for i, c in enumerate((self.c_hit, self.c_cov, self.c_odds, self.c_roi)):
             grid.addWidget(c, 0, i)
         self.body.addLayout(grid)
         self.body.addWidget(banner(
-            "<b>Önemli:</b> Yüksek isabet, kâr demek değildir. %93 olasılıklı bir seçimin adil oranı ~1.07'dir; "
-            "bahis şirketleri marj kestiği için teklif edilen oran genellikle bunun altındadır ve uzun vadede "
-            "zarar ettirir. 'Yaklaşık getiri' kartı, oranı bilinen geçmiş seçimlerde (1X2, Çifte Şans ve 2.5 Alt/Üst; "
-            "Çifte Şans oranları 1X2'den türetilmiştir) piyasa ortalaması oranla oynansaydı ne olacağını gösterir.",
+            "<b>Önemli:</b> Yüksek olasılık, kâr demek değildir. %93 olasılıklı bir seçimin adil oranı ~1.07'dir; "
+            "teklif edilen oran marj nedeniyle genellikle bunun altındadır. 'Gerçek oranla geçmiş getiri' kartı "
+            "YALNIZCA verisetinde gerçek oranı olan marketleri (1X2 ve 2.5 Alt/Üst, piyasa ortalaması) kapsar; "
+            "Çifte Şans, 1.5/3.5 Alt/Üst ve KG için oran türetilmez, getiri hesaplanamaz.",
             "warn",
         ))
 
@@ -99,11 +91,11 @@ class BankoPage(Page):
         self.kupon.setTextFormat(Qt.RichText)
         self.body.addWidget(self.kupon)
 
-        self.body.addWidget(section("Market bazında geçmiş başarı (güven ≥ %90)"))
+        self.body.addWidget(section("Market bazında geçmiş gerçekleşme (model olasılığı ≥ %90)"))
         self.pm_model = DataFrameModel()
         self.pm_model.hidden = {"market", "roi_n"}
-        self.pm_model.headers = {"label": "Market", "n": "Seçim sayısı", "isabet": "İsabet", "ort_olasilik": "Ort. olasılık",
-                                 "roi": "Yaklaşık ROI"}
+        self.pm_model.headers = {"label": "Market", "n": "Seçim sayısı", "isabet": "Gerçekleşme", "ort_olasilik": "Ort. olasılık",
+                                 "roi": "Gerçek oranla ROI"}
         self.pm_model.formatters = {"isabet": fmt_pct, "ort_olasilik": fmt_pct, "roi": fmt_signed_pct}
         pm_view, _ = make_table(self.pm_model)
         pm_view.setMinimumHeight(260)
@@ -144,7 +136,7 @@ class BankoPage(Page):
                     self.c_roi.set(fmt_signed_pct(v["roi"]), f"oranı bilinen {v['roi_n']:,} seçimde, ort. oran {fmt_num(v['ort_oran'])}".replace(",", "."),
                                    color=theme.GOOD if v["roi"] > 0 else theme.CRITICAL)
                 else:
-                    self.c_roi.set("-", "Bu marketler için geçmiş oran verisi yok")
+                    self.c_roi.set("Hesaplanamıyor", "Seçilen marketler için geçmiş gerçek oran yok")
             else:
                 for c in (self.c_hit, self.c_cov, self.c_odds, self.c_roi):
                     c.set("-", "Bu eşikte geçmiş seçim yok")
@@ -164,7 +156,7 @@ class BankoPage(Page):
             for k, prob in cands:
                 if prob < thr:
                     continue
-                o = p.odds.get(k) or _dc_odds(p.odds, k)
+                o = p.odds.get(k)  # yalnızca gerçek oran; türetilmiş oran kullanılmaz
                 rows.append({
                     "_i": i, "kupon": "", "date": p.date, "time": p.time, "league": p.league,
                     "match": f"{p.home} - {p.away}", "selection": MARKETS[k][0], "prob": prob,
@@ -177,20 +169,21 @@ class BankoPage(Page):
         df = self.model.frame
         sel = self.model.checked_rows()
         if df.empty or not sel:
-            self.kupon.setText("Kupon için satırlardaki kutucukları işaretleyin.")
+            self.kupon.setText("Birden çok maçın birlikte gerçekleşme olasılığını görmek için kutucukları işaretleyin.")
             return
         rows = df.iloc[sel]
+        dup = rows["match"].duplicated(keep=False)
+        if dup.any():
+            self.kupon.setText(
+                "<b>Aynı maçtan birden fazla seçim işaretlendi.</b> Aynı maçtaki seçimler birbirine bağımlıdır "
+                "(ör. iki yarıda KG gerçekleşirse 3.5 Üst ve İY 1.5 Üst de gerçekleşir); ortak olasılık bu ekranda "
+                "hesaplanmaz. Her maçtan tek seçim bırakın.")
+            return
         prob = float(np.prod(rows["prob"].to_numpy()))
-        fair = 1.0 / prob if prob > 0 else float("inf")
-        odds = rows["odds"].to_numpy(dtype=float)
-        text = (f"<b>Kupon: {len(rows)} seçim</b> · birlikte tutma olasılığı <b>{fmt_pct(prob)}</b> · "
-                f"adil kupon oranı <b>{fair:.2f}</b>")
-        if np.all(np.isfinite(odds)):
-            total = float(np.prod(odds))
-            text += f" · teklif edilen oranlarla <b>{total:.2f}</b> (beklenen değer {fmt_signed_pct(prob * total - 1)})"
-        text += ("<br><span style='color:%s'>Not: Seçimler birbirinden bağımsız varsayılır. Her eklenen maç, "
-                 "kuponun tutma olasılığını düşürür.</span>" % theme.MUTED)
-        self.kupon.setText(text)
+        self.kupon.setText(
+            f"<b>{len(rows)} farklı maç</b> · birlikte gerçekleşme olasılığı <b>yaklaşık {fmt_pct(prob)}</b> "
+            f"<span style='color:{theme.MUTED}'>(maçların birbirinden bağımsız olduğu varsayımıyla; kombine oran ve "
+            "beklenen kazanç, sağlayıcının gerçek kombine oranı olmadan hesaplanmaz. Her eklenen maç olasılığı düşürür.)</span>")
 
     def _open(self, index) -> None:
         src = self.proxy.mapToSource(index)

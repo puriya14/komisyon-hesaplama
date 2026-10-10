@@ -52,8 +52,13 @@ class Settings:
     bankroll: float = 1000.0
     currency: str = "TL"
     use_mirror_fallback: bool = True
-    auto_update_on_start: bool = True
+    # Eğitim yalnızca kullanıcı isteğiyle yapılır; açılışta otomatik güncelleme varsayılan olarak kapalı
+    auto_update_on_start: bool = False
     fixture_days: int = 10
+    # Kaynak anahtarı -> kullanıcının kullanım koşullarını onayladığı zaman (ISO)
+    source_consent: dict = field(default_factory=dict)
+    # Gerçek para miktarı önerisi yalnızca kullanıcı risk sınırlarını kendisi belirleyip açarsa gösterilir
+    stake_suggestions: bool = False
 
     @classmethod
     def path(cls) -> Path:
@@ -79,7 +84,9 @@ class Settings:
         from .data.leagues import LEAGUES
 
         self.leagues = [c for c in self.leagues if c in LEAGUES] or list(DEFAULT_LEAGUES)
-        self.years_back = int(min(max(int(self.years_back), 3), 25))
+        self.years_back = int(min(max(int(self.years_back), 3), 33))
+        if not isinstance(self.source_consent, dict):
+            self.source_consent = {}
         if self.odds_type not in ("avg", "max", "b365", "pinnacle"):
             self.odds_type = "avg"
         if self.margin_method not in ("power", "proportional"):
@@ -87,6 +94,11 @@ class Settings:
         self.kelly_fraction = float(min(max(self.kelly_fraction, 0.0), 1.0))
         self.max_stake_pct = float(min(max(self.max_stake_pct, 0.0), 1.0))
         self.fixture_days = int(min(max(int(self.fixture_days), 1), 60))
+
+    def allowed_sources(self) -> set[str]:
+        from .data.source_registry import allowed_sources
+
+        return allowed_sources(self.source_consent)
 
     def save(self) -> None:
         self.validate()

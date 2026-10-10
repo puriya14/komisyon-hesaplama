@@ -15,17 +15,28 @@ from PySide6.QtWidgets import (
 
 from ...config import DEFAULT_LEAGUES
 from ...data.leagues import LEAGUES, league_name
+from ...data.source_registry import IMPLEMENTED, SOURCES
 from ..widgets import DataFrameModel, banner, make_table, section
 from .base import Page
 
 
 class DataPage(Page):
     title = "Veri"
-    subtitle = ("Tüm veriler ücretsizdir: maç sonuçları, istatistikler ve bahis oranları football-data.co.uk'tan; "
-                "site erişilemezse GitHub'daki açık veri setinden alınır.")
+    subtitle = ("Veriler ücretsiz kaynaklardan, yalnızca sizin onay verdiğiniz kaynaklardan indirilir: maç sonuçları, "
+                "istatistikler ve 1X2 / 2,5 Alt-Üst oranları football-data.co.uk'tan; site erişilemezse ve onay "
+                "verdiyseniz GitHub'daki türetilmiş veri setinden alınır.")
 
     def __init__(self, controller, parent=None):
         super().__init__(controller, parent)
+        self.body.addWidget(section("Kaynak onayları"))
+        crow = QHBoxLayout()
+        self.consent_label = QLabel("")
+        self.consent_label.setWordWrap(True)
+        crow.addWidget(self.consent_label, 1)
+        b_consent = QPushButton("Kaynak koşulları ve onaylar...")
+        b_consent.clicked.connect(self._consent)
+        crow.addWidget(b_consent)
+        self.body.addLayout(crow)
         self.body.addWidget(section("Ligler"))
         self.tree = QTreeWidget()
         self.tree.setHeaderHidden(True)
@@ -34,7 +45,7 @@ class DataPage(Page):
         row = QHBoxLayout()
         row.addWidget(QLabel("Kaç yıllık geçmiş:"))
         self.sp_years = QSpinBox()
-        self.sp_years.setRange(3, 25)
+        self.sp_years.setRange(3, 33)
         row.addWidget(self.sp_years)
         self.chk_force = QCheckBox("Tüm dosyaları yeniden indir")
         row.addWidget(self.chk_force)
@@ -104,6 +115,15 @@ class DataPage(Page):
         s = self.ctl.settings
         self._check(set(s.leagues))
         self.sp_years.setValue(s.years_back)
+        names = [SOURCES[k].name for k in IMPLEMENTED if SOURCES[k].requires_consent and k in s.source_consent]
+        self.consent_label.setText(
+            "Onay verilen kaynaklar: " + ", ".join(names) if names else
+            "Geçmiş maç verisi için henüz hiçbir kaynağın kullanım koşulları onaylanmadı; veri indirilemez.")
+
+    def _consent(self) -> None:
+        from ..consent import ask_consent
+
+        ask_consent(self.ctl, self)
 
     def _apply(self) -> None:
         codes = [it.data(0, Qt.UserRole) for it in self._items() if it.checkState(0) == Qt.Checked]
@@ -115,6 +135,12 @@ class DataPage(Page):
         s.years_back = self.sp_years.value()
         s.save()
         self.ctl.settingsChanged.emit()
+        if self.ctl.needs_consent():
+            from ..consent import ask_consent
+
+            if not ask_consent(self.ctl, self):
+                self.report.setText("Kaynak onayı verilmediği için veri indirilmedi.")
+                return
         self.ctl.update_and_train(force=self.chk_force.isChecked())
 
     def refresh(self) -> None:

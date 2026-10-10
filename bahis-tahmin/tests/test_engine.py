@@ -55,6 +55,23 @@ def test_save_and_load(trained_engine, tmp_path):
     assert PredictionEngine.load(tmp_path / "yok.joblib") is None
 
 
+def test_tampered_or_unmanifested_model_is_rejected(trained_engine, tmp_path):
+    import json
+
+    path = tmp_path / "engine.joblib"
+    trained_engine.save(path)
+    man = json.loads(path.with_suffix(".manifest.json").read_text(encoding="utf-8"))
+    assert man["kind"] == "match-engine" and man["feature_schema"] and man["data_cutoff"]
+    data = bytearray(path.read_bytes())
+    data[-1] ^= 0xFF
+    path.write_bytes(bytes(data))
+    assert PredictionEngine.load(path) is None
+    assert "özeti" in PredictionEngine.last_load_error
+    path.with_suffix(".manifest.json").unlink()
+    assert PredictionEngine.load(path) is None
+    assert "manifest" in PredictionEngine.last_load_error
+
+
 def test_oos_markets_and_confidence(trained_engine):
     oos = trained_engine.oos
     assert set(PMK_COLS) <= set(oos.columns)

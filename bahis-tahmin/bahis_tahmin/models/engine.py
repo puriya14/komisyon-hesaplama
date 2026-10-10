@@ -10,7 +10,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-import joblib
 import numpy as np
 import pandas as pd
 
@@ -35,7 +34,7 @@ from .ml import MarketBlender, OutcomeModel
 
 log = logging.getLogger(__name__)
 
-ENGINE_VERSION = 4
+ENGINE_VERSION = 5
 MIN_TRAIN_ROWS = 1500
 
 # Oran türü -> (1, X, 2, Üst 2.5, Alt 2.5) sütunları
@@ -47,7 +46,7 @@ ODDS_SETS = {
 }
 ODDS_TYPE_LABELS = {
     "avg": "Piyasa ortalaması",
-    "max": "En yüksek oran",
+    "max": "En yüksek oran (varsayımsal)",
     "b365": "Bet365",
     "pinnacle": "Pinnacle",
 }
@@ -82,23 +81,16 @@ def market_probs(df: pd.DataFrame, method: str = "power") -> tuple[np.ndarray, n
 
 
 def market_odds_matrix(df: pd.DataFrame, odds_type: str = "avg") -> np.ndarray:
-    """(n, 14) teklif edilen oranlar (MARKET_KEYS sırasıyla).
+    """(n, 14) GERÇEK teklif edilen oranlar (MARKET_KEYS sırasıyla).
 
-    Veride Çifte Şans oranı yoktur; 1X2 oranlarından yaklaşık olarak türetilir
-    (1/(1/o1 + 1/oX) gibi), bu yüzden o marketlerin getirisi yaklaşık kabul edilmelidir.
-    Diğer Alt/Üst baremleri ve KG için oran yoksa NaN döner.
+    Veride yalnızca 1X2 ve 2.5 Alt/Üst oranları vardır. Çifte Şans, 1.5/3.5 Alt/Üst ve KG oranları
+    başka oranlardan TÜRETİLMEZ; bu marketler için getiri hesaplanamaz (NaN).
     """
     c = ODDS_SETS.get(odds_type, ODDS_SETS["avg"])
     o1, ox, o2, oo, ou = (df[col].to_numpy(dtype=float) if col in df.columns else np.full(len(df), np.nan) for col in c)
-    a1, ax, a2 = (df[col].to_numpy(dtype=float) for col in ODDS_SETS["avg"][:3])
-    o1, ox, o2 = (np.where(np.isfinite(v), v, a) for v, a in ((o1, a1), (ox, ax), (o2, a2)))
-    with np.errstate(divide="ignore", invalid="ignore"):
-        dc1x = 1.0 / (1.0 / o1 + 1.0 / ox)
-        dc12 = 1.0 / (1.0 / o1 + 1.0 / o2)
-        dcx2 = 1.0 / (1.0 / ox + 1.0 / o2)
     nan = np.full(len(df), np.nan)
     cols = {
-        "1": o1, "X": ox, "2": o2, "1X": dc1x, "12": dc12, "X2": dcx2,
+        "1": o1, "X": ox, "2": o2, "1X": nan, "12": nan, "X2": nan,
         "O1.5": nan, "U1.5": nan, "O2.5": oo, "U2.5": ou, "O3.5": nan, "U3.5": nan,
         "BTTS_Y": nan, "BTTS_N": nan,
     }
@@ -266,10 +258,11 @@ class MatchPrediction:
                 and p >= settings.min_prob
                 and settings.min_odds <= o <= settings.max_odds
             )
+            show_stake = bool(getattr(settings, "stake_suggestions", False))
             rows.append({
                 "market": key, "label": label, "group": group, "prob": p,
                 "fair": 1.0 / p if p > 0 else float("inf"), "odds": o, "ev": ev,
-                "kelly": k, "stake": k * settings.bankroll if is_value else 0.0, "value": is_value,
+                "kelly": k, "stake": k * settings.bankroll if (is_value and show_stake) else 0.0, "value": is_value,
             })
         return rows
 
@@ -296,21 +289,33 @@ class PredictionEngine:
     def trained(self) -> bool:
         return self.model is not None and bool(self.states)
 
+    last_load_error: str | None = None
+
     def save(self, path: Path) -> None:
-        path = Path(path)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".tmp")
-        joblib.dump(self, tmp, compress=3)
-        tmp.replace(path)
+        from .artifacts import save_artifact
+
+        rep = self.report
+        save_artifact(self, path, "match-engine", ENGINE_VERSION, meta={
+            "trained_at": rep.trained_at if rep else None,
+            "data_cutoff": str(self.last_match_date.date()) if self.last_match_date is not None else None,
+            "n_matches": rep.n_matches if rep else None,
+            "leagues": rep.leagues if rep else [],
+            "data_signature": self.data_signature,
+            "feature_schema": list(self.model.features) if self.model else [],
+            "validation": {k: v for k, v in (rep.metrics if rep else {}).items() if isinstance(v, (int, float))},
+        })
 
     @staticmethod
     def load(path: Path) -> "PredictionEngine | None":
-        try:
-            eng = joblib.load(path)
-        except Exception as e:  # dosya yok / uyumsuz sürüm
-            log.info("Model yüklenemedi: %s", e)
+        from .artifacts import load_artifact
+
+        eng, _man, err = load_artifact(path, "match-engine", ENGINE_VERSION)
+        PredictionEngine.last_load_error = err
+        if err:
+            log.info("Model yüklenmedi: %s", err)
             return None
-        if not isinstance(eng, PredictionEngine) or getattr(eng, "version", None) != ENGINE_VERSION:
+        if not isinstance(eng, PredictionEngine):
+            PredictionEngine.last_load_error = "Beklenmeyen model nesnesi."
             return None
         return eng
 

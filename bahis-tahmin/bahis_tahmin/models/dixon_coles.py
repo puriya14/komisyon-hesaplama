@@ -41,6 +41,8 @@ class DCModel:
     new_attack: float = -0.15
     new_defense: float = -0.15
     index: dict[str, int] = field(default_factory=dict)
+    cov: np.ndarray | None = None  # parametre kovaryansı (ters Hessian), istenirse
+    ridge: float = 2.0
 
     def __post_init__(self):
         if not self.index:
@@ -52,6 +54,33 @@ class DCModel:
         if i is None:
             return self.new_attack, self.new_defense
         return float(self.attack[i]), float(self.defense[i])
+
+    def log_rate_se(self, home: str, away: str) -> tuple[float, float]:
+        """log(λ) ve log(ν) tahminlerinin standart hatası (parametre belirsizliği, delta yöntemi).
+
+        Modelde olmayan takımın parametreleri için ön dağılım varyansı (1/ridge) eklenir.
+        """
+        if self.cov is None:
+            return float("nan"), float("nan")
+        n = len(self.teams)
+        out = []
+        for att, dfn, home_row in ((home, away, True), (away, home, False)):
+            x = np.zeros(2 * n + 2)
+            extra = 0.0
+            x[0] = 1.0
+            if home_row:
+                x[1] = 1.0
+            ia, idf = self.index.get(att), self.index.get(dfn)
+            if ia is None:
+                extra += 1.0 / self.ridge
+            else:
+                x[2 + ia] = 1.0
+            if idf is None:
+                extra += 1.0 / self.ridge
+            else:
+                x[2 + n + idf] = -1.0
+            out.append(float(np.sqrt(max(x @ self.cov @ x + extra, 0.0))))
+        return out[0], out[1]
 
     def expected_goals(self, home: str, away: str) -> tuple[float, float]:
         ah, dh = self.params(home)
@@ -98,7 +127,8 @@ def fit_dixon_coles(
     cfg: DCConfig,
     init: np.ndarray | None = None,
     fit_rho: bool = True,
-) -> tuple[np.ndarray, float]:
+    return_cov: bool = False,
+):
     """θ = [μ, ev_avantajı, hücum(n), savunma(n)] ve ρ döndürür."""
     n = n_teams
     p = 2 * n + 2
@@ -172,15 +202,25 @@ def fit_dixon_coles(
 
             res = minimize_scalar(neg, bounds=(-0.3, 0.3), method="bounded", options={"xatol": 1e-4})
             rho = float(res.x)
+    if return_cov:
+        eta = X @ theta
+        H = (X * (w * np.exp(eta))[:, None]).T @ X
+        H[np.diag_indices(p)] += pen
+        try:
+            cov = np.linalg.inv(H)
+        except np.linalg.LinAlgError:
+            cov = np.linalg.pinv(H)
+        return theta, rho, cov
     return theta, rho
 
 
 class DCTracker:
     """Bir ligin maçlarını biriktirir ve istenen tarihte modeli (yeniden) kurar."""
 
-    def __init__(self, cfg: DCConfig | None = None, fit_rho: bool = True):
+    def __init__(self, cfg: DCConfig | None = None, fit_rho: bool = True, keep_cov: bool = False):
         self.cfg = cfg or DCConfig()
         self.fit_rho = fit_rho
+        self.keep_cov = keep_cov
         self._days: list[int] = []
         self._home: list[str] = []
         self._away: list[str] = []
@@ -231,7 +271,10 @@ class DCTracker:
                 [lt.get("a:" + t, pa[i]) for i, t in enumerate(teams)],
                 [lt.get("d:" + t, pd_[i]) for i, t in enumerate(teams)],
             ])
-        theta, rho = fit_dixon_coles(hi, ai, hg, ag, w, n, pa, pd_, cfg, init=init, fit_rho=self.fit_rho)
+        res = fit_dixon_coles(hi, ai, hg, ag, w, n, pa, pd_, cfg, init=init, fit_rho=self.fit_rho,
+                              return_cov=self.keep_cov)
+        theta, rho = res[0], res[1]
+        cov = res[2] if self.keep_cov else None
         self._last_theta = {"__mu__": theta[0], "__home__": theta[1]}
         self._last_theta.update({"a:" + t: theta[2 + i] for i, t in enumerate(teams)})
         self._last_theta.update({"d:" + t: theta[2 + n + i] for i, t in enumerate(teams)})
@@ -244,6 +287,8 @@ class DCTracker:
             rho=rho,
             new_attack=cfg.promoted_attack,
             new_defense=cfg.promoted_defense,
+            cov=cov,
+            ridge=cfg.ridge,
         )
         self.fit_day = day
         return self.model

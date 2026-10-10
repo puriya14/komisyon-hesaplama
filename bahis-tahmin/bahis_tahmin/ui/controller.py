@@ -12,11 +12,16 @@ from PySide6.QtCore import QObject, QThread, Signal
 
 from ..config import Settings, app_home
 from ..data.store import DataStore
+from ..goals.engine import GoalDataError, GoalEngine, GoalPrediction
+from ..goals.ledger import Ledger
+from ..goals.validation import data_manifest
 from ..models.engine import MatchPrediction, PredictionEngine
 
 log = logging.getLogger(__name__)
 
 ENGINE_FILE = "engine.joblib"
+GOAL_ENGINE_FILE = "goal_engine.joblib"
+LEDGER_FILE = "gol_pazarlari.sqlite"
 STALE_HOURS = 6.0
 
 
@@ -39,10 +44,24 @@ class Task(QThread):
         self.done.emit(res)
 
 
+def _train_goal(matches: pd.DataFrame, home, progress) -> tuple[GoalEngine | None, str | None]:
+    """Gol pazarları modelini eğitip kaydeder. Veri yetersizse (ör. ilk yarı skoru yok) hata metni döner."""
+    goal = GoalEngine()
+    try:
+        goal.train(matches, progress=progress)
+    except GoalDataError as e:
+        return None, str(e)
+    goal.save(home / GOAL_ENGINE_FILE)
+    return goal, None
+
+
 class AppController(QObject):
     dataChanged = Signal()
     modelChanged = Signal()
     predictionsChanged = Signal()
+    goalModelChanged = Signal()
+    goalPredictionsChanged = Signal()
+    ledgerChanged = Signal()
     settingsChanged = Signal()
     busyChanged = Signal(bool)
     progress = Signal(int, str)
@@ -55,6 +74,10 @@ class AppController(QObject):
         self.store = DataStore(self.home)
         self.engine: PredictionEngine | None = None
         self.predictions: list[MatchPrediction] = []
+        self.goal_engine: GoalEngine | None = None
+        self.goal_load_error: str | None = None
+        self.goal_predictions: list[GoalPrediction] = []
+        self._ledger: Ledger | None = None
         self.last_report_text = ""
         self._task: Task | None = None
         self._queue: list[Callable[[], None]] = []
@@ -84,9 +107,11 @@ class AppController(QObject):
         try:
             on_done(res)
         finally:
-            self.busyChanged.emit(False)
-            self.progress.emit(100, "Hazır")
-            if self._queue:
+            # on_done yeni bir arka plan işi başlatmış olabilir (ör. gol tahminleri): durumu doğru yansıt
+            self.busyChanged.emit(self.busy)
+            if not self.busy:
+                self.progress.emit(100, "Hazır")
+            if self._queue and not self.busy:
                 self._queue.pop(0)()
 
     def _fail(self, task: Task, err: str) -> None:
@@ -112,19 +137,27 @@ class AppController(QObject):
             store.load()
             progress(50, "Kayıtlı model yükleniyor...")
             engine = PredictionEngine.load(home / ENGINE_FILE)
-            return store, engine
+            progress(75, "Gol pazarları modeli yükleniyor...")
+            goal, gerr = GoalEngine.load(home / GOAL_ENGINE_FILE)
+            return store, engine, goal, gerr
 
         def done(res):
-            store, engine = res
+            store, engine, goal, gerr = res
             self.store = store
             self.engine = engine
+            self.goal_engine = goal
+            self.goal_load_error = gerr
             self.dataChanged.emit()
             self.modelChanged.emit()
+            self.goalModelChanged.emit()
             self.refresh_predictions()
-            if self.settings.auto_update_on_start and self.store.has_data and self.data_age_hours() >= STALE_HOURS:
+            self.refresh_goal_predictions()
+            # Açılışta eğitim yapılmaz; yalnızca kullanıcı açıkça otomatik güncellemeyi seçtiyse güncellenir
+            if (self.settings.auto_update_on_start and self.store.has_data and not self.needs_consent()
+                    and self.data_age_hours() >= STALE_HOURS):
                 self._queue.append(lambda: self.update_and_train(quiet=True))
             elif self.store.has_data and (self.engine is None or self.needs_training()):
-                self._queue.append(self.retrain)
+                self.message.emit("status", "Model verilerle uyumlu değil; 'Modeli Yeniden Eğit' ile güncelleyin.")
 
         self._run(work, done, "Yükleniyor...")
 
@@ -146,10 +179,31 @@ class AppController(QObject):
         return sig != self.engine.data_signature
 
     # ------------------------------------------------------------ actions
+    def needs_consent(self) -> bool:
+        """Geçmiş maç verisi sağlayan hiçbir kaynağın kullanım koşulları onaylanmamış mı?"""
+        return not ({"football-data", "github-mirror"} & self.settings.allowed_sources())
+
+    def record_consent(self, keys: list[str]) -> None:
+        now = dt.datetime.now().isoformat(timespec="seconds")
+        for k in keys:
+            self.settings.source_consent[k] = now
+        self.settings.save()
+        self.settingsChanged.emit()
+
+    def revoke_consent(self, key: str) -> None:
+        self.settings.source_consent.pop(key, None)
+        self.settings.save()
+        self.settingsChanged.emit()
+
     def update_and_train(self, force: bool = False, quiet: bool = False) -> bool:
         s = self.settings
         home = self.home
         old_engine = self.engine
+        old_goal = self.goal_engine
+        allowed = s.allowed_sources()
+        if self.needs_consent():
+            self.message.emit("consent", "Veri kaynaklarının kullanım koşullarını onaylamanız gerekiyor.")
+            return False
 
         def work(progress):
             store = DataStore(home)
@@ -161,6 +215,7 @@ class AppController(QObject):
             report = store.update(
                 s.leagues, s.years_back, progress=p1, force=force,
                 use_mirror_fallback=s.use_mirror_fallback, fixture_days=s.fixture_days,
+                allowed=allowed,
             )
             engine = old_engine
             sig = PredictionEngine.signature(store.matches, s.margin_method)
@@ -171,18 +226,26 @@ class AppController(QObject):
                     progress(30 + int(p * 0.7), m)
 
                 engine.train(store.matches, progress=p2, margin_method=s.margin_method)
-                progress(99, "Model kaydediliyor...")
+                progress(70, "Model kaydediliyor...")
                 engine.save(home / ENGINE_FILE)
-            return store, engine, report
+            goal = gerr = None
+            if store.has_data and (old_goal is None or old_goal.data_sha != data_manifest(store.matches)["sha256"]):
+                goal, gerr = _train_goal(store.matches, home, lambda p, m: progress(70 + int(p * 0.29), m))
+            return store, engine, report, (goal, gerr)
 
         def done(res):
-            store, engine, report = res
+            store, engine, report, (goal, gerr) = res
             self.store = store
             self.engine = engine
+            if goal is not None or gerr:
+                self.goal_engine = goal
+                self.goal_load_error = gerr
+                self.goalModelChanged.emit()
             self.last_report_text = report.summary()
             self.dataChanged.emit()
             self.modelChanged.emit()
             self.refresh_predictions()
+            self.refresh_goal_predictions()
             self.message.emit("status" if quiet else "popup", report.summary())
 
         return self._run(work, done, "Veriler güncelleniyor...")
@@ -197,17 +260,38 @@ class AppController(QObject):
 
         def work(progress):
             engine = PredictionEngine()
-            engine.train(matches, progress=progress, margin_method=method)
-            progress(99, "Model kaydediliyor...")
+            engine.train(matches, progress=lambda p, m: progress(int(p * 0.7), m), margin_method=method)
             engine.save(home / ENGINE_FILE)
-            return engine
+            goal, gerr = _train_goal(matches, home, lambda p, m: progress(70 + int(p * 0.29), m))
+            return engine, goal, gerr
 
-        def done(engine):
-            self.engine = engine
+        def done(res):
+            self.engine, self.goal_engine, self.goal_load_error = res
             self.modelChanged.emit()
+            self.goalModelChanged.emit()
             self.refresh_predictions()
+            self.refresh_goal_predictions()
 
         return self._run(work, done, "Model eğitiliyor...")
+
+    def train_goal_engine(self) -> bool:
+        """Yalnızca gol pazarları modelini eğitir (maç sonucu modeline dokunmaz)."""
+        if not self.store.has_data:
+            self.message.emit("warn", "Önce verileri indirin.")
+            return False
+        matches = self.store.matches
+        home = self.home
+
+        def work(progress):
+            return _train_goal(matches, home, progress)
+
+        def done(res):
+            self.goal_engine, self.goal_load_error = res
+            self.goalModelChanged.emit()
+            self.refresh_goal_predictions()
+            self.message.emit("status", self.goal_load_error or "Gol pazarları modeli eğitildi.")
+
+        return self._run(work, done, "Gol pazarları modeli eğitiliyor...")
 
     def refresh_predictions(self) -> None:
         if self.engine is None or not self.engine.trained or self.store.fixtures.empty:
@@ -220,6 +304,40 @@ class AppController(QObject):
                 self.predictions = []
                 self.message.emit("error", f"Tahminler hesaplanamadı: {e}")
         self.predictionsChanged.emit()
+
+    @property
+    def ledger(self) -> Ledger:
+        """Sanal takip günlüğü (dosya yalnızca ilk kullanımda oluşturulur)."""
+        if self._ledger is None:
+            self._ledger = Ledger(self.home / LEDGER_FILE)
+        return self._ledger
+
+    def ledger_if_exists(self) -> Ledger | None:
+        """Okuma amaçlı: sanal takip dosyası henüz yoksa oluşturmadan None döner."""
+        if self._ledger is None and not (self.home / LEDGER_FILE).exists():
+            return None
+        return self.ledger
+
+    def refresh_goal_predictions(self) -> None:
+        eng = self.goal_engine
+        if eng is None or not eng.trained or self.store.fixtures.empty:
+            self.goal_predictions = []
+            self.goalPredictionsChanged.emit()
+            return
+        fixtures = self.store.fixtures
+
+        def work(progress):
+            progress(10, "Gol pazarları tahminleri ve belirsizlik aralıkları hesaplanıyor...")
+            return eng.predict_fixtures(fixtures, with_interval=True)
+
+        def done(preds):
+            self.goal_predictions = preds
+            self.goalPredictionsChanged.emit()
+
+        if self.busy:  # başka iş bitince sessizce sıraya al
+            self._queue.append(self.refresh_goal_predictions)
+            return
+        self._run(work, done, "Gol pazarları tahminleri...")
 
     def save_settings(self, s: Settings) -> None:
         leagues_changed = (s.leagues != self.settings.leagues) or (s.years_back != self.settings.years_back)

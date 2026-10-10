@@ -28,21 +28,33 @@ ağırlıklandırılarak birleştirilir.</li>
 <li><b>Tutarlı skor matrisi</b> – tüm marketler (doğru skor, 1.5/3.5 Alt-Üst, Çifte Şans) nihai olasılıklarla
 uyumlu tek bir skor dağılımından hesaplanır.</li>
 </ol>
+<h3>Gol pazarları (ayrı model)</h3>
+<p>İki yarıda da karşılıklı gol, maç sonu 3,5 Üst ve ilk yarı 1,5 Üst; ilk yarı ve ikinci yarı için ayrı takım
+güçlerinden kurulan <b>tek bir ortak yarı-gol dağılımından</b> hesaplanır (ikinci yarı, ilk yarı skoruna koşulludur).
+Marjinaller zaman sıralı kalibre edilir; pazarlar arası mantıksal ilişkiler (iki yarıda KG ⊆ 3,5 Üst ∩ İY 1,5 Üst)
+yapısal olarak korunur. Bu pazarların gerçek oranları ücretsiz veride bulunmadığından geçmiş getiri hesaplanamaz;
+öneri yalnızca doğrulanmış model ve sizin girdiğiniz güncel gerçek oranla oluşabilir.</p>
 <p>Tüm başarı ölçümleri <b>sızıntısızdır</b>: her sezon, yalnızca o sezondan önceki verilerle eğitilen bir modelle
 tahmin edilmiştir (walk-forward). Uygulamadaki yüzdeler bu gerçekçi testlerden gelir.</p>
 
 <h3>Gerçekçi beklentiler</h3>
 <p>Futbolda maç sonucu tahmininde en iyi bahis şirketlerinin bile isabeti ~%50-53'tür; %90 genel isabet mümkün değildir.
-Model, bir seçime %90 olasılık verdiğinde bu seçimler geçmişte gerçekten ~%90+ tutmuştur (bkz. Banko sayfası),
-fakat bu seçimlerin oranları düşüktür ve yüksek isabet tek başına kâr anlamına gelmez.</p>
+Model bir seçime yüksek olasılık verdiğinde bu seçimlerin geçmişte ne sıklıkla gerçekleştiği ölçülür ve gösterilir
+(bkz. En Olası Seçimler), fakat bu seçimlerin oranları düşüktür; yüksek olasılık tek başına kâr anlamına gelmez.
+Uygulamada "kesin", "garanti" veya "banko" gibi kanıtsız ifadeler kullanılmaz.</p>
+<p><b>Yapay zekâ (LLM) kullanımı:</b> Uygulamadaki hiçbir olasılık bir dil modeli tarafından üretilmez. Tüm yüzdeler
+yukarıda açıklanan istatistiksel modellerden gelir ve uygulama internetsiz/LLM'siz çalışır.</p>
 
-<h3>Veri kaynakları (ücretsiz)</h3>
+<h3>Veri kaynakları ve kullanım koşulları</h3>
 <ul>
-<li><a href="https://www.football-data.co.uk/">football-data.co.uk</a> – maç sonuçları, istatistikler, bahis oranları ve fikstürler.</li>
-<li><a href="https://github.com/xgabora/Club-Football-Match-Data-2000-2025">Club Football Match Data (GitHub)</a> – football-data.co.uk ve ClubElo kaynaklı yedek veri seti.</li>
-<li><a href="https://github.com/openfootball/football.json">openfootball/football.json</a> – yedek fikstür kaynağı.</li>
+<li><a href="https://www.football-data.co.uk/">football-data.co.uk</a> – maç sonuçları, ilk yarı skorları, istatistikler,
+1X2 ve 2.5 Alt/Üst oranları, fikstürler. Ücretsiz indirme sunulur; yeniden kullanım/model eğitimi için açık lisans
+metni bulunamadı. <b>Kullanıcı onayı olmadan indirilmez.</b></li>
+<li><a href="https://github.com/xgabora/Club-Football-Match-Data-2000-2025">Club Football Match Data (GitHub)</a> – depo MIT
+lisanslı; içerik football-data.co.uk ve ClubElo kaynaklıdır (asıl kaynağın koşulları geçerli). Kullanıcı onayı gerekir.</li>
+<li><a href="https://github.com/openfootball/football.json">openfootball/football.json</a> – CC0 (serbest); yedek fikstür kaynağı.</li>
 </ul>
-<p>Veriler bilgisayarınızda saklanır: <code>{home}</code></p>
+<p>Veriler yalnızca bilgisayarınızda saklanır ve uygulama ile dağıtılmaz: <code>{home}</code></p>
 
 <h3>Sorumlu bahis</h3>
 <p>Bu uygulama bilgi ve analiz amaçlıdır; kazanç garantisi vermez. Bahis bağımlılık yapabilir.

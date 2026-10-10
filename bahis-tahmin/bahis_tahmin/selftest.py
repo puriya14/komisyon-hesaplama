@@ -18,9 +18,14 @@ import pandas as pd
 
 
 def synthetic_matches(
-    n_seasons: int = 5, n_teams: int = 14, league: str = "T1", seed: int = 0, start_year: int = 2020
+    n_seasons: int = 5, n_teams: int = 14, league: str = "T1", seed: int = 0, start_year: int = 2020,
+    half_time: bool = False,
 ) -> pd.DataFrame:
-    """Bilinen takım güçleriyle Poisson skorlar ve %5 marjlı oranlar üretir (test amaçlı)."""
+    """Bilinen takım güçleriyle Poisson skorlar ve %5 marjlı oranlar üretir (test amaçlı).
+
+    ``half_time=True`` ise her takımın golleri ayrı bir rastgele akışla binom(%45) dağılımıyla ilk yarıya
+    bölünür (ana akış değişmez; mevcut testlerin verisi aynı kalır).
+    """
     from scipy.stats import poisson
 
     from .data.leagues import season_label
@@ -58,6 +63,10 @@ def synthetic_matches(
                 "source": "sentetik",
             })
     df = pd.DataFrame(rows)
+    if half_time:
+        ht = np.random.default_rng(seed + 7919)
+        df["hthg"] = ht.binomial(df["fthg"].to_numpy(), 0.45).astype(float)
+        df["htag"] = ht.binomial(df["ftag"].to_numpy(), 0.45).astype(float)
     for c in MATCH_COLUMNS:
         if c not in df.columns:
             df[c] = np.nan

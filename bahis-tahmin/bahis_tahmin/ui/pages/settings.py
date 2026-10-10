@@ -48,11 +48,14 @@ class SettingsPage(Page):
         f2.addRow("Para birimi", self.ed_cur)
         f2.addRow("Kelly kesri (0.25 = çeyrek Kelly)", self.sp_kelly)
         f2.addRow("Tek bahiste kasanın en fazla", self.sp_cap)
+        self.chk_stake = QCheckBox("Gerçek para miktarı önerilerini göster (risk sınırlarımı yukarıda kendim belirledim)")
+        self.chk_stake.setToolTip("Kapalıyken uygulama yalnızca olasılık, adil oran ve beklenen değer gösterir; para miktarı önermez.")
+        f2.addRow(self.chk_stake)
         self.body.addWidget(g2)
 
         g3 = QGroupBox("Uygulama")
         f3 = QFormLayout(g3)
-        self.chk_auto = QCheckBox("Açılışta verileri otomatik güncelle (6 saatten eskiyse)")
+        self.chk_auto = QCheckBox("Açılışta verileri otomatik güncelle ve gerekirse modeli eğit (6 saatten eskiyse)")
         self.chk_mirror = QCheckBox("football-data.co.uk erişilemezse GitHub yedek veri setini kullan")
         self.sp_days = QSpinBox()
         self.sp_days.setRange(1, 60)
@@ -67,8 +70,9 @@ class SettingsPage(Page):
         self.body.addWidget(btn)
         self.body.addWidget(banner(
             "<b>Oran türü</b>: 'Piyasa ortalaması' tipik bir bahis şirketini temsil eder. 'En yüksek oran', "
-            "onlarca şirket arasındaki en iyi orandır; geçmiş testlerde değer bahsi yalnızca bu oranlarda kârlı "
-            "görünmüştür, ancak bu oranlara erişmek için birçok hesap gerekir."))
+            "geçmişte onlarca şirket arasındaki en iyi fiyattır; erişilebilirliği doğrulanamadığı için bu seçenekle "
+            "hesaplanan değer ve getiriler varsayımsaldır. Kayıp sonrası bahis artırma (martingale vb.) ve kayıp "
+            "telafisi önerileri bu uygulamada yoktur."))
         self.body.addStretch(1)
         controller.settingsChanged.connect(self._load)
         self._load()
@@ -96,6 +100,7 @@ class SettingsPage(Page):
         self.sp_kelly.setValue(s.kelly_fraction)
         self.sp_cap.setValue(s.max_stake_pct)
         self.chk_auto.setChecked(s.auto_update_on_start)
+        self.chk_stake.setChecked(s.stake_suggestions)
         self.chk_mirror.setChecked(s.use_mirror_fallback)
         self.sp_days.setValue(s.fixture_days)
 
@@ -112,6 +117,7 @@ class SettingsPage(Page):
         s.kelly_fraction = self.sp_kelly.value()
         s.max_stake_pct = self.sp_cap.value()
         s.auto_update_on_start = self.chk_auto.isChecked()
+        s.stake_suggestions = self.chk_stake.isChecked()
         s.use_mirror_fallback = self.chk_mirror.isChecked()
         s.fixture_days = self.sp_days.value()
         self.ctl.save_settings(s)
