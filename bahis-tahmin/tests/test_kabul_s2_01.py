@@ -83,7 +83,8 @@ def test_anomaly_outputs_have_no_prematch_consumer():
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[1] / "bahis_tahmin"
-    importers = sorted(str(p.relative_to(root)) for p in root.rglob("*.py")
+    # Göreli yol işletim sisteminden bağımsız gösterilir (Windows'ta str() ters eğik çizgi üretir; S3-WIN-01)
+    importers = sorted(p.relative_to(root).as_posix() for p in root.rglob("*.py")
                        if re.search(r"from \.+(sequences\.)?anomaly import|from \.+sequences import anomaly|"
                                     r"from \. import anomaly|sequences\.anomaly", p.read_text(encoding="utf-8"))
                        and p.name != "anomaly.py")
@@ -93,6 +94,18 @@ def test_anomaly_outputs_have_no_prematch_consumer():
         path = root / rel
         if path.exists():
             assert not re.search(r"anomal|UNEXPLAINED|surprise_bits", path.read_text(encoding="utf-8")), rel
+
+
+def test_relative_path_display_is_platform_independent():
+    """Yukarıdaki tüketici listesi karşılaştırması için: aynı göreli yol Windows ve POSIX biçiminde aynı ``as_posix()``
+    gösterimini verir; ``str()`` gösterimi ise farklıdır (Windows hatasının nedeni). Gerçek Windows testinin yerine
+    geçmez."""
+    from pathlib import PurePosixPath, PureWindowsPath
+
+    win = PureWindowsPath(r"C:\depo\bahis_tahmin\sequences\research.py").relative_to(r"C:\depo\bahis_tahmin")
+    posix = PurePosixPath("/depo/bahis_tahmin/sequences/research.py").relative_to("/depo/bahis_tahmin")
+    assert win.as_posix() == posix.as_posix() == "sequences/research.py"
+    assert str(win) == "sequences\\research.py" != str(posix)
 
 
 def test_anomaly_display_labels_are_neutral():
@@ -117,15 +130,39 @@ def test_openfootball_2026_names_map_to_store_names():
     assert match_team("PSV", known) == "PSV Eindhoven"
 
 
-def test_contract_hash_ignores_line_endings(tmp_path, monkeypatch):
+def _temp_contract_sha256(RS, root, data: bytes) -> str | None:
+    """Geçici sözleşme kopyasını (yalnızca ``root`` altında, bayt olarak) yazıp ürün fonksiyonuyla özetler."""
+    (root / "docs").mkdir(exist_ok=True)
+    (root / "docs" / "DIZI_ARASTIRMA_SOZLESMESI.md").write_bytes(data)
+    return RS.contract_sha256()
+
+
+@pytest.mark.parametrize("ending", ["LF", "CRLF"])
+def test_contract_hash_ignores_line_endings(tmp_path, monkeypatch, ending):
+    """Sözleşme özeti satır sonundan bağımsızdır; test girdisi kaynak checkout'u LF veya CRLF olsa da aynıdır
+    (S3-WIN-01: CRLF checkout'a ikinci kez CRLF uygulamak ``\\r\\r\\n`` üretiyordu). Gerçek içerik değişikliği ve
+    fazladan CR yine fark edilir; ürün fonksiyonu ve ön-kayıtlı özet değişmez."""
     from bahis_tahmin.sequences import research as RS
 
-    assert RS.contract_sha256() == RS.PREREGISTERED["sozlesme_sha256"]  # LF dosyada ön-kayıtla aynı
+    expected = RS.PREREGISTERED["sozlesme_sha256"]
+    assert RS.contract_sha256() == expected  # asıl sözleşme (bu checkout LF veya CRLF olabilir)
     src = (RS._repo_root() / "docs" / "DIZI_ARASTIRMA_SOZLESMESI.md").read_bytes()
-    (tmp_path / "docs").mkdir()
-    (tmp_path / "docs" / "DIZI_ARASTIRMA_SOZLESMESI.md").write_bytes(src.replace(b"\n", b"\r\n"))
+    canonical_lf = src.replace(b"\r\n", b"\n")  # ortak başlangıç: yalnızca CRLF -> LF
+    assert b"\r" not in canonical_lf and canonical_lf.count(b"\n") > 0
+    sample = canonical_lf if ending == "LF" else canonical_lf.replace(b"\n", b"\r\n")
+    if ending == "CRLF":
+        assert b"\r\r\n" not in sample and sample.count(b"\r\n") == canonical_lf.count(b"\n")
+    else:
+        assert b"\r\n" not in sample
     monkeypatch.setattr(RS, "_repo_root", lambda: tmp_path)
-    assert RS.contract_sha256() == RS.PREREGISTERED["sozlesme_sha256"]  # Windows CRLF checkout'u
+    assert _temp_contract_sha256(RS, tmp_path, sample) == expected
+    # Satır sonu dışındaki gerçek içerik değişikliği (yalnızca geçici kopyada) özeti değiştirir
+    nl = b"\n" if ending == "LF" else b"\r\n"
+    changed = sample + b"<!-- TEST AMACLI ICERIK DEGISIKLIGI -->" + nl
+    assert _temp_contract_sha256(RS, tmp_path, changed) != expected
+    # Normalizasyon dar kalır: fazladan CR (``\r\r\n``) satır sonu değil, içerik farkıdır
+    assert _temp_contract_sha256(RS, tmp_path, canonical_lf.replace(b"\n", b"\r\r\n")) != expected
+    assert _temp_contract_sha256(RS, tmp_path, sample) == expected  # aynı kopya geri yazılınca yine eşit
 
 
 def test_redirected_cli_output_survives_ansi_code_page(monkeypatch):
