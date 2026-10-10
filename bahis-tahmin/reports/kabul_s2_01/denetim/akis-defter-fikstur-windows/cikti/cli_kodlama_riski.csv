@@ -1,0 +1,50 @@
+satir,kodlama,akim,kodlanamayan,ornek
+106,cp1252,stdout,ğış,Eğitim 
+109,cp1252,stdout,ı,Log-kayıp: model 
+186,cp1252,stdout,ğı,Eğitim 
+263,cp1252,stdout,ı,. 
+281,cp1252,stdout,ı,Geçerli oran kaydı: 
+290,cp1252,stdout,ı, yeni oran kaydı eklendi (aynı kayıtlar tekrar eklenmez).
+320,cp1252,stdout,ğİıŞ,"GEÇMİŞ İNCELEME — olay seçimli, tahmin değil (olay sonrası b"
+350,cp1252,stdout,ğış, lig-sezon; 
+352,cp1252,stdout,İ,"
+İncelenemeyenler (DATA_QUALITY_BLOCKED):"
+355,cp1252,stdout,ı,Hükmen olabilir satır: 
+388,cp1252,stdout,ı,Anomali özeti (yalnızca tür/durum/dönem sayıları): 
+415,cp1252,stdout,İı,MAÇ ÖNCESİ GÖRÜNÜM — yalnızca karar anından önce bilinen bil
+416,cp1252,stdout,ı, 
+417,cp1252,stdout,ğş,Doğru koşullar:
+49,cp1252,stderr,ış,Model bulunamadı. Önce 'update' ve 'train' komutlarını çalış
+80,cp1252,stderr,ış,Geçmiş veri kaynaklarının kullanım koşulları onaylanmadı. Ko
+98,cp1252,stderr,ış,Veri yok. Önce 'update' çalıştırın.
+126,cp1252,stdout,ış,Yaklaşan maç bulunamadı.
+146,cp1252,stdout,ğış≥,Geçmiş doğrulama (olasılık ≥ %
+146,cp1254,stdout,≥,Geçmiş doğrulama (olasılık ≥ %
+176,cp1252,stderr,ış,Veri yok. Önce 'update' çalıştırın.
+194,cp1252,stdout,ğΔ→,  
+194,cp1254,stdout,Δ→,  
+205,cp1252,stderr,ış,Gol modeli yüklenemedi (
+217,cp1252,stdout,ış,Yaklaşan maç bulunamadı.
+238,cp1252,stderr,ış,Veri yok. Önce 'update' çalıştırın.
+247,cp1252,stdout,ı,Kapsam matrisi yazıldı: 
+256,cp1252,stdout,ı,Henüz sanal takip kaydı yok.
+285,cp1252,stdout,ış,Kuru çalıştırma: hiçbir kayıt yazılmadı. Yazmak için --uygul
+299,cp1252,stderr,ış,Veri yok. Önce 'update' çalıştırın.
+313,cp1252,stderr,ı,Takım bulunamadı: 
+317,cp1252,stderr,İış,İY/MS kodu anlaşılamadı: 
+327,cp1252,stdout,İ,  
+330,cp1252,stdout,ı,Açık (sansürlü) aralık: 
+334,cp1252,stdout,ı,"
+Olay kartı #"
+368,cp1252,stderr,ış,Veri yok. Önce 'update' çalıştırın.
+377,cp1252,stdout,ış,UYARI: sözleşmenin altında tekrar sayısı (R=
+403,cp1252,stderr,ış,Veri yok. Önce 'update' çalıştırın.
+412,cp1252,stderr,ış, için yaklaşan maç bulunamadı (fikstür verisi gerekir).
+421,cp1252,stdout,ı,  
+425,cp1252,stdout,ğış,Not: araştırma çalıştırılmadığı için beklenen puanlı atomlar
+76,cp1252,stdout,ış, kullanım koşulları onaylandı (
+113,cp1252,stdout,ış≥,  olasılık ≥ %
+113,cp1254,stdout,≥,  olasılık ≥ %
+192,cp1252,stdout,ğı→,  
+192,cp1254,stdout,→,  
+278,cp1252,stderr,ı,Dosya okunamadı: 

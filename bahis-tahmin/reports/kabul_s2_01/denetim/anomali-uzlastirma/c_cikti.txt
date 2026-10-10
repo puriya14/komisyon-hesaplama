@@ -1,0 +1,14 @@
+  m = pd.read_csv(CSV, parse_dates=["date"], **kw)
+varsayilan aff287d61bd4374a8956921ddc8e5e8e7e46b2869b1560dfc6e8053745480e33 {<class 'float'>: 131438, <class 'str'>: 52940}
+low_memory=False aff287d61bd4374a8956921ddc8e5e8e7e46b2869b1560dfc6e8053745480e33 {<class 'float'>: 131438, <class 'str'>: 52940}
+time=str aff287d61bd4374a8956921ddc8e5e8e7e46b2869b1560dfc6e8053745480e33 {<class 'float'>: 131438, <class 'str'>: 52940}
+time=object low_memory=False aff287d61bd4374a8956921ddc8e5e8e7e46b2869b1560dfc6e8053745480e33 {<class 'float'>: 131438, <class 'str'>: 52940}
+date→datetime64[ns] f0fe3a8e9e953a42e8b37760a7c7636688bae00cc49d4d7cd8a2d85cba31cb3e
+date=us str→object=False fthg/ftag→float=False aff287d61bd4374a8956921ddc8e5e8e7e46b2869b1560dfc6e8053745480e33 
+date=us str→object=False fthg/ftag→float=True 02f79df12fdf74a87366da00bf3dcc7298ad74bdc6e4012799bfc77aaa859c1f 
+date=us str→object=True fthg/ftag→float=False aff287d61bd4374a8956921ddc8e5e8e7e46b2869b1560dfc6e8053745480e33 
+date=us str→object=True fthg/ftag→float=True 02f79df12fdf74a87366da00bf3dcc7298ad74bdc6e4012799bfc77aaa859c1f 
+date=ns str→object=False fthg/ftag→float=False f0fe3a8e9e953a42e8b37760a7c7636688bae00cc49d4d7cd8a2d85cba31cb3e 
+date=ns str→object=False fthg/ftag→float=True 84aa8056c16569a13379179d5f0f62fa49fc145df49437011519efd43489377b 
+date=ns str→object=True fthg/ftag→float=False f0fe3a8e9e953a42e8b37760a7c7636688bae00cc49d4d7cd8a2d85cba31cb3e 
+date=ns str→object=True fthg/ftag→float=True 84aa8056c16569a13379179d5f0f62fa49fc145df49437011519efd43489377b 

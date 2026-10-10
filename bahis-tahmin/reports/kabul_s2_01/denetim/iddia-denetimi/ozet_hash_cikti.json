@@ -1,0 +1,17 @@
+{
+ "398b60b": {
+  "kod_sha256(sequences/*.py)": "8ca41041f0bb274b0c7981e86b1cad26c3ee943b89582df261da4aca485aa82e",
+  "sozlesme_sha256_LF": "4599ddb2eb2dffa90ae608ad1557e0da21c0158553bc9e3f087fb2598ffe40bf",
+  "sozlesme_sha256_CRLF": "7373470ba90b59c6788896bd26f87c468e7373476e71b32a44422213137e17da",
+  "sozlesme_CRLF_iceriyor": false
+ },
+ "01b7e9f": {
+  "kod_sha256(sequences/*.py)": "36ca6d117b4b7098a963417704f982fe732b6f0f845e55c21c38726a19042f8d",
+  "sozlesme_sha256_LF": "4599ddb2eb2dffa90ae608ad1557e0da21c0158553bc9e3f087fb2598ffe40bf",
+  "sozlesme_sha256_CRLF": "7373470ba90b59c6788896bd26f87c468e7373476e71b32a44422213137e17da",
+  "sozlesme_CRLF_iceriyor": false,
+  "config_hash": "fc12e4915484c78e1c33c7bb4c538205d3e9a247fa656cb59fd2f6e764d814a0",
+  "run_decisions_sha256": "a85fa19e41994746fda1f1a6bdbaccc3237cac5575ce946a02f90ada0a1441d1",
+  "TEST_OPENED.kod_sha256": "8ca41041f0bb274b0c7981e86b1cad26c3ee943b89582df261da4aca485aa82e"
+ }
+}

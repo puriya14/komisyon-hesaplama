@@ -1,0 +1,34 @@
+{
+ "aralik_NaN_kaybi_test_gecer": true,
+ "aralik_19/20_NaN_test_gecer": true,
+ "predict_NaN_kaybi_maske_yakalar": true,
+ "tail_altin_max": 6.8558731997810564e-06,
+ "tail_altin_medyan": 3.795404333410228e-09,
+ "tail_hepsi_sifir_test_gecer": true,
+ "tail_10kat_test_gecer": false,
+ "predict_anahtar_sayisi": 17,
+ "predict_anahtar_sirasi": [
+  "A",
+  "B",
+  "C",
+  "BC",
+  "h1_home",
+  "h1_away",
+  "h2_home",
+  "h2_away",
+  "FT_BTTS",
+  "FH_BTTS",
+  "SH_O15",
+  "FT_O25",
+  "FT_O45",
+  "tail",
+  "structural_A",
+  "structural_B",
+  "structural_C"
+ ],
+ "interval_anahtar_sirasi": [
+  "BTTS_BOTH_HALVES_YES",
+  "FT_OVER_3_5",
+  "FH_OVER_1_5"
+ ]
+}

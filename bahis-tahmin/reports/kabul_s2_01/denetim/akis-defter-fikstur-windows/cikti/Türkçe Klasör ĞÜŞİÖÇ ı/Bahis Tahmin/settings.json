@@ -1,0 +1,38 @@
+{
+  "leagues": [
+    "T1",
+    "E0",
+    "E1",
+    "SP1",
+    "SP2",
+    "I1",
+    "I2",
+    "D1",
+    "D2",
+    "F1",
+    "F2",
+    "N1",
+    "P1",
+    "B1",
+    "SC0",
+    "G1"
+  ],
+  "years_back": 10,
+  "odds_type": "avg",
+  "margin_method": "power",
+  "min_ev": 0.05,
+  "min_prob": 0.15,
+  "min_odds": 1.3,
+  "max_odds": 8.0,
+  "kelly_fraction": 0.25,
+  "max_stake_pct": 0.05,
+  "bankroll": 1000.0,
+  "currency": "TL ₺ ğüşıöç",
+  "use_mirror_fallback": true,
+  "auto_update_on_start": false,
+  "fixture_days": 10,
+  "source_consent": {
+    "openfootball": "2026-10-10T12:00:00"
+  },
+  "stake_suggestions": false
+}

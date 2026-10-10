@@ -47,9 +47,16 @@ STATUS_TR = {
 }
 
 
+# Sayısal tolerans: platformlar arası kayan nokta farkı için altın regresyon testinin olasılık toleransıyla aynı değer
+# (tests/test_primary_regression.py buradan okur). Olasılıkta bu kadarlık bir farkla değişebilecek karar
+# "sayısal eşik yakını" olarak gerekçede işaretlenir; durum, eşikler ve politika değişmez (S2-KABUL-01).
+NUMERIC_TOLERANCE = 5e-5
+NEAR_THRESHOLD = "SAYISAL_ESIK_YAKINI"
+
+
 @dataclass(frozen=True)
 class DecisionPolicy:
-    version: str = "karar-politikasi-v1 (2026-10-10)"
+    version: str = "karar-politikasi-v1.1 (2026-10-10; v1 eşikleri aynı + SAYISAL_ESIK_YAKINI gerekçesi)"
     min_edge_safe: float = 0.03  # p_safe ile beklenen getiri en az %3
     max_odds_age: dt.timedelta = dt.timedelta(minutes=60)
     max_interval_width: float = 0.25  # %80 belirsizlik aralığı genişliği
@@ -166,6 +173,10 @@ def decide(a: Assessment, decision_time: dt.datetime, policy: DecisionPolicy = D
                     reasons.append(f"Beklenen değer olağan dışı yüksek (%{100 * ev:.0f}); yanlış eşleşme/eski oran/veri hatası olabilir.")
             nv = no_vig_probability(q, a.opposite_quote) if a.opposite_quote is not None else None
 
+    near = _near_threshold(odds, ev, ev_safe, a.p_low, a.p_high, policy)
+    if near:
+        reasons.append(f"{NEAR_THRESHOLD}: {', '.join(near)} — olasılıktaki ±{NUMERIC_TOLERANCE:g} sayısal fark bu kararı "
+                       "değiştirebilir; durum ve eşikler değiştirilmedi.")
     if blockers:
         status = next(s for s in _PRIORITY if s in blockers)
     elif ev_safe is None:
@@ -185,6 +196,24 @@ def decide(a: Assessment, decision_time: dt.datetime, policy: DecisionPolicy = D
         fair_odds=fair, odds=odds, breakeven=be, ev=ev, ev_safe=ev_safe, min_odds=d_min, no_vig=nv,
         policy_version=policy.version, decision_time=decision_time.isoformat(),
     )
+
+
+def _near_threshold(odds, ev, ev_safe, p_low, p_high, policy: DecisionPolicy,
+                    tol: float = NUMERIC_TOLERANCE) -> list[str]:
+    """Kararın sayısal toleransla değişebileceği eşikler (EV = p·d − 1 ⇒ ΔEV = d·Δp)."""
+    out = []
+    if odds is not None:
+        band = odds * tol
+        if ev_safe is not None and abs(ev_safe - policy.min_edge_safe) <= band:
+            out.append("asgari avantaj eşiği")
+        if ev is not None and abs(ev - policy.max_plausible_ev) <= band:
+            out.append("olağan dışı avantaj eşiği")
+        if ev is not None and abs(ev) <= band:
+            out.append("beklenen değer işareti")
+    if (p_low is not None and p_high is not None and math.isfinite(p_low) and math.isfinite(p_high)
+            and abs((p_high - p_low) - policy.max_interval_width) <= 2 * tol):
+        out.append("belirsizlik genişliği eşiği")
+    return out
 
 
 def apply_concentration(decisions: list[Decision], leagues: dict[str, str], days: dict[str, str],

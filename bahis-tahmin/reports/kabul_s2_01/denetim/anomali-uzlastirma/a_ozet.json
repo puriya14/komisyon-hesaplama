@@ -1,0 +1,330 @@
+{
+ "n_kayit": 1600,
+ "S": 845,
+ "M": 761,
+ "S∩M": 6,
+ "S∪M": 1600,
+ "yalnizca_S": 839,
+ "yalnizca_M": 755,
+ "S_aciklanamayan": 635,
+ "S_aciklanabilir": 210,
+ "M_aciklanamayan": 497,
+ "M_aciklanabilir": 264,
+ "durum_sayim": {
+  "UNEXPLAINED_ANOMALY": 635,
+  "MODEL_PIYASA_FARKI": 493,
+  "açıklanabilir": 472
+ },
+ "yalnizca_M_aciklanamayan": 493,
+ "yalnizca_M_aciklanabilir": 262,
+ "SM_kesisim_detay": [
+  {
+   "period": "isinma",
+   "st_S": "açıklanabilir",
+   "st_M": "açıklanabilir",
+   "status": "açıklanabilir",
+   "explained_by": "lig değişikliği sonrası ilk maçlar"
+  },
+  {
+   "period": "kesif",
+   "st_S": "açıklanabilir",
+   "st_M": "açıklanabilir",
+   "status": "açıklanabilir",
+   "explained_by": "lig değişikliği sonrası ilk maçlar"
+  },
+  {
+   "period": "parametre",
+   "st_S": "UNEXPLAINED_ANOMALY",
+   "st_M": "MODEL_PIYASA_FARKI",
+   "status": "UNEXPLAINED_ANOMALY",
+   "explained_by": ""
+  },
+  {
+   "period": "parametre",
+   "st_S": "UNEXPLAINED_ANOMALY",
+   "st_M": "MODEL_PIYASA_FARKI",
+   "status": "UNEXPLAINED_ANOMALY",
+   "explained_by": ""
+  },
+  {
+   "period": "parametre",
+   "st_S": "UNEXPLAINED_ANOMALY",
+   "st_M": "MODEL_PIYASA_FARKI",
+   "status": "UNEXPLAINED_ANOMALY",
+   "explained_by": ""
+  },
+  {
+   "period": "parametre",
+   "st_S": "açıklanabilir",
+   "st_M": "MODEL_PIYASA_FARKI",
+   "status": "açıklanabilir",
+   "explained_by": "kırmızı kart"
+  }
+ ],
+ "donem": {
+  "S∪M": {
+   "isinma": 135,
+   "kesif": 465,
+   "parametre": 483,
+   "test": 517
+  },
+  "S": {
+   "isinma": 72,
+   "kesif": 252,
+   "parametre": 249,
+   "test": 272
+  },
+  "M": {
+   "isinma": 64,
+   "kesif": 214,
+   "parametre": 238,
+   "test": 245
+  },
+  "S_aciklanamayan": {
+   "isinma": 58,
+   "kesif": 202,
+   "parametre": 185,
+   "test": 190
+  },
+  "S_aciklanabilir": {
+   "isinma": 14,
+   "kesif": 50,
+   "parametre": 64,
+   "test": 82
+  },
+  "M_aciklanamayan": {
+   "isinma": 43,
+   "kesif": 148,
+   "parametre": 162,
+   "test": 144
+  },
+  "M_aciklanabilir": {
+   "isinma": 21,
+   "kesif": 66,
+   "parametre": 76,
+   "test": 101
+  },
+  "durum_MPF": {
+   "isinma": 43,
+   "kesif": 148,
+   "parametre": 158,
+   "test": 144
+  },
+  "durum_acik": {
+   "isinma": 34,
+   "kesif": 115,
+   "parametre": 140,
+   "test": 183
+  }
+ },
+ "ozet_esit_tam_repo": true,
+ "aciklayan_S_birlesim": {
+  "kırmızı kart": 109,
+  "lig değişikliği sonrası ilk maçlar": 83,
+  "lig değişikliği sonrası ilk maçlar + kırmızı kart": 11,
+  "takım adı kopukluğu": 6,
+  "takım adı kopukluğu + kırmızı kart": 1
+ },
+ "aciklayan_S_marjinal": {
+  "veri doğrulama": 0,
+  "hükmen olabilir": 0,
+  "takım adı kopukluğu": 7,
+  "lig değişikliği sonrası ilk maçlar": 94,
+  "kırmızı kart": 121
+ },
+ "aciklayan_M_birlesim": {
+  "lig değişikliği sonrası ilk maçlar": 260,
+  "takım adı kopukluğu": 3,
+  "takım adı kopukluğu + lig değişikliği sonrası ilk maçlar": 1
+ },
+ "aciklayan_M_marjinal": {
+  "veri doğrulama": 0,
+  "hükmen olabilir": 0,
+  "takım adı kopukluğu": 4,
+  "lig değişikliği sonrası ilk maçlar": 261,
+  "kırmızı kart": 0
+ },
+ "kontrol_sayim_tum_kayit": {
+  "veri doğrulama": {
+   "aciklar": 0,
+   "calistirilamadi": 0
+  },
+  "hükmen olabilir": {
+   "aciklar": 0,
+   "calistirilamadi": 0
+  },
+  "takım adı kopukluğu": {
+   "aciklar": 11,
+   "calistirilamadi": 0
+  },
+  "lig değişikliği sonrası ilk maçlar": {
+   "aciklar": 353,
+   "calistirilamadi": 0
+  },
+  "kırmızı kart": {
+   "aciklar": 212,
+   "calistirilamadi": 429
+  }
+ },
+ "lig_353": {
+  "tum": 353,
+  "S": 94,
+  "M": 261,
+  "yalnizca_M": 259,
+  "S∩M": 2
+ },
+ "kk_121": {
+  "tum": 212,
+  "S": 121,
+  "M": 92,
+  "yalnizca_M": 91,
+  "S∩M": 1
+ },
+ "kk_na_429": {
+  "tum": 429,
+  "S": 229,
+  "S_aciklanamayan": 208,
+  "M": 203,
+  "yalnizca_M": 200,
+  "yil": {
+   "2002": 3,
+   "2003": 13,
+   "2004": 18,
+   "2005": 34,
+   "2006": 25,
+   "2007": 26,
+   "2008": 21,
+   "2009": 35,
+   "2010": 32,
+   "2011": 33,
+   "2012": 27,
+   "2013": 34,
+   "2014": 41,
+   "2015": 30,
+   "2016": 32,
+   "2017": 25
+  }
+ },
+ "kk_calisti_S": 616,
+ "hukmen_aciklar_tum": 0,
+ "veri_dogrulama_aciklar_tum": 0,
+ "takim_adi_aciklar_tum": 11,
+ "takim_adi_calistirilamadi": 0,
+ "lig_calistirilamadi": 0,
+ "htft_S_aciklanamayan": {
+  "HTFT_2_1": 153,
+  "HTFT_1_2": 476,
+  "HTFT_1_X": 2,
+  "HTFT_2_X": 3,
+  "HTFT_2_2": 1
+ },
+ "htft_S_tum": {
+  "HTFT_2_1": 218,
+  "HTFT_1_2": 619,
+  "HTFT_2_2": 3,
+  "HTFT_1_X": 2,
+  "HTFT_2_X": 3
+ },
+ "htft_tum_kayit": {
+  "HTFT_2_1": 226,
+  "HTFT_1_2": 632,
+  "HTFT_1_1": 194,
+  "HTFT_X_2": 106,
+  "HTFT_X_X": 95,
+  "HTFT_X_1": 113,
+  "HTFT_2_2": 171,
+  "HTFT_2_X": 39,
+  "HTFT_1_X": 24
+ },
+ "medyan_p_S_aciklanamayan": 0.014012090420913283,
+ "medyan_p_S_tum": 0.01383712116961011,
+ "kural_kontrol": [
+  {
+   "bayrak": "S",
+   "kayit": 845,
+   "pay_max": 0.004940711462450593,
+   "hepsi_pay<0.005": true,
+   "havuz_min": 110,
+   "havuz<=100_bayrak": 0,
+   "esitlik_yok(2·pay·n tek tam sayı)": true,
+   "sira_k_max": 3
+  },
+  {
+   "bayrak": "M",
+   "kayit": 761,
+   "pay_max": 0.004966887417218543,
+   "hepsi_pay<0.005": true,
+   "havuz_min": 110,
+   "havuz<=100_bayrak": 0,
+   "esitlik_yok(2·pay·n tek tam sayı)": true,
+   "sira_k_max": 3
+  }
+ ],
+ "bayraksiz_taraf": [
+  {
+   "bayrak_yok": "S",
+   "kayit": 755,
+   "pay_min": 0.006578947368421052,
+   "hepsi_pay>=0.005_veya_NaN": true,
+   "NaN_pay": 0
+  },
+  {
+   "bayrak_yok": "M",
+   "kayit": 839,
+   "pay_min": 0.006578947368421052,
+   "hepsi_pay>=0.005_veya_NaN": true,
+   "NaN_pay": 1
+  }
+ ],
+ "havuz_sayisi": {
+  "S": 449,
+  "M": 431
+ },
+ "havuz_fark_toplam": {
+  "S": 11,
+  "M": 69
+ },
+ "havuz_fark_dagilim": {
+  "S": {
+   "0": 438,
+   "1": 11
+  },
+  "M": {
+   "0": 367,
+   "1": 59,
+   "2": 5
+  }
+ },
+ "havuz_n_ozet": {
+  "S": {
+   "count": 449.0,
+   "mean": 350.5,
+   "std": 119.1,
+   "min": 110.0,
+   "25%": 279.0,
+   "50%": 311.0,
+   "75%": 380.0,
+   "max": 552.0
+  },
+  "M": {
+   "count": 431.0,
+   "mean": 354.1,
+   "std": 117.3,
+   "min": 110.0,
+   "25%": 303.0,
+   "50%": 378.0,
+   "75%": 406.5,
+   "max": 552.0
+  }
+ },
+ "kayit_orani_%": {
+  "S": 0.5369,
+  "M": 0.4987
+ },
+ "kural_orani_%": {
+  "S": 0.5439,
+  "M": 0.5439
+ },
+ "sonsuz_bit": 0,
+ "bits_None_S": 0
+}

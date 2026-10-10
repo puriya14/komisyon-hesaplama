@@ -1,0 +1,123 @@
+{
+ "genislik_esik_payi_min": 0.0012570960031013656,
+ "genislik_max": 0.40427272799885383,
+ "genislik_esik_ustu_sayisi": 11,
+ "F1": {
+  "n_vaka": 207360,
+  "n_decide_cagrisi": 213840,
+  "value_gecis_bant_disinda": 0,
+  "ev0_gecis_bant_disinda": 0,
+  "susp_gecis_bant_disinda": 0,
+  "value_gecis_toplam": 12532,
+  "ev_isaret_degisen_toplam": 11984,
+  "susp_gecis_toplam": 11988,
+  "durum_degisen_toplam": 15700,
+  "dEV_eq_oran_carpi_dp_max_hata": 6.095384613713506e-16,
+  "bayraksiz_durum_degisimi_delta<=dnum": 0,
+  "bayraksiz_ev_isaret_degisimi_delta<=dnum": 0,
+  "gecis_turleri": [
+   {
+    "durum0": "NO_VALUE",
+    "durum1": "SUSPICIOUS_EDGE",
+    "n": 2624
+   },
+   {
+    "durum0": "NO_VALUE",
+    "durum1": "VALUE_CANDIDATE",
+    "n": 2628
+   },
+   {
+    "durum0": "SUSPICIOUS_EDGE",
+    "durum1": "NO_VALUE",
+    "n": 2620
+   },
+   {
+    "durum0": "SUSPICIOUS_EDGE",
+    "durum1": "VALUE_CANDIDATE",
+    "n": 2600
+   },
+   {
+    "durum0": "VALUE_CANDIDATE",
+    "durum1": "NO_VALUE",
+    "n": 2628
+   },
+   {
+    "durum0": "VALUE_CANDIDATE",
+    "durum1": "SUSPICIOUS_EDGE",
+    "n": 2600
+   }
+  ]
+ },
+ "sure_s": 14.4
+}
+  kapsam     delta  adil_oran_degisen_2hane  min_oran_degisen_2hane  olasilik_gosterim_degisen_%1hane  adil_oran_max_goreli  min_oran_max_goreli
+0      A  0.000004                       11                       3                                 0              0.000291             0.000155
+1      A  0.000050                       41                      14                                 8              0.003559             0.001892
+2    ABC  0.000004                       11                       5                                 4              0.000291             0.000155
+3    ABC  0.000050                       49                      22                                16              0.003559             0.001892
+  kapsam     delta  n_oran_x_senaryo  durum_degisen  value_no_value  ev_isaret  ev_safe_gosterim  bayraksiz_degisim_dnum  bayraksiz_degisim_4e6
+0      A  0.000004            617968             16               0         20             22176                       0                      0
+1      A  0.000050            617968            216              12        152            211904                       0                    332
+2    ABC  0.000004            617968             20               0         24             30264                       0                      0
+3    ABC  0.000050            617968            256              20        180            299756                       0                    392
+                 anahtar     delta       n  durum_degisen  ev_isaret
+0    BTTS_BOTH_HALVES_NO  0.000004   14152              0          0
+1    BTTS_BOTH_HALVES_NO  0.000050   14152              4          0
+2   BTTS_BOTH_HALVES_YES  0.000004  332912             16         20
+3   BTTS_BOTH_HALVES_YES  0.000050  332912            212        152
+4            FH_OVER_1_5  0.000004   44648              0          0
+5            FH_OVER_1_5  0.000050   44648              4          4
+6           FH_UNDER_1_5  0.000004   60336              0          0
+7           FH_UNDER_1_5  0.000050   60336              8          0
+8            FT_OVER_3_5  0.000004   55992              4          0
+9            FT_OVER_3_5  0.000050   55992             16          8
+10          FT_UNDER_3_5  0.000004  109928              0          4
+11          FT_UNDER_3_5  0.000050  109928             12         16
+          bosluk kapsam     delta    n  siralama  ust_aday  durum
+0   0.000000e+00      A  0.000004  160       156        58     58
+1   0.000000e+00      A  0.000050  160       156        58     58
+2   0.000000e+00    ABC  0.000004  160       160        64     64
+3   0.000000e+00    ABC  0.000050  160       160        64     64
+4   1.000000e-07      A  0.000004  160       120        58     58
+5   1.000000e-07      A  0.000050  160       120        58     58
+6   1.000000e-07    ABC  0.000004  160       160        64     64
+7   1.000000e-07    ABC  0.000050  160       160        64     64
+8   1.000000e-06      A  0.000004  160       120        58     58
+9   1.000000e-06      A  0.000050  160       120        58     58
+10  1.000000e-06    ABC  0.000004  160       160        40     40
+11  1.000000e-06    ABC  0.000050  160       160        64     64
+12  1.000000e-05      A  0.000004  160        80         0      0
+13  1.000000e-05      A  0.000050  160       120        58     58
+14  1.000000e-05    ABC  0.000004  160       146         6      6
+15  1.000000e-05    ABC  0.000050  160       160        56     56
+16  1.000000e-04      A  0.000004  160        26         0      0
+17  1.000000e-04      A  0.000050  160        80         0      0
+18  1.000000e-04    ABC  0.000004  160        34         0      0
+19  1.000000e-04    ABC  0.000050  160       150        11     12
+20  1.000000e-03      A  0.000004  160         0         0      0
+21  1.000000e-03      A  0.000050  160        30         0      0
+22  1.000000e-03    ABC  0.000004  160         0         0      0
+23  1.000000e-03    ABC  0.000050  160        50         0      0
+24  1.000000e-02      A  0.000004  160         0         0      0
+25  1.000000e-02      A  0.000050  160         0         0      0
+26  1.000000e-02    ABC  0.000004  160         0         0      0
+27  1.000000e-02    ABC  0.000050  160         0         0      0
+  kapsam     delta     n  aday_var  siralama  ust_aday  herhangi_durum  olay_bayrakli  bayraksiz_degisim  karar_bayrakli  karar_bayraksiz_karar_degisimi  karar_bayraksiz_siralama_degisimi
+0      A  0.000004  8000      5728        16         4               4            648                  0             112                               0                                 12
+1      A  0.000050  8000      5728       188         8               8            648                  0             112                               0                                176
+2    ABC  0.000004  8000      5728        10         2               2            648                  0             112                               0                                  8
+3    ABC  0.000050  8000      5728       222         8              20            648                  0             112                               0                                214
+    p_safe     delta  esik_oran_d*  EV_bandi_d*xdelta  oran_bandi_genisligi_iki_yonlu  0.01_adim_sayisi
+0   0.0265  0.000004     38.867925           0.000159                        0.012027          1.202706
+1   0.0265  0.000050     38.867925           0.001943                        0.146672         14.667194
+2   0.0500  0.000004     20.600000           0.000084                        0.003378          0.337840
+3   0.0500  0.000050     20.600000           0.001030                        0.041200          4.120004
+4   0.1000  0.000004     10.300000           0.000042                        0.000845          0.084460
+5   0.1000  0.000050     10.300000           0.000515                        0.010300          1.030000
+6   0.3000  0.000004      3.433333           0.000014                        0.000094          0.009384
+7   0.3000  0.000050      3.433333           0.000172                        0.001144          0.114444
+8   0.5000  0.000004      2.060000           0.000008                        0.000034          0.003378
+9   0.5000  0.000050      2.060000           0.000103                        0.000412          0.041200
+10  0.9000  0.000004      1.144444           0.000005                        0.000010          0.001043
+11  0.9000  0.000050      1.144444           0.000057                        0.000127          0.012716
+{'n_oran_noktasi': 77246, 'bayrakli_dnum': 226, 'bayrakli_oran_dnum': 0.0029257178365222794, 'bayrakli_4.1e-6': 22, 'vektorel_vs_decide_dogrulama_n': 4800, 'vektorel_vs_decide_uyusmazlik': 0}

@@ -1,0 +1,53 @@
+{
+ "kayit": 1600,
+ "bayrak_sayilari": {
+  "UNEXPLAINED_ANOMALY": 845,
+  "MODEL_PIYASA_FARKI": 761
+ },
+ "iki_bayrakli": 6,
+ "status": {
+  "UNEXPLAINED_ANOMALY": 635,
+  "MODEL_PIYASA_FARKI": 493,
+  "açıklanabilir": 472
+ },
+ "aciklayan_kontrol_kayit_sayisi": {
+  "kırmızı kart": 121,
+  "lig değişikliği sonrası ilk maçlar": 353,
+  "takım adı kopukluğu": 11
+ },
+ "kontrol_calistirildi_kayit": {
+  "veri doğrulama": 1600,
+  "hükmen olabilir": 1600,
+  "takım adı kopukluğu": 1600,
+  "lig değişikliği sonrası ilk maçlar": 1600,
+  "kırmızı kart": 1171
+ },
+ "kirmizi_kart_veri_yok_kayit": 429,
+ "kirmizi_kart_sonuc_dagilimi": {
+  "değerlendirilemedi": 429,
+  "kırmızı kart yok": 959,
+  "açıklanabilir: kırmızı kart": 212
+ },
+ "surpriz_aciklanamayan": 635,
+ "surpriz_aciklanamayan_htft": {
+  "HTFT_1_2": 476,
+  "HTFT_2_1": 153,
+  "HTFT_2_X": 3,
+  "HTFT_1_X": 2,
+  "HTFT_2_2": 1
+ },
+ "surpriz_aciklanamayan_medyan_s0_p": 0.014012090420913283,
+ "surpriz_tum_htft": {
+  "HTFT_1_2": 619,
+  "HTFT_2_1": 218,
+  "HTFT_2_2": 3,
+  "HTFT_2_X": 3,
+  "HTFT_1_X": 2
+ },
+ "status_by_flag_dagilimi": {
+  "UNEXPLAINED_ANOMALY->UNEXPLAINED_ANOMALY": 635,
+  "MODEL_PIYASA_FARKI->MODEL_PIYASA_FARKI": 497,
+  "UNEXPLAINED_ANOMALY->açıklanabilir": 210,
+  "MODEL_PIYASA_FARKI->açıklanabilir": 264
+ }
+}

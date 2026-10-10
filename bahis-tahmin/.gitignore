@@ -6,3 +6,16 @@ dist/
 *.egg-info/
 .pytest_cache/
 BahisTahmin-Windows.zip
+
+# S2-KORUMA-02: yayımlanmayacak ham denetim kanıtları (yalnızca yerel; satır düzeyinde gerçek maç verisi veya
+# oturum günlüğü). Dar kapsam: yalnızca bu dosyalar.
+/reports/kabul_s2_01/denetim/psv-dis-dogrulama/psv_htft21_liste.csv
+/reports/kabul_s2_01/denetim/psv-dis-dogrulama/orneklem_onkayit.json
+/reports/kabul_s2_01/denetim/psv-dis-dogrulama/dis_dogrulama_sonuclari.csv
+/reports/kabul_s2_01/denetim/psv-dis-dogrulama/onkayit_stdout.txt
+/reports/kabul_s2_01/denetim/psv-dis-dogrulama/web_cagri_gunlugu.csv
+/reports/kabul_s2_01/denetim/veri-kapsami-sureklilik/s6_psv.json
+/reports/kabul_s2_01/denetim/denetci_sonuclari.json
+/reports/kabul_s2_01/denetim/test-bagimsizligi/gercek_veri_temaslari.csv
+/reports/kabul_s2_01/denetim/test-bagimsizligi/erisim_gecmisi_manifesti_onerisi.json
+/reports/kabul_s2_01/denetim/oran-kaynagi-lisans/ag_istekleri.log

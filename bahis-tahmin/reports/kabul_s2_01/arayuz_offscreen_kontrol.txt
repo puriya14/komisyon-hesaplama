@@ -1,0 +1,10 @@
+ARAYUZ KONTROLU — Linux, QT_QPA_PLATFORM=offscreen (Windows doğrulaması DEĞİLDİR)
+zaman_utc: 2026-10-10T13:02:29+00:00
+izole ana klasör: kabul_s2_01/fikstur_zinciri/ev (gerçek uygulama klasörü değil)
+defter tablosu satır: 459
+sütunlar: ['Kayıt türü', 'Karar zamanı (İstanbul)', 'Kayıt anı (UTC)', 'Maç', 'Lig', 'Pazar', 'Olasılık', 'Oran', 'Karar', 'Sanal birim', 'Sonuç', 'Model']
+kayıt türü: {'FORECAST_RECORD': 459}
+karar (ilk sözcükler): {'Tahmin yok': 459}
+neden: {'VERI_GUNCEL_DEGIL': 336, 'PENCERE_KACIRILDI': 123}
+olasılık boş mu (hepsi): True
+özet: 459 kayıt · 0 sanal bahis (yalnızca avantaj adayları) · 0 sonuçlandı · 0 bekleyen/iade (paydaya girmez) · net +0.00 birim · yield hesaplanamıyor

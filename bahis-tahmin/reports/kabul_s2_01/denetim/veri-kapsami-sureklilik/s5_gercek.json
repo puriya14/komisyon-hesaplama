@@ -1,0 +1,156 @@
+{
+ "ii_tam_sezonda_takim_sezon_eksik": {
+  "takim_sezon": 41,
+  "eksik_mac_takim_satiri": 42,
+  "lig_sezon": 13,
+  "lig_sezonlar": [
+   "E1 2024/25",
+   "E2 2024/25",
+   "E3 2024/25",
+   "F1 2024/25",
+   "F2 2022/23",
+   "F2 2023/24",
+   "F2 2025/26",
+   "G1 2014/15",
+   "G1 2018/19",
+   "SC0 2007/08",
+   "SC0 2010/11",
+   "SC0 2014/15",
+   "SC0 2024/25"
+  ]
+ },
+ "i_pencereler": {
+  "5": {
+   "dizi_satiri": 366654,
+   "k_mac_mevcut": 360634,
+   "k_mevcut_ve_eksik_sezona_dokunan": 30034,
+   "window_ok": 330590,
+   "S1_penceresi_eksik_sezona_dokunan_tum": 30105,
+   "S1_penceresi_eksik_sezona_dokunan_uygun_satir_S0haric": 2529,
+   "uygun_satir_S0haric": 320809,
+   "window_ok_ve_tam_sezon_takim_eksigine_dokunan_ust_sinir": 1744,
+   "window_ok_ve_lig_degisimi_iceren": 5665,
+   "uygun_satir_ve_window_ok_ve_lig_degisimi_iceren": 0,
+   "window_ok_ve_arada_UST_TUR_atlanan": 1507
+  },
+  "10": {
+   "dizi_satiri": 366654,
+   "k_mac_mevcut": 354724,
+   "k_mevcut_ve_eksik_sezona_dokunan": 32334,
+   "window_ok": 322370,
+   "S1_penceresi_eksik_sezona_dokunan_tum": 33170,
+   "S1_penceresi_eksik_sezona_dokunan_uygun_satir_S0haric": 5317,
+   "uygun_satir_S0haric": 320809,
+   "window_ok_ve_tam_sezon_takim_eksigine_dokunan_ust_sinir": 1919,
+   "window_ok_ve_lig_degisimi_iceren": 11150,
+   "uygun_satir_ve_window_ok_ve_lig_degisimi_iceren": 2194,
+   "window_ok_ve_arada_UST_TUR_atlanan": 2882
+  }
+ },
+ "iii_modA": {
+  "IY_GERIDE_MS_GALIP": {
+   "olay_sayisi": 8335,
+   "tamamlanan_aralik": 7690,
+   "eksik_lig_sezona_dokunan": 986,
+   "GAP_GT_400D_dilim_asan": 335,
+   "SEASON_SKIP_iceren": 1,
+   "lig_degisimi_iceren": 998,
+   "arada_bilinmeyen_sonuc": 88,
+   "arada_atlanan_UST_TUR": 173,
+   "tam_sezon_takim_eksigine_dokunan_ust_sinir": 59,
+   "eksik_sezon_veya_GAP_veya_SKIP_orta_bosluk": 1215,
+   "temiz": 5460,
+   "orta_bosluklu_aralik_mac_toplami": 72294,
+   "temiz_aralik_medyan_mac": 21.0,
+   "tum_tamamlanan_medyan_mac": 27.0,
+   "sol_kesik_ilk_olay": 645,
+   "sol_kesik_veri_basi": 264,
+   "sol_kesik_kapsama_sonradan_giris": 381,
+   "hic_olayi_olmayan_takim": 83,
+   "sag_sansur_takim": 645,
+   "sag_sansur_bitis_nedeni": {
+    "RIGHT_CENSORED": 386,
+    "COVERAGE_EXIT": 259
+   },
+   "sag_sansur_acik_aralik_dilim_asan": 47,
+   "sag_sansur_acik_aralik_eksik_sezona_dokunan": 67,
+   "sag_sansur_acik_aralik_lig_degisimi": 81
+  },
+  "IY_ONDE_MS_MAGLUP": {
+   "olay_sayisi": 8335,
+   "tamamlanan_aralik": 7652,
+   "eksik_lig_sezona_dokunan": 977,
+   "GAP_GT_400D_dilim_asan": 381,
+   "SEASON_SKIP_iceren": 2,
+   "lig_degisimi_iceren": 1006,
+   "arada_bilinmeyen_sonuc": 88,
+   "arada_atlanan_UST_TUR": 160,
+   "tam_sezon_takim_eksigine_dokunan_ust_sinir": 59,
+   "eksik_sezon_veya_GAP_veya_SKIP_orta_bosluk": 1245,
+   "temiz": 5401,
+   "orta_bosluklu_aralik_mac_toplami": 73748,
+   "temiz_aralik_medyan_mac": 20.0,
+   "tum_tamamlanan_medyan_mac": 27.0,
+   "sol_kesik_ilk_olay": 683,
+   "sol_kesik_veri_basi": 273,
+   "sol_kesik_kapsama_sonradan_giris": 410,
+   "hic_olayi_olmayan_takim": 45,
+   "sag_sansur_takim": 683,
+   "sag_sansur_bitis_nedeni": {
+    "RIGHT_CENSORED": 385,
+    "COVERAGE_EXIT": 298
+   },
+   "sag_sansur_acik_aralik_dilim_asan": 44,
+   "sag_sansur_acik_aralik_eksik_sezona_dokunan": 68,
+   "sag_sansur_acik_aralik_lig_degisimi": 80
+  }
+ },
+ "iii_team_events_esdegerlik": {
+  "kontrol": 56,
+  "esit": 56
+ },
+ "iv_F4_yeniden": {
+  "IY_GERIDE_MS_GALIP": {
+   "n_blocks": 1673,
+   "n_intervals": 9423,
+   "n_completed": 6475,
+   "n_censored": 1275,
+   "n_left_truncated": 1673,
+   "left_truncated_matches": 61288,
+   "at_risk_matches": 277620,
+   "censor_reasons": {
+    "INCOMPLETE_SEASON": 547,
+    "GAP_GT_400D": 429,
+    "RIGHT_CENSORED": 398,
+    "COVERAGE_EXIT": 297,
+    "SEASON_SKIP": 2
+   },
+   "COMPLETED_lig_degisimi_iceren": 802,
+   "COMPLETED_bilinmeyen_iceren": 63,
+   "COMPLETED_medyan_mac": 25.0
+  },
+  "IY_ONDE_MS_MAGLUP": {
+   "n_blocks": 1673,
+   "n_intervals": 9423,
+   "n_completed": 6407,
+   "n_censored": 1343,
+   "n_left_truncated": 1673,
+   "left_truncated_matches": 64760,
+   "at_risk_matches": 274148,
+   "censor_reasons": {
+    "INCOMPLETE_SEASON": 547,
+    "GAP_GT_400D": 429,
+    "RIGHT_CENSORED": 398,
+    "COVERAGE_EXIT": 297,
+    "SEASON_SKIP": 2
+   },
+   "COMPLETED_lig_degisimi_iceren": 805,
+   "COMPLETED_bilinmeyen_iceren": 62,
+   "COMPLETED_medyan_mac": 24.0
+  }
+ },
+ "iv_F4_kayit_ile_esit": {
+  "IY_GERIDE_MS_GALIP": true,
+  "IY_ONDE_MS_MAGLUP": true
+ }
+}

@@ -1,0 +1,35 @@
+{
+ "N1": {
+  "eslenmis_fikstur_10_gun": 15,
+  "append_fixtures_eklenen": 15,
+  "sezon_etiketi": [
+   "2026/27"
+  ],
+  "son_kayitli_mac_ile_fikstur_arasi_gun_min_medyan_max": [
+   41,
+   47.5,
+   51
+  ],
+  "psv_fiksturleri": [
+   {
+    "date": "2026-10-17",
+    "home": "Den Haag",
+    "away": "PSV Eindhoven",
+    "time": "16:30"
+   }
+  ]
+ },
+ "E0": {
+  "eslenmis_fikstur_10_gun": 20,
+  "append_fixtures_eklenen": 20,
+  "sezon_etiketi": [
+   "2026/27"
+  ],
+  "son_kayitli_mac_ile_fikstur_arasi_gun_min_medyan_max": [
+   40,
+   45.5,
+   51
+  ],
+  "psv_fiksturleri": []
+ }
+}

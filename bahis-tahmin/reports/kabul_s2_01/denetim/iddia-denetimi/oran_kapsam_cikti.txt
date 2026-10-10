@@ -1,0 +1,14 @@
+tum satirlar, uc oran: 98.35 % eksik 3038
+tum satirlar, o_h dolu: 98.35
+sezon yili >= 2002: 99.64
+sezon yili >= 2005: 99.82
+sezon yili >= 2006: 99.82
+2006-2025 (kesif+parametre+test): 99.82
+lig bazinda en dusuk 6:
+league
+F2     0.9587
+SP2    0.9661
+T1     0.9674
+I2     0.9692
+G1     0.9801
+E2     0.9844

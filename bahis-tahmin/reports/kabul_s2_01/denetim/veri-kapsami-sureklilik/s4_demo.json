@@ -1,0 +1,471 @@
+{
+ "kurulum": {
+  "tohum": 0,
+  "takim": "T1-Takım D",
+  "olay1": "2001-10-05",
+  "olay2": "2001-12-07",
+  "sezon": "2001/02",
+  "arada_mac": 8
+ },
+ "a_pencere_ve_S1": {
+  "sil_2": {
+   "silinen_mac": 2,
+   "sezon_payi": 0.978,
+   "sezon_tam": true,
+   "window_ok_5": {
+    "silinmis": true,
+    "tam_veri": true
+   },
+   "pencere_ilk_tarih_5": {
+    "silinmis": "2001-11-02",
+    "tam_veri": "2001-11-02"
+   },
+   "pencere_takvim_gun_5": {
+    "silinmis": 35,
+    "tam_veri": 35
+   },
+   "window_ok_10": {
+    "silinmis": true,
+    "tam_veri": true
+   },
+   "pencere_ilk_tarih_10": {
+    "silinmis": "2001-09-14",
+    "tam_veri": "2001-09-28"
+   },
+   "pencere_takvim_gun_10": {
+    "silinmis": 84,
+    "tam_veri": 70
+   },
+   "atom_SON5_IY_GERIDE_EN_AZ_2": {
+    "silinmis": 0.0,
+    "tam_veri": 0.0
+   },
+   "atom_SON5_GALIBIYETSIZ": {
+    "silinmis": 0.0,
+    "tam_veri": 0.0
+   },
+   "atom_SON10_IY_GERIDE_MS_GALIP_EN_AZ_2": {
+    "silinmis": 0.0,
+    "tam_veri": 0.0
+   },
+   "atom_SON3_MAGLUBIYET": {
+    "silinmis": 0.0,
+    "tam_veri": 0.0
+   },
+   "s1_trail5": {
+    "silinmis": 0.2,
+    "tam_veri": 0.2
+   },
+   "s1_comeback10": {
+    "silinmis": 0.1,
+    "tam_veri": 0.1
+   },
+   "s1_ppg5": {
+    "silinmis": 1.0,
+    "tam_veri": 1.0
+   },
+   "s1_navail10": {
+    "silinmis": 1.0,
+    "tam_veri": 1.0
+   },
+   "s1_since_log": {
+    "silinmis": 2.0794415416798357,
+    "tam_veri": 2.302585092994046
+   },
+   "s1_since_none": {
+    "silinmis": 0.0,
+    "tam_veri": 0.0
+   },
+   "s1_gap_log": {
+    "silinmis": 2.0794415416798357,
+    "tam_veri": 2.0794415416798357
+   },
+   "satir_uygun_eligible": {
+    "silinmis": true,
+    "tam_veri": true
+   },
+   "sonraki_sezon_ilk3": [
+    {
+     "tarih": "2002-08-10",
+     "sezon_tam": true,
+     "eligible_s0siz": true,
+     "window_ok10": true,
+     "s1_comeback10": 0.2,
+     "s1_navail10": 1.0,
+     "atom_SON10": 1.0,
+     "pencere10_eksik_sezona_uzaniyor": false
+    },
+    {
+     "tarih": "2002-08-17",
+     "sezon_tam": true,
+     "eligible_s0siz": true,
+     "window_ok10": true,
+     "s1_comeback10": 0.2,
+     "s1_navail10": 1.0,
+     "atom_SON10": 1.0,
+     "pencere10_eksik_sezona_uzaniyor": false
+    },
+    {
+     "tarih": "2002-08-24",
+     "sezon_tam": true,
+     "eligible_s0siz": true,
+     "window_ok10": true,
+     "s1_comeback10": 0.2,
+     "s1_navail10": 1.0,
+     "atom_SON10": 1.0,
+     "pencere10_eksik_sezona_uzaniyor": false
+    }
+   ],
+   "takim_tum_satirlar_atom_farki": {
+    "SON5_IY_GERIDE_EN_AZ_2": {
+     "ikisinde_de_tanimli": 83,
+     "deger_farkli": 0,
+     "yalniz_silinmiste_NaN": 0
+    },
+    "SON5_IY_ONDE_EN_AZ_3": {
+     "ikisinde_de_tanimli": 83,
+     "deger_farkli": 0,
+     "yalniz_silinmiste_NaN": 0
+    },
+    "SON5_GALIBIYET_EN_AZ_4": {
+     "ikisinde_de_tanimli": 83,
+     "deger_farkli": 0,
+     "yalniz_silinmiste_NaN": 0
+    },
+    "SON5_GALIBIYETSIZ": {
+     "ikisinde_de_tanimli": 83,
+     "deger_farkli": 0,
+     "yalniz_silinmiste_NaN": 0
+    },
+    "SON3_MAGLUBIYET": {
+     "ikisinde_de_tanimli": 85,
+     "deger_farkli": 0,
+     "yalniz_silinmiste_NaN": 0
+    },
+    "SON10_IY_GERIDE_MS_GALIP_EN_AZ_2": {
+     "ikisinde_de_tanimli": 78,
+     "deger_farkli": 2,
+     "yalniz_silinmiste_NaN": 0
+    },
+    "SON10_IY_SONRASI_IYILESME_EN_AZ_4": {
+     "ikisinde_de_tanimli": 78,
+     "deger_farkli": 2,
+     "yalniz_silinmiste_NaN": 0
+    }
+   },
+   "takim_tum_satirlar_S1_farki": {
+    "trail5": {
+     "ikisinde_de_tanimli": 87,
+     "deger_farkli": 4
+    },
+    "comeback10": {
+     "ikisinde_de_tanimli": 87,
+     "deger_farkli": 2
+    },
+    "ppg5": {
+     "ikisinde_de_tanimli": 87,
+     "deger_farkli": 5
+    },
+    "improve10": {
+     "ikisinde_de_tanimli": 87,
+     "deger_farkli": 8
+    },
+    "since_log": {
+     "ikisinde_de_tanimli": 88,
+     "deger_farkli": 7
+    }
+   }
+  },
+  "sil_3": {
+   "silinen_mac": 3,
+   "sezon_payi": 0.967,
+   "sezon_tam": false,
+   "window_ok_5": {
+    "silinmis": false,
+    "tam_veri": true
+   },
+   "pencere_ilk_tarih_5": {
+    "silinmis": "2001-11-02",
+    "tam_veri": "2001-11-02"
+   },
+   "pencere_takvim_gun_5": {
+    "silinmis": 35,
+    "tam_veri": 35
+   },
+   "window_ok_10": {
+    "silinmis": false,
+    "tam_veri": true
+   },
+   "pencere_ilk_tarih_10": {
+    "silinmis": "2001-09-07",
+    "tam_veri": "2001-09-28"
+   },
+   "pencere_takvim_gun_10": {
+    "silinmis": 91,
+    "tam_veri": 70
+   },
+   "atom_SON5_IY_GERIDE_EN_AZ_2": {
+    "silinmis": null,
+    "tam_veri": 0.0
+   },
+   "atom_SON5_GALIBIYETSIZ": {
+    "silinmis": null,
+    "tam_veri": 0.0
+   },
+   "atom_SON10_IY_GERIDE_MS_GALIP_EN_AZ_2": {
+    "silinmis": null,
+    "tam_veri": 0.0
+   },
+   "atom_SON3_MAGLUBIYET": {
+    "silinmis": null,
+    "tam_veri": 0.0
+   },
+   "s1_trail5": {
+    "silinmis": 0.2,
+    "tam_veri": 0.2
+   },
+   "s1_comeback10": {
+    "silinmis": 0.1,
+    "tam_veri": 0.1
+   },
+   "s1_ppg5": {
+    "silinmis": 1.0,
+    "tam_veri": 1.0
+   },
+   "s1_navail10": {
+    "silinmis": 1.0,
+    "tam_veri": 1.0
+   },
+   "s1_since_log": {
+    "silinmis": 1.9459101490553132,
+    "tam_veri": 2.302585092994046
+   },
+   "s1_since_none": {
+    "silinmis": 0.0,
+    "tam_veri": 0.0
+   },
+   "s1_gap_log": {
+    "silinmis": 2.0794415416798357,
+    "tam_veri": 2.0794415416798357
+   },
+   "satir_uygun_eligible": {
+    "silinmis": false,
+    "tam_veri": true
+   },
+   "sonraki_sezon_ilk3": [
+    {
+     "tarih": "2002-08-10",
+     "sezon_tam": true,
+     "eligible_s0siz": true,
+     "window_ok10": false,
+     "s1_comeback10": 0.2,
+     "s1_navail10": 1.0,
+     "atom_SON10": null,
+     "pencere10_eksik_sezona_uzaniyor": true
+    },
+    {
+     "tarih": "2002-08-17",
+     "sezon_tam": true,
+     "eligible_s0siz": true,
+     "window_ok10": false,
+     "s1_comeback10": 0.2,
+     "s1_navail10": 1.0,
+     "atom_SON10": null,
+     "pencere10_eksik_sezona_uzaniyor": true
+    },
+    {
+     "tarih": "2002-08-24",
+     "sezon_tam": true,
+     "eligible_s0siz": true,
+     "window_ok10": false,
+     "s1_comeback10": 0.2,
+     "s1_navail10": 1.0,
+     "atom_SON10": null,
+     "pencere10_eksik_sezona_uzaniyor": true
+    }
+   ],
+   "takim_tum_satirlar_atom_farki": {
+    "SON5_IY_GERIDE_EN_AZ_2": {
+     "ikisinde_de_tanimli": 62,
+     "deger_farkli": 0,
+     "yalniz_silinmiste_NaN": 20
+    },
+    "SON5_IY_ONDE_EN_AZ_3": {
+     "ikisinde_de_tanimli": 62,
+     "deger_farkli": 0,
+     "yalniz_silinmiste_NaN": 20
+    },
+    "SON5_GALIBIYET_EN_AZ_4": {
+     "ikisinde_de_tanimli": 62,
+     "deger_farkli": 0,
+     "yalniz_silinmiste_NaN": 20
+    },
+    "SON5_GALIBIYETSIZ": {
+     "ikisinde_de_tanimli": 62,
+     "deger_farkli": 0,
+     "yalniz_silinmiste_NaN": 20
+    },
+    "SON3_MAGLUBIYET": {
+     "ikisinde_de_tanimli": 66,
+     "deger_farkli": 0,
+     "yalniz_silinmiste_NaN": 18
+    },
+    "SON10_IY_GERIDE_MS_GALIP_EN_AZ_2": {
+     "ikisinde_de_tanimli": 52,
+     "deger_farkli": 0,
+     "yalniz_silinmiste_NaN": 25
+    },
+    "SON10_IY_SONRASI_IYILESME_EN_AZ_4": {
+     "ikisinde_de_tanimli": 52,
+     "deger_farkli": 0,
+     "yalniz_silinmiste_NaN": 25
+    }
+   },
+   "takim_tum_satirlar_S1_farki": {
+    "trail5": {
+     "ikisinde_de_tanimli": 86,
+     "deger_farkli": 4
+    },
+    "comeback10": {
+     "ikisinde_de_tanimli": 86,
+     "deger_farkli": 3
+    },
+    "ppg5": {
+     "ikisinde_de_tanimli": 86,
+     "deger_farkli": 5
+    },
+    "improve10": {
+     "ikisinde_de_tanimli": 86,
+     "deger_farkli": 8
+    },
+    "since_log": {
+     "ikisinde_de_tanimli": 87,
+     "deger_farkli": 6
+    }
+   }
+  }
+ },
+ "b_ModA_aralik": {
+  "sil_0": {
+   "ModA_onceki_olaydan_mac": 9.0,
+   "ModA_onceki_olaydan_gun": 63.0,
+   "ModA_ayni_dilim": true,
+   "ModA_sezon_gecisi": false,
+   "F4_olay2_ile_biten": [
+    {
+     "kind": "COMPLETED",
+     "matches": 9,
+     "days": 63,
+     "n_unknown": 0,
+     "censor_reason": NaN
+    }
+   ],
+   "F4_olay1_ile_baslayan": [
+    {
+     "kind": "COMPLETED",
+     "matches": 9,
+     "days": 63,
+     "n_unknown": 0,
+     "censor_reason": NaN
+    }
+   ]
+  },
+  "sil_2": {
+   "ModA_onceki_olaydan_mac": 7.0,
+   "ModA_onceki_olaydan_gun": 63.0,
+   "ModA_ayni_dilim": true,
+   "ModA_sezon_gecisi": false,
+   "F4_olay2_ile_biten": [
+    {
+     "kind": "COMPLETED",
+     "matches": 7,
+     "days": 63,
+     "n_unknown": 0,
+     "censor_reason": NaN
+    }
+   ],
+   "F4_olay1_ile_baslayan": [
+    {
+     "kind": "COMPLETED",
+     "matches": 7,
+     "days": 63,
+     "n_unknown": 0,
+     "censor_reason": NaN
+    }
+   ]
+  },
+  "sil_3": {
+   "ModA_onceki_olaydan_mac": 6.0,
+   "ModA_onceki_olaydan_gun": 63.0,
+   "ModA_ayni_dilim": true,
+   "ModA_sezon_gecisi": false,
+   "F4_olay2_ile_biten": [],
+   "F4_olay1_ile_baslayan": []
+  }
+ },
+ "c_bilinmeyen": {
+  "ModA_onceki_olaydan_mac_olay2": {
+   "tam": 9.0,
+   "olay1_bilinmiyor": 31.0
+  },
+  "F4_olay2_ile_biten": [
+   {
+    "kind": "COMPLETED",
+    "matches": 31,
+    "n_unknown": 1
+   }
+  ],
+  "since_last_event_olay2_satiri": {
+   "tam": 9.0,
+   "olay1_bilinmiyor": 31.0
+  },
+  "s1_since_log_olay2": {
+   "tam": 2.302585092994046,
+   "olay1_bilinmiyor": 3.4657359027997265
+  },
+  "Q2_olay1_ornek_mi": {
+   "tam": true,
+   "olay1_bilinmiyor": false
+  },
+  "atom_SON_MAC_IY_GERIDE_MS_GALIP_olay1_sonrasi": {
+   "tam": 1,
+   "olay1_bilinmiyor": null
+  }
+ },
+ "c2_sezon_kaybi": {
+  "ModA_dilim_asan_aralik_sayisi": 4,
+  "F4_dilim_asan_COMPLETED": 0,
+  "spell_end_dagilimi": {
+   "GAP_GT_400D": 10,
+   "RIGHT_CENSORED": 10
+  },
+  "season_skip_satir": 0
+ },
+ "d_kimlik": {
+  "d1_sezon_ortasi_ad_degisimi": {
+   "splits": {
+    "Türkiye|Yeni Ad FK": "T1-Takım D"
+   },
+   "kanonik_takim_sayisi": 10,
+   "takim_dilim_sayisi": 1
+  },
+  "d2_sezonlar_arasi_ad_degisimi": {
+   "splits": {},
+   "kanonik_takim_sayisi": 11,
+   "eski_ad_spell_end": [
+    "COVERAGE_EXIT"
+   ],
+   "yeni_ad_ilk_satir_spell_seq": 0.0
+  },
+  "d3_not": "d1 ile aynı veri biçimi: ad/lig/tarih kuralı 'yeniden adlandırma' ile 'çekilen kulübün yerine gelen farklı kulüp' ayrımını yapamaz; ikisi de tek kimliğe birleşir.",
+  "d4_ulkeler_arasi_ayni_ad": {
+   "not": "Kimlik anahtarı yalnızca kanonik AD'dır (tm['team']); ülke yalnızca eşleme tablosunu aramak için kullanılır. Farklı ülkelerdeki aynı ad tek kimliğe birleşir.",
+   "T1-Takım A_ligleri": [
+    "N1",
+    "T1"
+   ],
+   "dilim_sayisi": 1,
+   "league_changed_satir": 1
+  }
+ }
+}

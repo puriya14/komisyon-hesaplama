@@ -1,0 +1,8 @@
+degisiklik,predict_A_max,predict_B_max,predict_C_max,predict_tum_anahtarlar_max,interval_BTTS_BOTH_HALVES_YES_max,interval_FT_OVER_3_5_max,interval_FH_OVER_1_5_max,TOL_5e-5_yakalar
+referans (değişiklik yok),0,0,0,0,0,0,0,False
+durum çarpanı küçültmesi shrink 30→31,2.04508e-05,9.99201e-16,1.11022e-16,8.12087e-05,4.5276e-05,7.77156e-16,2.22045e-16,True
+eğitimden son 1 maç çıkarıldı,0.00392473,0.00407255,0.00458995,0.00478401,0.00456557,0.00442755,0.0069453,True
+kalibratör LR C 0.1→0.11,0.000773947,0.00183067,0.00211237,0.00211237,0.000802749,0.00203515,0.00313232,True
+IPF eğim toleransı 1e-12→1e-9,1.62854e-10,8.71605e-10,2.22045e-16,8.71605e-10,3.69562e-11,2.60447e-10,2.22045e-16,False
+L-BFGS-B ftol varsayılan→1e-12 (sayısal),0.000167255,6.95e-14,2.22045e-16,0.00228286,0.000164906,9.17599e-14,1.11022e-16,True
+aralık tohumu 20261010→20261011,0,0,0,0,0.0543259,0.106261,0.0729955,True

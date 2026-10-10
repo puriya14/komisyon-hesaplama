@@ -1,0 +1,2 @@
+  m = pd.read_csv(CSV, parse_dates=["date"])
+{"satir": 184378, "data_sha256": "aff287d61bd4374a8956921ddc8e5e8e7e46b2869b1560dfc6e8053745480e33", "data_manifest_sha256": "281e3ea2454f4aa8a71d51e594554d6a76fba87752566146360db407d89e7a2f", "ilk": "2000-07-28", "son": "2026-09-03", "kaynak": ["github-yedek"]}

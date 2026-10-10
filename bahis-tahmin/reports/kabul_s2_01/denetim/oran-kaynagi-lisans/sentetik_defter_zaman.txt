@@ -1,0 +1,8 @@
+birincil (karar motoruna açık) pazarlar: ['BTTS_BOTH_HALVES_NO', 'BTTS_BOTH_HALVES_YES', 'FH_OVER_1_5', 'FH_UNDER_1_5', 'FT_OVER_3_5', 'FT_UNDER_3_5']
+1X2 benzeri pazar anahtarları: []
+tarihsel_gecmis_zaman (CSV benzeri, 2025): latest_quote=2025-08-16T12:00:00+00:00 -> STALE_ODDS
+karar_anindan_sonra: latest_quote=yok -> ODDS_UNAVAILABLE
+taze (30 dk once): latest_quote=2026-10-17T09:30:00+00:00 -> VALUE_CANDIDATE
+16
+['1H', '2H', 'BOTH_HALVES', 'FT']
+['BTTS_BOTH_HALVES_NO', 'BTTS_BOTH_HALVES_YES', 'FH_BTTS_NO', 'FH_BTTS_YES', 'FH_OVER_1_5', 'FH_UNDER_1_5', 'FT_BTTS_NO', 'FT_BTTS_YES', 'FT_OVER_2_5', 'FT_OVER_3_5', 'FT_OVER_4_5', 'FT_UNDER_2_5', 'FT_UNDER_3_5', 'FT_UNDER_4_5', 'SH_OVER_1_5', 'SH_UNDER_1_5']

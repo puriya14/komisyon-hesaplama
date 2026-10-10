@@ -176,9 +176,16 @@ def test_unverified_odds_never_get_economic_status(engine, ht_matches, tmp_path)
     led.add_odds([OddsQuote(eid, "FT_OVER_3_5", m.period, m.line, m.selection, "manuel", "test", 2.4, t0, t0)])
     recs = F.build_forecast_records(engine, fx, ht_matches, ledger=led, missing_played=_fresh(fx))
     over = next(r for r in recs if r["market_key"] == "FT_OVER_3_5")
-    if over["p"] is not None:
-        assert over["oran"]["zaman_dogrulandi"] is True and over["ekonomik_statu"] == "ZAMANI_DOGRULANMIS_ORAN"
-        assert dt.datetime.fromisoformat(over["oran"]["quoted_at"]) < target
+    assert over["p"] is not None
+    assert over["oran"]["zaman_dogrulandi"] is True and over["ekonomik_statu"] == "ZAMANI_DOGRULANMIS_ORAN"
+    assert dt.datetime.fromisoformat(over["oran"]["quoted_at"]) < target
+    # geçerlilik anı karar anından önce ama sisteme karar anından SONRA alınmış (ör. sonradan elle girilmiş) oran
+    m_c = MARKETS["FH_OVER_1_5"]
+    led.add_odds([OddsQuote(eid, "FH_OVER_1_5", m_c.period, m_c.line, m_c.selection, "manuel", "test", 2.2, t0,
+                            target + dt.timedelta(hours=1))])
+    fh = next(r for r in F.build_forecast_records(engine, fx, ht_matches, ledger=led, missing_played=_fresh(fx))
+              if r["market_key"] == "FH_OVER_1_5")
+    assert fh["oran"]["zaman_dogrulandi"] is False and fh["ekonomik_statu"] == "HISTORICAL_REFERENCE_ONLY"
     # zamanı bilinmeyen oran (ör. tarihsel CSV) → ekonomik doğrulamaya girmez
     other = [dict(r, oran={"decimal_odds": 2.0, "kaynak": "tarihsel CSV"}) for r in recs if r["p"] is not None]
     F.record_forecasts(led, other)

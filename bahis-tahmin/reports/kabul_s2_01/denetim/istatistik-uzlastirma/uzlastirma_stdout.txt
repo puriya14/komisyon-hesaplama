@@ -1,0 +1,542 @@
+{
+ "girdi_sha256": {
+  "dizi_sonuclar.json": "82b35decd7c65399521ed951352425e21f875ea7ad3e3b57163bb7936b3d7ef0",
+  "dizi_f1_hipotezler.csv": "09dc70b676ba47e40438e8b888ec137714702a2f0941a266659cb1506b2cfe11",
+  "experiments.jsonl": "0f98685070163d187eeb4810232f2652b0c8ffa3f3236c92d771c1085d965c8c"
+ },
+ "dLL": {
+  "degerler": [
+   -4.234810545157652e-05,
+   -6.190507114155105e-05,
+   -4.816193885514778e-05,
+   -0.00010212062574229297
+  ],
+  "ortalama": -6.363393529764208e-05,
+  "ortanca": -5.503350499834941e-05,
+  "min": -0.00010212062574229297,
+  "max": -4.234810545157652e-05,
+  "ci_sifiri_iceren": 3,
+  "ci_sifiri_icerenlerin_ortalamasi": -5.080503848275845e-05,
+  "goreli_iyilesme_yuzde": [
+   0.006990763076774185,
+   0.010221745780224984,
+   0.007948112360935967,
+   0.01685826149414023
+  ]
+ },
+ "dLL_coklu_test": [
+  {
+   "p_turu": "p_tek_normal (Φ(d/se))",
+   "hyp_id": "MAGLUBIYET|SON5_GALIBIYET_EN_AZ_4 & FAVORI",
+   "p": 0.20973899116867528,
+   "holm_k4": 0.43137313211943523,
+   "bonferroni_k4": 0.8389559646747011,
+   "holm_lt_0_05": false,
+   "bonf_lt_0_05": false
+  },
+  {
+   "p_turu": "p_tek_normal (Φ(d/se))",
+   "hyp_id": "MAGLUBIYET|SON5_IY_ONDE_EN_AZ_3 & FORM_BEKLENTI_USTU",
+   "p": 0.14843130156384404,
+   "holm_k4": 0.43137313211943523,
+   "bonferroni_k4": 0.5937252062553762,
+   "holm_lt_0_05": false,
+   "bonf_lt_0_05": false
+  },
+  {
+   "p_turu": "p_tek_normal (Φ(d/se))",
+   "hyp_id": "GALIBIYET|SON5_IY_ONDE_EN_AZ_3 & FORM_BEKLENTI_USTU",
+   "p": 0.14379104403981174,
+   "holm_k4": 0.43137313211943523,
+   "bonferroni_k4": 0.575164176159247,
+   "holm_lt_0_05": false,
+   "bonf_lt_0_05": false
+  },
+  {
+   "p_turu": "p_tek_normal (Φ(d/se))",
+   "hyp_id": "GALIBIYET|RAKIP_SON5_IY_ONDE_EN_AZ_3",
+   "p": 0.01792652560490396,
+   "holm_k4": 0.07170610241961584,
+   "bonferroni_k4": 0.07170610241961584,
+   "holm_lt_0_05": false,
+   "bonf_lt_0_05": false
+  },
+  {
+   "p_turu": "p_boot ((1+#boot≥0)/1001)",
+   "hyp_id": "MAGLUBIYET|SON5_GALIBIYET_EN_AZ_4 & FAVORI",
+   "p": 0.1918081918081918,
+   "holm_k4": 0.4585414585414585,
+   "bonferroni_k4": 0.7672327672327672,
+   "holm_lt_0_05": false,
+   "bonf_lt_0_05": false
+  },
+  {
+   "p_turu": "p_boot ((1+#boot≥0)/1001)",
+   "hyp_id": "MAGLUBIYET|SON5_IY_ONDE_EN_AZ_3 & FORM_BEKLENTI_USTU",
+   "p": 0.15284715284715283,
+   "holm_k4": 0.4585414585414585,
+   "bonferroni_k4": 0.6113886113886113,
+   "holm_lt_0_05": false,
+   "bonf_lt_0_05": false
+  },
+  {
+   "p_turu": "p_boot ((1+#boot≥0)/1001)",
+   "hyp_id": "GALIBIYET|SON5_IY_ONDE_EN_AZ_3 & FORM_BEKLENTI_USTU",
+   "p": 0.15284715284715283,
+   "holm_k4": 0.4585414585414585,
+   "bonferroni_k4": 0.6113886113886113,
+   "holm_lt_0_05": false,
+   "bonf_lt_0_05": false
+  },
+  {
+   "p_turu": "p_boot ((1+#boot≥0)/1001)",
+   "hyp_id": "GALIBIYET|RAKIP_SON5_IY_ONDE_EN_AZ_3",
+   "p": 0.017982017982017984,
+   "holm_k4": 0.07192807192807193,
+   "bonferroni_k4": 0.07192807192807193,
+   "holm_lt_0_05": false,
+   "bonf_lt_0_05": false
+  },
+  {
+   "p_turu": "ISO-hafta p_tek_normal",
+   "hyp_id": "MAGLUBIYET|SON5_GALIBIYET_EN_AZ_4 & FAVORI",
+   "p": 0.23119979527306317,
+   "holm_k4": 0.47445133760900493,
+   "bonferroni_k4": 0.9247991810922527,
+   "holm_lt_0_05": false,
+   "bonf_lt_0_05": false
+  },
+  {
+   "p_turu": "ISO-hafta p_tek_normal",
+   "hyp_id": "MAGLUBIYET|SON5_IY_ONDE_EN_AZ_3 & FORM_BEKLENTI_USTU",
+   "p": 0.1581504458696683,
+   "holm_k4": 0.47445133760900493,
+   "bonferroni_k4": 0.6326017834786732,
+   "holm_lt_0_05": false,
+   "bonf_lt_0_05": false
+  },
+  {
+   "p_turu": "ISO-hafta p_tek_normal",
+   "hyp_id": "GALIBIYET|SON5_IY_ONDE_EN_AZ_3 & FORM_BEKLENTI_USTU",
+   "p": 0.15983876469533187,
+   "holm_k4": 0.47445133760900493,
+   "bonferroni_k4": 0.6393550587813275,
+   "holm_lt_0_05": false,
+   "bonf_lt_0_05": false
+  },
+  {
+   "p_turu": "ISO-hafta p_tek_normal",
+   "hyp_id": "GALIBIYET|RAKIP_SON5_IY_ONDE_EN_AZ_3",
+   "p": 0.016212189637646104,
+   "holm_k4": 0.06484875855058442,
+   "bonferroni_k4": 0.06484875855058442,
+   "holm_lt_0_05": false,
+   "bonf_lt_0_05": false
+  },
+  {
+   "p_turu": "ham S0'a göre p_tek_normal",
+   "hyp_id": "MAGLUBIYET|SON5_GALIBIYET_EN_AZ_4 & FAVORI",
+   "p": 0.2343981579106083,
+   "holm_k4": 0.5054010759408869,
+   "bonferroni_k4": 0.9375926316424332,
+   "holm_lt_0_05": false,
+   "bonf_lt_0_05": false
+  },
+  {
+   "p_turu": "ham S0'a göre p_tek_normal",
+   "hyp_id": "MAGLUBIYET|SON5_IY_ONDE_EN_AZ_3 & FORM_BEKLENTI_USTU",
+   "p": 0.16846702531362895,
+   "holm_k4": 0.5054010759408869,
+   "bonferroni_k4": 0.6738681012545158,
+   "holm_lt_0_05": false,
+   "bonf_lt_0_05": false
+  },
+  {
+   "p_turu": "ham S0'a göre p_tek_normal",
+   "hyp_id": "GALIBIYET|SON5_IY_ONDE_EN_AZ_3 & FORM_BEKLENTI_USTU",
+   "p": 0.174079825186361,
+   "holm_k4": 0.5054010759408869,
+   "bonferroni_k4": 0.696319300745444,
+   "holm_lt_0_05": false,
+   "bonf_lt_0_05": false
+  },
+  {
+   "p_turu": "ham S0'a göre p_tek_normal",
+   "hyp_id": "GALIBIYET|RAKIP_SON5_IY_ONDE_EN_AZ_3",
+   "p": 0.024056861994676923,
+   "holm_k4": 0.09622744797870769,
+   "bonferroni_k4": 0.09622744797870769,
+   "holm_lt_0_05": false,
+   "bonf_lt_0_05": false
+  }
+ ],
+ "buyukluk": [
+  {
+   "hyp_id": "MAGLUBIYET|SON5_GALIBIYET_EN_AZ_4 & FAVORI",
+   "beta": -0.28617493221720713,
+   "taban_oran_E_adj_n": 0.12660802052529474,
+   "taban_oran_ham_S0": 0.13002868832073283,
+   "dp_beta": -0.03164477461376933,
+   "net_logit_kayma_kosul": -0.2822430768088122,
+   "net_logit_kayma_kosul_disi": 0.003931855408394936,
+   "dp_net_kosul": -0.031209996217043262,
+   "gozlenen_dp_test_(O-Eadj)/n": -0.015354001232690246,
+   "S0p_kontrollu_OE_test": 0.980103307094217,
+   "S0p_kontrollu_OE_lo": 0.9003921377425405,
+   "S0p_kontrollu_OE_hi": 1.0598144764458934,
+   "S0p_kontrollu_dp_yaklasik": -0.002258524219208881,
+   "marj_payi_bu_yon_m3": 0.003798240615758842,
+   "marj_payi_karsi_yon_m3": 0.026201759384241158,
+   "marj_payi_bu_yon_m5": 0.006330401026264737,
+   "marj_payi_karsi_yon_m5": 0.04366959897373526,
+   "marj_payi_bu_yon_m8": 0.010128641642023579,
+   "marj_payi_karsi_yon_m8": 0.06987135835797642
+  },
+  {
+   "hyp_id": "MAGLUBIYET|SON5_IY_ONDE_EN_AZ_3 & FORM_BEKLENTI_USTU",
+   "beta": -0.17993988612752018,
+   "taban_oran_E_adj_n": 0.2947337393003725,
+   "taban_oran_ham_S0": 0.29488401485033017,
+   "dp_beta": -0.03740334158338775,
+   "net_logit_kayma_kosul": -0.1713156086636178,
+   "net_logit_kayma_kosul_disi": 0.008624277463902378,
+   "dp_net_kosul": -0.035610649574770774,
+   "gozlenen_dp_test_(O-Eadj)/n": -0.0216103485299229,
+   "S0p_kontrollu_OE_test": 0.9934824425030422,
+   "S0p_kontrollu_OE_lo": 0.9542843058184967,
+   "S0p_kontrollu_OE_hi": 1.0326805791875877,
+   "S0p_kontrollu_dp_yaklasik": -0.0017921303499003765,
+   "marj_payi_bu_yon_m3": 0.008842012179011175,
+   "marj_payi_karsi_yon_m3": 0.021157987820988825,
+   "marj_payi_bu_yon_m5": 0.014736686965018626,
+   "marj_payi_karsi_yon_m5": 0.035263313034981376,
+   "marj_payi_bu_yon_m8": 0.0235786991440298,
+   "marj_payi_karsi_yon_m8": 0.0564213008559702
+  },
+  {
+   "hyp_id": "GALIBIYET|SON5_IY_ONDE_EN_AZ_3 & FORM_BEKLENTI_USTU",
+   "beta": 0.12993142470880845,
+   "taban_oran_E_adj_n": 0.4562006635819785,
+   "taban_oran_ham_S0": 0.4528363075583572,
+   "dp_beta": 0.03223359808761184,
+   "net_logit_kayma_kosul": 0.12244449015460986,
+   "net_logit_kayma_kosul_disi": -0.007486934554198593,
+   "dp_net_kosul": 0.030376227248577775,
+   "gozlenen_dp_test_(O-Eadj)/n": 0.01696233899278875,
+   "S0p_kontrollu_OE_test": 0.9863917706096557,
+   "S0p_kontrollu_OE_lo": 0.9627689438168174,
+   "S0p_kontrollu_OE_hi": 1.0100145974024939,
+   "S0p_kontrollu_dp_yaklasik": -0.006529034818550502,
+   "marj_payi_bu_yon_m3": 0.013686019907459355,
+   "marj_payi_karsi_yon_m3": 0.016313980092540644,
+   "marj_payi_bu_yon_m5": 0.022810033179098927,
+   "marj_payi_karsi_yon_m5": 0.027189966820901076,
+   "marj_payi_bu_yon_m8": 0.03649605308655828,
+   "marj_payi_karsi_yon_m8": 0.04350394691344172
+  },
+  {
+   "hyp_id": "GALIBIYET|RAKIP_SON5_IY_ONDE_EN_AZ_3",
+   "beta": -0.08554438335451564,
+   "taban_oran_E_adj_n": 0.30859693189942244,
+   "taban_oran_ham_S0": 0.30867775487041565,
+   "dp_beta": -0.018252165850571756,
+   "net_logit_kayma_kosul": -0.07322515041535985,
+   "net_logit_kayma_kosul_disi": 0.01231923293915579,
+   "dp_net_kosul": -0.01562367437117846,
+   "gozlenen_dp_test_(O-Eadj)/n": -0.013702736597539306,
+   "S0p_kontrollu_OE_test": 0.9863439011921438,
+   "S0p_kontrollu_OE_lo": 0.9660021003462946,
+   "S0p_kontrollu_OE_hi": 1.006685702037993,
+   "S0p_kontrollu_dp_yaklasik": -0.004084181696421204,
+   "marj_payi_bu_yon_m3": 0.009257907956982673,
+   "marj_payi_karsi_yon_m3": 0.020742092043017326,
+   "marj_payi_bu_yon_m5": 0.015429846594971123,
+   "marj_payi_karsi_yon_m5": 0.034570153405028885,
+   "marj_payi_bu_yon_m8": 0.024687754551953794,
+   "marj_payi_karsi_yon_m8": 0.05531224544804621
+  }
+ ],
+ "zcrit": [
+  {
+   "yontem": "log p doğrusal ara değer (sıra 8 ↔ 9) [BİRİNCİL]",
+   "z_crit": 3.984599500111763,
+   "not": "|z| 4.2034 (p_adj 0.022977) ile |z| 3.8226 (p_adj 0.088911) arasında"
+  },
+  {
+   "yontem": "p doğrusal ara değer (sıra 8 ↔ 9)",
+   "z_crit": 4.047331054940386,
+   "not": "duyarlılık"
+  },
+  {
+   "yontem": "log p ~ a + b·z² EKK uyumu (0,005<p_adj<0,5)",
+   "z_crit": 3.983031371302634,
+   "not": "n=10 desteklenen tekil hipotez; a=3.2790, b=-0.3955"
+  },
+  {
+   "yontem": "parantez (alt/üst)",
+   "z_crit": NaN,
+   "not": "[3.8226, 4.2034]"
+  },
+  {
+   "yontem": "karşılaştırma: Bonferroni m=430 (iki yönlü)",
+   "z_crit": 3.853841113526353,
+   "not": "bağımsızlık/normal varsayımı; WY değil"
+  },
+  {
+   "yontem": "karşılaştırma: Bonferroni m=780 (iki yönlü)",
+   "z_crit": 3.997176284290048,
+   "not": "bağımsızlık/normal varsayımı; WY değil"
+  },
+  {
+   "yontem": "karşılaştırma: m=430 bağımsız normal |z| maksimumunun ortancası",
+   "z_crit": 3.153967238645693,
+   "not": "yayımlanan referans ortanca 3.1383"
+  }
+ ],
+ "mde_ozet": [
+  {
+   "hedef": "IY_GERIDE_MS_GALIP",
+   "tekil": 200,
+   "desteklenen": 99,
+   "E_adj_ortanca": 75.09085346162479,
+   "n_ortanca": 3069.0,
+   "max_abs_z_gozlenen": 2.626054886496774,
+   "g50_min_%": 6.923056505049568,
+   "g50_ortanca_%": 43.18720257292538,
+   "g50_max_%": 87.5750903792661,
+   "g50_OE_ust_ortanca": 1.4318720257292539,
+   "g50_OE_alt_ortanca": 0.5681279742707461,
+   "g50_alt_tarafta_tespit_edilemez_(mde>=1)": 0,
+   "g80_min_%": 8.38533429625829,
+   "g80_ortanca_%": 52.30913984741665,
+   "g80_max_%": 106.07257189357891,
+   "g80_OE_ust_ortanca": 1.5230913984741665,
+   "g80_OE_alt_ortanca": 0.4769086015258335,
+   "g80_alt_tarafta_tespit_edilemez_(mde>=1)": 2,
+   "g80_ortanca_%_zc_lin": 52.98905770767396,
+   "g80_ortanca_%_zc_fit": 52.29214363574259
+  },
+  {
+   "hedef": "IY_ONDE_MS_MAGLUP",
+   "tekil": 190,
+   "desteklenen": 84,
+   "E_adj_ortanca": 73.60326157372111,
+   "n_ortanca": 3425.0,
+   "max_abs_z_gozlenen": 2.346770098324757,
+   "g50_min_%": 6.845740226685604,
+   "g50_ortanca_%": 44.02974060189183,
+   "g50_max_%": 90.57481409598735,
+   "g50_OE_ust_ortanca": 1.4402974060189182,
+   "g50_OE_alt_ortanca": 0.5597025939810817,
+   "g50_alt_tarafta_tespit_edilemez_(mde>=1)": 0,
+   "g80_min_%": 8.291687387533576,
+   "g80_ortanca_%": 53.32963751705739,
+   "g80_max_%": 109.70589283249876,
+   "g80_OE_ust_ortanca": 1.533296375170574,
+   "g80_OE_alt_ortanca": 0.46670362482942607,
+   "g80_alt_tarafta_tespit_edilemez_(mde>=1)": 2,
+   "g80_ortanca_%_zc_lin": 54.02281987743769,
+   "g80_ortanca_%_zc_fit": 53.31230972672505
+  },
+  {
+   "hedef": "GALIBIYET",
+   "tekil": 200,
+   "desteklenen": 127,
+   "E_adj_ortanca": 890.609260755446,
+   "n_ortanca": 2245.0,
+   "max_abs_z_gozlenen": 4.244346176609332,
+   "g50_min_%": 1.2236986287144842,
+   "g50_ortanca_%": 9.919334147163525,
+   "g50_max_%": 24.35846721389197,
+   "g50_OE_ust_ortanca": 1.0991933414716353,
+   "g50_OE_alt_ortanca": 0.9008066585283647,
+   "g50_alt_tarafta_tespit_edilemez_(mde>=1)": 0,
+   "g80_min_%": 1.482166449480732,
+   "g80_ortanca_%": 12.014481285771442,
+   "g80_max_%": 29.503426757235314,
+   "g80_OE_ust_ortanca": 1.1201448128577145,
+   "g80_OE_alt_ortanca": 0.8798551871422856,
+   "g80_alt_tarafta_tespit_edilemez_(mde>=1)": 0,
+   "g80_ortanca_%_zc_lin": 12.170646354280528,
+   "g80_ortanca_%_zc_fit": 12.010577557518928
+  },
+  {
+   "hedef": "MAGLUBIYET",
+   "tekil": 190,
+   "desteklenen": 120,
+   "E_adj_ortanca": 698.8627767280389,
+   "n_ortanca": 2239.0,
+   "max_abs_z_gozlenen": 5.406079858697358,
+   "g50_min_%": 1.3363270542895356,
+   "g50_ortanca_%": 11.530371630406835,
+   "g50_max_%": 38.204004581179575,
+   "g50_OE_ust_ortanca": 1.1153037163040684,
+   "g50_OE_alt_ortanca": 0.8846962836959317,
+   "g50_alt_tarafta_tespit_edilemez_(mde>=1)": 0,
+   "g80_min_%": 1.6185840851044193,
+   "g80_ortanca_%": 13.965799731741724,
+   "g80_max_%": 46.273398120514145,
+   "g80_OE_ust_ortanca": 1.1396579973174172,
+   "g80_OE_alt_ortanca": 0.8603420026825828,
+   "g80_alt_tarafta_tespit_edilemez_(mde>=1)": 0,
+   "g80_ortanca_%_zc_lin": 14.14732817396207,
+   "g80_ortanca_%_zc_fit": 13.961261983861895
+  }
+ ],
+ "aday_gozlenen_vs_mde80": {
+  "MAGLUBIYET|SON5_GALIBIYET_EN_AZ_4 & FAVORI": {
+   "gozlenen_|OE-1|": 0.21174236691419568,
+   "mde80": 0.2426602455270745
+  },
+  "MAGLUBIYET|SON5_IY_ONDE_EN_AZ_3 & FORM_BEKLENTI_USTU": {
+   "gozlenen_|OE-1|": 0.11596471632378791,
+   "mde80": 0.10352627651205007
+  },
+  "GALIBIYET|SON5_IY_ONDE_EN_AZ_3 & FORM_BEKLENTI_USTU": {
+   "gozlenen_|OE-1|": 0.06061123525593204,
+   "mde80": 0.0689206742603889
+  },
+  "GALIBIYET|RAKIP_SON5_IY_ONDE_EN_AZ_3": {
+   "gozlenen_|OE-1|": 0.04627597081561219,
+   "mde80": 0.05313299319293801
+  },
+  "MAGLUBIYET|SON5_GALIBIYET_EN_AZ_4": {
+   "gozlenen_|OE-1|": 0.08346844480341364,
+   "mde80": 0.08124764421578723
+  },
+  "MAGLUBIYET|SON5_GALIBIYET_EN_AZ_4 & EV_SAHIBI": {
+   "gozlenen_|OE-1|": 0.14455753849076858,
+   "mde80": 0.1376258684251067
+  },
+  "MAGLUBIYET|SON5_IY_ONDE_EN_AZ_3 & SON5_GALIBIYET_EN_AZ_4": {
+   "gozlenen_|OE-1|": 0.10934429903759058,
+   "mde80": 0.10669167434277754
+  },
+  "MAGLUBIYET|SON5_GALIBIYET_EN_AZ_4 & FORM_BEKLENTI_USTU": {
+   "gozlenen_|OE-1|": 0.09438706147933595,
+   "mde80": 0.10484165793730765
+  }
+ },
+ "cp": [
+  {
+   "R": 1000,
+   "en_buyuk_c_CP99_ust<0,05": 32,
+   "CP99_ust(cmax)": 0.04922572063239615,
+   "CP99_ust(cmax+1)": 0.050431890185337565,
+   "p_adj(cmax)=(c+1)/(R+1)": 0.03296703296703297,
+   "p_adj(cmax+1)": 0.03396603396603397,
+   "en_buyuk_c_p_adj<0,05": 49,
+   "min_p_adj=1/(R+1)": 0.000999000999000999
+  },
+  {
+   "R": 200,
+   "en_buyuk_c_CP99_ust<0,05": 2,
+   "CP99_ust(cmax)": 0.045534014168155855,
+   "CP99_ust(cmax+1)": 0.05380344522855971,
+   "p_adj(cmax)=(c+1)/(R+1)": 0.014925373134328358,
+   "p_adj(cmax+1)": 0.01990049751243781,
+   "en_buyuk_c_p_adj<0,05": 9,
+   "min_p_adj=1/(R+1)": 0.004975124378109453
+  }
+ ],
+ "wy_yeniden_uretim": {
+  "n": 430,
+  "p_adj_izgarada": true,
+  "ci_hi_max_mutlak_fark": 1.1102230246251565e-16,
+  "ci_lo_max_mutlak_fark": 1.1102230246251565e-16,
+  "c_8_hipotez": {
+   "GALIBIYET|RAKIP_SON5_IY_ONDE_EN_AZ_3": 22,
+   "GALIBIYET|SON5_IY_ONDE_EN_AZ_3 & FORM_BEKLENTI_USTU": 20,
+   "MAGLUBIYET|SON5_GALIBIYET_EN_AZ_4": 1,
+   "MAGLUBIYET|SON5_IY_ONDE_EN_AZ_3 & SON5_GALIBIYET_EN_AZ_4": 2,
+   "MAGLUBIYET|SON5_IY_ONDE_EN_AZ_3 & FORM_BEKLENTI_USTU": 1,
+   "MAGLUBIYET|SON5_GALIBIYET_EN_AZ_4 & FORM_BEKLENTI_USTU": 15,
+   "MAGLUBIYET|SON5_GALIBIYET_EN_AZ_4 & EV_SAHIBI": 1,
+   "MAGLUBIYET|SON5_GALIBIYET_EN_AZ_4 & FAVORI": 21
+  }
+ },
+ "plasebo": {
+  "k/n": "0/20",
+  "tek_yonlu_kesin_%95_ust": 0.13910834066826516,
+  "iki_yonlu_CP_%95_ust": 0.1684334709830853,
+  "uc_kurali_3/n": 0.15,
+  "P(0/20 | p=0,05)": 0.35848592240854227,
+  "P(<=1/20 | p=0,05) (gecme olasiligi, kalibre surec)": 0.7358395249438502,
+  "P(gecme | p=0,10)": 0.3917469981251679,
+  "P(gecme | p=0,15)": 0.17555787608868256,
+  "P(gecme | p=0,20)": 0.0691752902764109,
+  "n_etkin_duyarlilik_tek_yonlu_ust": {
+   "20": 0.13910834066826516,
+   "10": 0.2588655508930523,
+   "5": 0.4507197283469412,
+   "2": 0.7763932022500211,
+   "1": 0.95
+  },
+  "min_p_adj_tohumlar": [
+   0.7611940298507462,
+   0.6616915422885572,
+   0.6965174129353234,
+   0.5572139303482587,
+   0.7611940298507462,
+   0.746268656716418,
+   0.6019900497512438,
+   0.7164179104477612,
+   0.4626865671641791,
+   0.4975124378109453,
+   0.39303482587064675,
+   0.7711442786069652,
+   0.8656716417910447,
+   0.8905472636815921,
+   0.42786069651741293,
+   0.44776119402985076,
+   0.5920398009950248,
+   0.32338308457711445,
+   0.18407960199004975,
+   0.1691542288557214
+  ],
+  "min_p_adj_en_kucuk": 0.1691542288557214,
+  "c_en_kucuk": 33,
+  "min_p_adj_ortalama": 0.5763681592039801,
+  "min_p_adj_ortanca": 0.5970149253731343,
+  "P(20 tohumun hepsinde p_adj>=gozlenen en kucuk | bagimsiz, ayrik-uniform)": 0.027686272309767865,
+  "n_supported_tohum_araligi": [
+   422,
+   428
+  ],
+  "n_discoveries_strict_toplam": 0
+ },
+ "ic_tutarlilik": {
+  "z=T/sqrt(V)_max_fark": 8.881784197001252e-16,
+  "OE=O/E_adj_max_fark": 1.1102230246251565e-16,
+  "OE_aralik=OE±1,96·sqrt(V)/E_adj_max_fark": 2.220446049250313e-16,
+  "parametre_holm_max_fark": 0.0,
+  "parametre_p_tek_max_fark": 0.0,
+  "test_holm_max_fark": 0.0,
+  "test_p_tek_max_fark": 0.0,
+  "dLL=ll_gosterge-ll_sabit_max_fark": 1.4821043697876846e-16,
+  "dLL_p_tek=Phi(d/se)_max_fark": 0.0
+ },
+ "f1_sayilar": {
+  "hipotez_ham": 800,
+  "hipotez_tekil": 780,
+  "ayna_kopyasi_sayisi": 20,
+  "desteklenen_tekil": 430,
+  "wy_anlamli": 8,
+  "statu_sayilari": {
+   "EXPLORATORY": 4,
+   "INSUFFICIENT_EVIDENCE": 772,
+   "NO_ADDED_VALUE": 4
+  },
+  "referans_ozeti": {
+   "null_max_abs_z_medyan": 3.1383315429414615
+  }
+ },
+ "iy_hedefleri_max_abs_z_desteklenen": {
+  "IY_GERIDE_MS_GALIP": 2.626054886496774,
+  "IY_ONDE_MS_MAGLUP": 2.346770098324757
+ },
+ "iy_hedefleri_max_abs_z_tum_tekil": {
+  "IY_GERIDE_MS_GALIP": 7.157636034368175,
+  "IY_ONDE_MS_MAGLUP": 6.966186827858823
+ }
+}

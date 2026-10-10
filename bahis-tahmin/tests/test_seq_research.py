@@ -155,7 +155,11 @@ def test_changed_definition_after_test_opened_is_not_clean():
     same = {"on_kayitla_uyum": {"sozlesme": True, "parametre": True, "esleme": True},
             "parametre_ozeti": T["parametre_ozeti"], "uygulama_kararlari_sha256": T["uygulama_kararlari_sha256"],
             "kod_sha256": T["kod_sha256"]}
-    assert RS.clean_test_status(same, [])["temiz"]  # resmi çalıştırmanın birebir tekrarı
+    assert RS.clean_test_status(same, [])["temiz"]  # resmi çalıştırmanın kendi tanımları (zaman alanı yok)
+    later = RS.clean_test_status({**same, "zaman_utc": "2026-10-10T12:00:00+00:00", "veri_etiketi": "matches.pkl"}, [])
+    assert not later["temiz"] and "yeniden üretim" in later["nedenler"][0]  # aynı kodla sonradan tekrar: temiz değil
+    synth = {**same, "zaman_utc": "2026-10-10T12:00:00+00:00", "veri_etiketi": "SENTETIK-TEST"}
+    assert RS.clean_test_status(synth, [])["temiz"]  # sentetik veri gerçek test dönemini açmaz
     man = {**same, "kod_sha256": "c2"}
     st = RS.clean_test_status(man, [])  # deney geçmişi görülmese de (ör. yerel uygulama) sabit açılış kaydı yakalar
     assert not st["temiz"] and "kod_sha256" in st["nedenler"][0]

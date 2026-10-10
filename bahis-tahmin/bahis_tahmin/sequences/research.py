@@ -61,7 +61,8 @@ PREREGISTERED = {
 }
 
 # Test döneminin açıldığı resmi çalıştırma (docs/DIZI_ARASTIRMA_SONUCLARI.md). Bundan sonra farklı kod, karar veya
-# parametreyle yapılan her çalıştırma, hangi ortamda olursa olsun "temiz test" sayılmaz.
+# parametreyle yapılan her çalıştırma, hangi ortamda olursa olsun "temiz test" sayılmaz; aynı tanımlarla sonradan
+# başlayan gerçek veri çalıştırmaları da yeniden üretimdir (clean_test_status).
 TEST_OPENED = {
     "zaman_utc": "2026-10-10T10:36:06+00:00",
     "git": "398b60b85f65c2d7000341d3aa2f9a40558d3456",
@@ -174,7 +175,8 @@ def _repo_root() -> Path:
 
 def contract_sha256() -> str | None:
     p = _repo_root() / "docs" / "DIZI_ARASTIRMA_SOZLESMESI.md"
-    return hashlib.sha256(p.read_bytes()).hexdigest() if p.exists() else None
+    # Satır sonu normalize edilir (Windows CRLF checkout'u ön-kayıt uyumunu bozmasın; LF dosyada özet aynıdır)
+    return hashlib.sha256(p.read_bytes().replace(b"\r\n", b"\n")).hexdigest() if p.exists() else None
 
 
 def git_state() -> dict:
@@ -213,9 +215,18 @@ def clean_test_status(manifest: dict, experiments: list[dict]) -> dict:
     """Test dönemi "temiz" mi? (sözleşme: test açıldıktan sonra değiştirilen tanım temiz test sayılmaz)
 
     Temiz değil: sözleşme/parametre/eşleme ön-kayıttan farklıysa veya test dönemi daha önce (F1 kaydı) farklı
-    parametre, uygulama kararı ya da ``sequences`` kodu özetiyle açılmışsa.
+    parametre, uygulama kararı ya da ``sequences`` kodu özetiyle açılmışsa. Ayrıca test dönemi açıldıktan
+    (``TEST_OPENED``) SONRA başlayan her gerçek veri çalıştırması, kod ve parametreler aynı olsa bile yeniden üretimdir:
+    test sonuçları görülmüştür (S2-KABUL-01). "Temiz" yalnızca tanımların değişmediğini gösterir; veri veya S0
+    değişikliğini ve görülmüş sonuçları görülmemiş yapmaz.
     """
     reasons = []
+    started = manifest.get("zaman_utc")
+    synthetic = str(manifest.get("veri_etiketi", "")).upper().startswith("SENTETIK")
+    if started and not synthetic and dt.datetime.fromisoformat(started) > dt.datetime.fromisoformat(
+            TEST_OPENED["zaman_utc"]):
+        reasons.append(f"test dönemi {TEST_OPENED['zaman_utc']} tarihinde açıldı ve sonuçları görüldü; bu çalıştırma "
+                       "(sonra başladı) yeniden üretimdir, temiz ilk test değildir")
     for k, ok in manifest.get("on_kayitla_uyum", {}).items():
         if not ok:
             reasons.append(f"{k} ön-kayıttan farklı")

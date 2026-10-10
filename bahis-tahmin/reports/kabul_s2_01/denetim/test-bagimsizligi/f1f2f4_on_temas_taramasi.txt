@@ -1,0 +1,11 @@
+07:45:21 | critic |  | ['evaluate('] | 
+08:21:09 | orkestrator |  | ['calibration_gate', 'evaluate(', 'falsification(', 'fit_hazard(', 'mode_b_card', 'oos_compare'] | SIM/SAHTE
+08:34:01 | impl:patterns | Benchmark evaluate and null on real data with fake S0 | ['evaluate('] | SIM/SAHTE
+08:35:11 | impl:hazard |  | ['fit_hazard(', 'oos_compare', 'run_hazard_family'] | SIM/SAHTE
+08:40:14 | impl:patterns | Smoke test all functions on real table with fake S0 | ['calibration_gate', 'evaluate(', 'falsification(', 'mode_b_card', 'q2_evaluate'] | SIM/SAHTE
+08:43:26 | impl:patterns |  | ['calibration_gate', 'evaluate(', 'falsification(', 'mode_b_card', 'q2_evaluate', 'run_placebo'] | SIM/SAHTE
+08:59:08 | impl:anomaly |  | ['evaluate('] | 
+09:25:54 | orkestrator |  | ['run_dizi', 'run_research'] | 
+09:32:36 | review:hazard | Time family run on real structure with simulated outcomes | ['run_hazard_family'] | SIM/SAHTE
+09:34:04 | review:anomaly |  | ['evaluate('] | 
+09:36:19 | orkestrator | Check whether pattern/hazard agents computed real outcome stats | ['calibration_gate', 'oos_compare', 'q2_evaluate', 'select_candidates', 'westfall'] | 

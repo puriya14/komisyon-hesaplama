@@ -1,0 +1,27 @@
+{
+ "calistirma1": {
+  "sure_sn": 26.8,
+  "zaman_utc": "2026-10-10T12:51:33+00:00",
+  "deneyler_satir": 8,
+  "dosyalar": [
+   "anomaliler.json",
+   "deneyler.jsonl",
+   "f1_hipotezler.csv",
+   "manifest.json",
+   "s0_kalibre.pkl",
+   "son_sonuclar.json",
+   "sonuclar_tam.json"
+  ]
+ },
+ "calistirma2_kesildi": {
+  "deneyler_satir": 9,
+  "son_eklenen_asamalar": [
+   "dizi-arastirma F7"
+  ],
+  "degisen_dosyalar": [
+   "deneyler.jsonl"
+  ],
+  "son_sonuclar_manifest_zamani": "2026-10-10T12:51:33+00:00",
+  "son_sonuclar_calistirma1_mi": true
+ }
+}

@@ -1,0 +1,113 @@
+{
+ "N1": {
+  "dosya": "/tmp/claude-0/-home-user-komisyon-hesaplama/bd37f391-ef82-5701-bf64-cae5433e5dc0/scratchpad/kabul_s2_01/denetim/akis-defter-fikstur-windows/indirilen_openfootball/nl.1.json",
+  "dosya_adi_alani": "Netherlands Eredivisie 2026/27",
+  "toplam_mac": 306,
+  "skor_alani_turleri": {
+   "NoneType": 243,
+   "dict": 62,
+   "list": 1
+  },
+  "proje_ayristirici_oynanmamis": 243,
+  "proje_ayristirici_tarih_araligi": [
+   "2026-10-09",
+   "2027-05-23"
+  ],
+  "bugunden_sonra_oynanmamis": 238,
+  "veri_son_mac_bu_lig": "2026-08-30",
+  "pencere_10_ve_60_gun": {
+   "10_gun": {
+    "fikstur": 17,
+    "eslesmeyen": 2,
+    "saatsiz": 0,
+    "ilk_tarih": "2026-10-10",
+    "son_tarih": "2026-10-18"
+   },
+   "60_gun": {
+    "fikstur": 71,
+    "eslesmeyen": 8,
+    "saatsiz": 0,
+    "ilk_tarih": "2026-10-10",
+    "son_tarih": "2026-12-06"
+   }
+  },
+  "kesimden_sonra_bugune_kadar_mac": 35,
+  "kesimden_sonra_skoru_dolu_mac": 30,
+  "kesimden_sonra_skorsuz_mac": 5
+ },
+ "E0": {
+  "dosya": "/tmp/claude-0/-home-user-komisyon-hesaplama/bd37f391-ef82-5701-bf64-cae5433e5dc0/scratchpad/kabul_s2_01/denetim/akis-defter-fikstur-windows/indirilen_openfootball/en.1.json",
+  "dosya_adi_alani": "English Premier League 2026/27",
+  "toplam_mac": 380,
+  "skor_alani_turleri": {
+   "NoneType": 330,
+   "dict": 45,
+   "list": 5
+  },
+  "proje_ayristirici_oynanmamis": 330,
+  "proje_ayristirici_tarih_araligi": [
+   "2026-10-10",
+   "2027-05-30"
+  ],
+  "bugunden_sonra_oynanmamis": 324,
+  "veri_son_mac_bu_lig": "2026-08-31",
+  "pencere_10_ve_60_gun": {
+   "10_gun": {
+    "fikstur": 20,
+    "eslesmeyen": 0,
+    "saatsiz": 0,
+    "ilk_tarih": "2026-10-10",
+    "son_tarih": "2026-10-19"
+   },
+   "60_gun": {
+    "fikstur": 90,
+    "eslesmeyen": 0,
+    "saatsiz": 0,
+    "ilk_tarih": "2026-10-10",
+    "son_tarih": "2026-12-05"
+   }
+  },
+  "kesimden_sonra_bugune_kadar_mac": 36,
+  "kesimden_sonra_skoru_dolu_mac": 30,
+  "kesimden_sonra_skorsuz_mac": 6
+ }
+}
+lig          openfootball_adi eslesen_veri_adi           yontem  veride_son_2_sezonda
+ N1              ADO Den Haag         Den Haag  jeton/benzerlik                  True
+ N1                  AFC Ajax             Ajax        normalize                  True
+ N1                        AZ       AZ Alkmaar  jeton/benzerlik                  True
+ N1              FC Groningen        Groningen        normalize                  True
+ N1             FC Twente '65           Twente  jeton/benzerlik                  True
+ N1                FC Utrecht          Utrecht        normalize                  True
+ N1       Feyenoord Rotterdam        Feyenoord  jeton/benzerlik                  True
+ N1           Fortuna Sittard      For Sittard  jeton/benzerlik                  True
+ N1           Go Ahead Eagles  Go Ahead Eagles          birebir                  True
+ N1                       NEC              NaN        ESLESMEDI                 False
+ N1                PEC Zwolle           Zwolle  jeton/benzerlik                  True
+ N1                       PSV    PSV Eindhoven takma_ad_tablosu                  True
+ N1             SBV Excelsior        Excelsior  jeton/benzerlik                  True
+ N1     SC Cambuur-Leeuwarden          Cambuur  jeton/benzerlik                  True
+ N1             SC Heerenveen       Heerenveen        normalize                  True
+ N1          Sparta Rotterdam Sparta Rotterdam          birebir                  True
+ N1              Telstar 1963          Telstar  jeton/benzerlik                  True
+ N1         Willem II Tilburg        Willem II  jeton/benzerlik                  True
+ E0           AFC Bournemouth      Bournemouth        normalize                  True
+ E0                Arsenal FC          Arsenal        normalize                  True
+ E0            Aston Villa FC      Aston Villa        normalize                  True
+ E0              Brentford FC        Brentford        normalize                  True
+ E0 Brighton & Hove Albion FC         Brighton takma_ad_tablosu                  True
+ E0                Chelsea FC          Chelsea        normalize                  True
+ E0          Coventry City FC         Coventry  jeton/benzerlik                  True
+ E0         Crystal Palace FC   Crystal Palace        normalize                  True
+ E0                Everton FC          Everton        normalize                  True
+ E0                 Fulham FC           Fulham        normalize                  True
+ E0             Hull City AFC             Hull  jeton/benzerlik                  True
+ E0           Ipswich Town FC          Ipswich takma_ad_tablosu                  True
+ E0           Leeds United FC            Leeds takma_ad_tablosu                  True
+ E0              Liverpool FC        Liverpool        normalize                  True
+ E0        Manchester City FC         Man City takma_ad_tablosu                  True
+ E0      Manchester United FC       Man United takma_ad_tablosu                  True
+ E0       Newcastle United FC        Newcastle takma_ad_tablosu                  True
+ E0      Nottingham Forest FC    Nott'm Forest takma_ad_tablosu                  True
+ E0            Sunderland AFC       Sunderland        normalize                  True
+ E0      Tottenham Hotspur FC        Tottenham takma_ad_tablosu                  True

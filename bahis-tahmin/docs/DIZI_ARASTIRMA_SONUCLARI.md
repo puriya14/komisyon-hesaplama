@@ -1,5 +1,11 @@
 # Dizi araştırması — sonuçlar (ilk resmi çalıştırma)
 
+> **Düzeltme notu (S2-KABUL-01, 10.10.2026).** Bu belgenin gövdesi sürüm 1.0 (`01b7e9f`) olarak değiştirilmeden
+> bırakıldı. Sonradan yapılan kanıt denetiminde bazı ifadeler daraltıldı veya düzeltildi (ör. ΔLL özeti, piyasa
+> kontrolü yorumu, oranların "kapanış" niteliği, anomali sayılarının havuzları, PSV veri boşlukları, S0p tanım
+> değişikliğinin zamanı, geri alma önerisi). Okumadan önce
+> [`DIZI_ARASTIRMA_DUZELTMELER.md`](DIZI_ARASTIRMA_DUZELTMELER.md) kaydına bakın.
+
 Sözleşme `dizi-sozlesme-v2` · çalıştırma 10.10.2026 10:08–10:45 UTC (37,5 dk, 3 işçi) · kod `398b60b` (temiz çalışma
 ağacı) · ayrıntılı çıktı: [`reports/dizi_sonuclar.json`](../reports/dizi_sonuclar.json), başarısızlar dahil bütün
 hipotezler: [`reports/dizi_f1_hipotezler.csv`](../reports/dizi_f1_hipotezler.csv), aile kayıtları:

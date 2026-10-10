@@ -1,0 +1,21 @@
+# 01b7e9f: defter oran yazma/okuma yolları (testler hariç)
+## add_odds( çağrıları
+bahis_tahmin/cli.py:288:    n = led.add_odds(quotes)
+bahis_tahmin/ui/pages/goals.py:398:            self.ctl.ledger.add_odds(quotes)
+bahis_tahmin/goals/ledger.py:182:    def add_odds(self, quotes: list[OddsQuote]) -> int:
+## OddsQuote( kurucu çağrıları
+bahis_tahmin/ui/pages/goals.py:395:                quotes.append(OddsQuote(p.event_id, key, m.period, m.line, m.selection, "manuel",
+bahis_tahmin/goals/ledger.py:199:            q = OddsQuote(r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7],
+bahis_tahmin/goals/value.py:163:            q = OddsQuote(
+## record_prediction( çağrıları
+bahis_tahmin/goals/service.py:48:        ids.append(ledger.record_prediction({
+bahis_tahmin/goals/ledger.py:103:    def record_prediction(self, record: dict) -> str:
+bahis_tahmin/sequences/research_ledger.py:195:        return self._ledger.record_prediction(record)
+## latest_quote( çağrıları
+bahis_tahmin/goals/service.py:28:        q = ledger.latest_quote(pred.event_id, key, decision_time) if ledger else None
+bahis_tahmin/goals/service.py:29:        opp = ledger.latest_quote(pred.event_id, MARKETS[key].complement, decision_time) if ledger else None
+bahis_tahmin/goals/ledger.py:193:    def latest_quote(self, event: str, market_key: str, before: dt.datetime) -> OddsQuote | None:
+## sequences paketinde ledger/odds tablosu erişimi
+(yok)
+## sqlite INSERT INTO odds
+bahis_tahmin/goals/ledger.py:187:                "INSERT OR IGNORE INTO odds VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",

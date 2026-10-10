@@ -1,0 +1,9 @@
+kayıt tarih aralığı: 2002-09-14 2026-05-24
+kayıt sezonları (isinma): ['2002/03', '2003/04', '2004/05', '2005/06']
+2000/01+2001/02 küme: 36 maç: 12317 S kayıtlı küme: 0
+toplam maç: 184378  manifest has_s0 satır/2 = 171928  fark = 12450
+≤100 İY/MS-bilinen maçlı küme: 30 neden: {'dönem yok (period None: sezon yılı > 2025 veya < 2000)': 22, 'lig-sezon tam değil (hiçbir satır uygun değil)': 8} S kayıtlı: 0
+period None küme sezonları: {'2026/27': 22}
+tam olmayan küme sayısı: 59 sezonlar (ilk 10): {'2002/03': 17, '2004/05': 13, '2003/04': 13, '2024/25': 6, '2007/08': 4, '2001/02': 3, '2000/01': 1, '2020/21': 1, '2006/07': 1}
+kırmızı kart verisi eksik 1600 kayıt içinde yıl aralığı ve kırmızı kart çalışan kayıtların en erken yılı:
+  NA yıl: 2002 - 2017 ; çalışan en erken yıl: 2002 ; 2018+ NA: 0

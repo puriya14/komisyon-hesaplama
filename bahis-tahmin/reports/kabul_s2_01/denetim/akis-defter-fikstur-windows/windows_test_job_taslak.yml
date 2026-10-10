@@ -1,0 +1,82 @@
+# TASLAK — depoya eklenmedi. .github/workflows/bahis-tahmin.yml içindeki `jobs:` altına `windows-test` işi olarak
+# eklenebilir (tetikleyiciler mevcut dosyadakiyle aynı kalır: push / pull_request / workflow_dispatch).
+# Yalnızca test: PyInstaller YOK, artifact/upload YOK, sürüm/paket YOK. İzin: contents: read.
+#
+# Amaç (denetim bulgularına göre):
+#  1) Testler Windows'ta hiç koşmadı (CI kanıtı: windows-build işi "skipped").
+#  2) Kod ve sanal ortam Türkçe karakter + boşluk içeren bir klasörden çalışıyor mu (baslat.bat'ın yaptığı gibi
+#     klasör içinde .venv kurulur).
+#  3) Uygulama klasörü (BAHIS_TAHMIN_HOME) Türkçe karakter + boşluk içerirken CLI yazma/okuma.
+#  4) Yönlendirilmiş stdout (Windows ANSI kod sayfası, runner'da genellikle cp1252) ile CLI çıktısı: denetimde
+#     cp1252 benzetiminde `gol-sanal` UnicodeEncodeError ile düştü (cikti/cli_kodlama_dinamik.txt). Bu adım
+#     mevcut temel kodda KIRMIZI olması beklenir; düzeltme yapılana kadar bilinçli olarak `continue-on-error`
+#     KULLANILMADI.
+#  5) Satır sonu: Windows checkout'unda core.autocrlf=true ise docs/DIZI_ARASTIRMA_SOZLESMESI.md CRLF olur ve
+#     research.contract_sha256() ön-kayıtlı özetle eşleşmez (LF 4599ddb2…, CRLF 7373470b…). Bu adım durumu raporlar.
+#  6) tzdata / Europe/Istanbul: timeutil._TZ_OK True olmalı (aksi halde Londra saati UTC sayılır).
+
+  windows-test:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: bahis-tahmin/requirements*.txt
+
+      - name: Satır sonu ve sözleşme özeti (bilgi)
+        shell: pwsh
+        working-directory: bahis-tahmin
+        run: |
+          git config --get core.autocrlf
+          $h = (Get-FileHash docs/DIZI_ARASTIRMA_SOZLESMESI.md -Algorithm SHA256).Hash.ToLower()
+          Write-Host "sozlesme sha256 = $h (on-kayit: 4599ddb2eb2dffa90ae608ad1557e0da21c0158553bc9e3f087fb2598ffe40bf)"
+
+      - name: Kodu Türkçe karakterli ve boşluklu klasöre kopyala
+        shell: pwsh
+        run: |
+          $dst = Join-Path $env:RUNNER_TEMP "Çalışma Klasörü ğüşİ\bahis tahmin"
+          New-Item -ItemType Directory -Force -Path $dst | Out-Null
+          Copy-Item -Recurse -Force bahis-tahmin\* $dst
+          "KOD_DIZINI=$dst" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "BAHIS_TAHMIN_HOME=$(Join-Path $env:RUNNER_TEMP 'Uygulama Verisi Öğrenci\BahisTahmin')" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Sanal ortam (baslat.bat ile aynı yöntem) ve bağımlılıklar
+        shell: cmd
+        run: |
+          cd /d "%KOD_DIZINI%"
+          python -m venv .venv || exit /b 1
+          .venv\Scripts\python -m pip install -r requirements.txt pytest || exit /b 1
+          .venv\Scripts\python -c "import bahis_tahmin.timeutil as t, sys; print('tz_ok', t._TZ_OK); sys.exit(0 if t._TZ_OK else 1)"
+
+      - name: Testler (ağ testleri hariç; önbellek dosyası yazılmaz)
+        shell: cmd
+        run: |
+          cd /d "%KOD_DIZINI%"
+          .venv\Scripts\python -m pytest -q -p no:cacheprovider
+
+      - name: CLI duman testi — yönlendirilmiş stdout, varsayılan ANSI kod sayfası (PYTHONUTF8 YOK)
+        shell: cmd
+        run: |
+          cd /d "%KOD_DIZINI%"
+          set PYTHONUTF8=
+          set PYTHONIOENCODING=
+          .venv\Scripts\python -c "import locale,sys; print(locale.getpreferredencoding(False), sys.stdout.encoding)"
+          .venv\Scripts\python -m bahis_tahmin gol-sanal > cli_gol_sanal.txt 2>&1
+          if errorlevel 1 (type cli_gol_sanal.txt & exit /b 1)
+          .venv\Scripts\python -m bahis_tahmin self-test > cli_self_test.txt 2>&1
+          if errorlevel 1 (type cli_self_test.txt & exit /b 1)
+          type cli_self_test.txt
+
+      - name: Uygulama klasörü Türkçe/boşluklu yolda oluştu mu
+        shell: pwsh
+        run: |
+          if (-not (Test-Path $env:BAHIS_TAHMIN_HOME)) { throw "BAHIS_TAHMIN_HOME oluşmadı: $env:BAHIS_TAHMIN_HOME" }
+          Get-ChildItem -Recurse $env:BAHIS_TAHMIN_HOME | Select-Object FullName, Length

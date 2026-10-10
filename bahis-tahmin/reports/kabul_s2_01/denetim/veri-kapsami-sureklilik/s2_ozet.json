@@ -1,0 +1,56 @@
+{
+ "lig_sezon": 567,
+ "tam_degil": 59,
+ "durum_sayilari": {
+  "TAM": 472,
+  "KISMI": 59,
+  "DEVAM_EDEN_TAM": 22,
+  "KISALTILMIS_TAM": 14
+ },
+ "hukmen_olabilir_toplam": 78,
+ "tm_attrs_n_awarded": 78,
+ "hukmen_olabilir_duyarli_toplam": 688,
+ "eksik_iy_toplam": 102,
+ "eksik_iy_tek_taraf": 0,
+ "celiskili_toplam": 0,
+ "gecerli_iy_toplam": 184276,
+ "frame_issues_dolu_toplam": 0,
+ "tekil_mac_toplam": 184378,
+ "ust_tur_mac_toplam": 1051,
+ "etiket_tarih_sezon_uyumsuz_satir": 554,
+ "tam_sezon_toplam_2000_2025": 486,
+ "olasi_lig_sezon_2000_2025": 572,
+ "mevcut_lig_sezon_2000_2025": 545,
+ "2026_27": {
+  "DEVAM_EDEN_TAM": 22
+ },
+ "tum_ligler_tam_sezon_dagilimi": {
+  "B1": 24,
+  "D1": 24,
+  "D2": 23,
+  "E0": 24,
+  "E1": 24,
+  "E2": 23,
+  "E3": 22,
+  "EC": 13,
+  "F1": 24,
+  "F2": 22,
+  "G1": 17,
+  "I1": 24,
+  "I2": 22,
+  "N1": 23,
+  "P1": 22,
+  "SC0": 22,
+  "SC1": 22,
+  "SC2": 23,
+  "SC3": 21,
+  "SP1": 24,
+  "SP2": 21,
+  "T1": 22
+ },
+ "intra_season_splits": {
+  "Almanya|M'gladbach": "MGladbach",
+  "Almanya|Preußen Münster": "Preussen Munster",
+  "İngiltere|Nott'm Forest": "Nottm Forest"
+ }
+}

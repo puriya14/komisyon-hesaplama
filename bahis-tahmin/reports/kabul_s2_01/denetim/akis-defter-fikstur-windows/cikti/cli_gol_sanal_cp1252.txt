@@ -1,0 +1,16 @@
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    import sys,io; sys.stdout=io.TextIOWrapper(sys.stdout.buffer, encoding=sys.argv[2], errors='strict'); sys.path.insert(0, sys.argv[1]); from bahis_tahmin.cli import main; rc=main(['gol-sanal']); sys.stdout.flush(); sys.exit(rc)
+                                                                                                                                                                                 ~~~~^^^^^^^^^^^^^^^
+  File "/tmp/claude-0/-home-user-komisyon-hesaplama/bd37f391-ef82-5701-bf64-cae5433e5dc0/scratchpad/kabul_s2_01/denetim/akis-defter-fikstur-windows/kod/bahis-tahmin/bahis_tahmin/cli.py", line 495, in main
+    return a.fn(a)
+           ~~~~^^^
+  File "/tmp/claude-0/-home-user-komisyon-hesaplama/bd37f391-ef82-5701-bf64-cae5433e5dc0/scratchpad/kabul_s2_01/denetim/akis-defter-fikstur-windows/kod/bahis-tahmin/bahis_tahmin/cli.py", line 263, in cmd_goal_ledger
+    print(f"{msg}. {s['kayit']} kayıt · {s['sanal_bahis']} sanal bahis · {s['sonuclanan']} sonuçlandı · "
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+          f"net {s['net']:+.2f} birim · yield {y}")
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.13/encodings/cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u011f' in position 9: character maps to <undefined>

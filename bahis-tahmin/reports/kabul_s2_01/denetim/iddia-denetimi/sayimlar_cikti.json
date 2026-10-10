@@ -1,0 +1,236 @@
+{
+ "veri_sha256": "aff287d61bd4374a8956921ddc8e5e8e7e46b2869b1560dfc6e8053745480e33",
+ "mac_sayisi": 184378,
+ "lig_sayisi": 22,
+ "ligler": [
+  "B1",
+  "D1",
+  "D2",
+  "E0",
+  "E1",
+  "E2",
+  "E3",
+  "EC",
+  "F1",
+  "F2",
+  "G1",
+  "I1",
+  "I2",
+  "N1",
+  "P1",
+  "SC0",
+  "SC1",
+  "SC2",
+  "SC3",
+  "SP1",
+  "SP2",
+  "T1"
+ ],
+ "tarih_min": "2000-07-28",
+ "tarih_max": "2026-09-03",
+ "kaynak": {
+  "github-yedek": 184378
+ },
+ "oran_1x2_kapsam_payi": 0.9835229799650718,
+ "oran_1x2_eksik_satir": 3038,
+ "b365_esit_o": true,
+ "ps_dolu_satir": 0,
+ "oc_dolu_satir": 0,
+ "iy_skor_kapsam_payi": 0.9994467886624218,
+ "sezon_yili_kapsam": {
+  "2000": {
+   "red": 0.3844,
+   "time": 0.0,
+   "odds": 0.8808
+  },
+  "2001": {
+   "red": 0.5075,
+   "time": 0.0,
+   "odds": 0.7405
+  },
+  "2002": {
+   "red": 0.4061,
+   "time": 0.0,
+   "odds": 0.982
+  },
+  "2003": {
+   "red": 0.4202,
+   "time": 0.0,
+   "odds": 0.9651
+  },
+  "2004": {
+   "red": 0.3504,
+   "time": 0.0,
+   "odds": 0.9856
+  },
+  "2005": {
+   "red": 0.5066,
+   "time": 0.0,
+   "odds": 0.9971
+  },
+  "2006": {
+   "red": 0.5681,
+   "time": 0.0,
+   "odds": 0.9988
+  },
+  "2007": {
+   "red": 0.5192,
+   "time": 0.0,
+   "odds": 0.999
+  },
+  "2008": {
+   "red": 0.5112,
+   "time": 0.0,
+   "odds": 0.9989
+  },
+  "2009": {
+   "red": 0.5411,
+   "time": 0.0,
+   "odds": 0.9965
+  },
+  "2010": {
+   "red": 0.5159,
+   "time": 0.0,
+   "odds": 0.9986
+  },
+  "2011": {
+   "red": 0.5866,
+   "time": 0.0,
+   "odds": 0.9942
+  },
+  "2012": {
+   "red": 0.5502,
+   "time": 0.0,
+   "odds": 0.999
+  },
+  "2013": {
+   "red": 0.5457,
+   "time": 0.0,
+   "odds": 0.9982
+  },
+  "2014": {
+   "red": 0.5412,
+   "time": 0.0,
+   "odds": 0.9959
+  },
+  "2015": {
+   "red": 0.5457,
+   "time": 0.0,
+   "odds": 0.9996
+  },
+  "2016": {
+   "red": 0.5456,
+   "time": 0.0,
+   "odds": 0.9996
+  },
+  "2017": {
+   "red": 0.9997,
+   "time": 0.0,
+   "odds": 0.9982
+  },
+  "2018": {
+   "red": 0.9969,
+   "time": 0.0,
+   "odds": 0.9957
+  },
+  "2019": {
+   "red": 1.0,
+   "time": 1.0,
+   "odds": 0.9992
+  },
+  "2020": {
+   "red": 0.9998,
+   "time": 1.0,
+   "odds": 0.9988
+  },
+  "2021": {
+   "red": 0.9996,
+   "time": 1.0,
+   "odds": 0.9999
+  },
+  "2022": {
+   "red": 0.9959,
+   "time": 1.0,
+   "odds": 0.996
+  },
+  "2023": {
+   "red": 0.9999,
+   "time": 1.0,
+   "odds": 0.9997
+  },
+  "2024": {
+   "red": 0.9999,
+   "time": 1.0,
+   "odds": 1.0
+  },
+  "2025": {
+   "red": 1.0,
+   "time": 1.0,
+   "odds": 0.9984
+  },
+  "2026": {
+   "red": 1.0,
+   "time": 1.0,
+   "odds": 1.0
+  }
+ },
+ "lig_sezon_sayisi": 567,
+ "veri_boslugu_lig_sezon": 59,
+ "hukmen_olabilir": 78,
+ "psv": {
+  "satir": 850,
+  "ligler": {
+   "N1": 850
+  },
+  "ilk": "2000-08-19",
+  "son": "2026-08-30",
+  "iy_skor_eksik": 0,
+  "ham_2_1": {
+   "n": 25,
+   "ev_sahibi": 19,
+   "deplasman": 6,
+   "ilk": "2004-02-08",
+   "son": "2026-04-04",
+   "son_rakip": "Utrecht",
+   "son_iy": [
+    1.0,
+    2.0
+   ],
+   "son_ms": [
+    4.0,
+    3.0
+   ],
+   "acik_aralik": {
+    "son_olay_tarihi": "2026-04-04",
+    "son_mac_tarihi": "2026-08-30",
+    "acik_aralik_mac": 9,
+    "bitis_nedeni": "RIGHT_CENSORED",
+    "not": "Açık (sansürlü) aralık: olay henüz tekrarlanmadı veya gözlem bitti; 'olmayacak' anlamına gelmez."
+   }
+  },
+  "IY_GERIDE_MS_GALIP": {
+   "n": 35,
+   "medyan_aralik_mac": 18.5,
+   "aralik_sayisi": 34,
+   "acik_aralik": {
+    "son_olay_tarihi": "2026-04-04",
+    "son_mac_tarihi": "2026-08-30",
+    "acik_aralik_mac": 9,
+    "bitis_nedeni": "RIGHT_CENSORED",
+    "not": "Açık (sansürlü) aralık: olay henüz tekrarlanmadı veya gözlem bitti; 'olmayacak' anlamına gelmez."
+   }
+  },
+  "IY_ONDE_MS_MAGLUP": {
+   "n": 8,
+   "medyan_aralik_mac": 41.0,
+   "aralik_sayisi": 7,
+   "acik_aralik": {
+    "son_olay_tarihi": "2025-03-01",
+    "son_mac_tarihi": "2026-08-30",
+    "acik_aralik_mac": 48,
+    "bitis_nedeni": "RIGHT_CENSORED",
+    "not": "Açık (sansürlü) aralık: olay henüz tekrarlanmadı veya gözlem bitti; 'olmayacak' anlamına gelmez."
+   }
+  }
+ }
+}

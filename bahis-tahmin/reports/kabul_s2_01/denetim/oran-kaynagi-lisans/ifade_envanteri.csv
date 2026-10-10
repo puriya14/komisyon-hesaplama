@@ -1,0 +1,26 @@
+dosya,satir_01b7e9f,ifade,durum,gerekce_veya_duzeltme
+docs/DIZI_ARASTIRMA_SONUCLARI.md,114,Bet365 kapanış oranlarının yayımlanma zamanı doğrulanamadığı için,DUZELTILDI,"'kapanış' dayanaksız: ayna README'si OddHome/OddDraw/OddAway'i yalnızca ""Bet365's ... Odd"" ve veri setini ""pre-match odds"" olarak tanımlar; açılış/kapanış/toplama zamanı belirtilmez; football-data notes.txt erişilemedi. Önerilen: 'Bet365 1X2 oranları (ayna README'sine göre; açılış/kapanış ve yayımlanma zamanı belirtilmemiş, doğrulanamaz)'."
+docs/DIZI_ARASTIRMA_SONUCLARI.md,106,S0p / marjsız Bet365 (F6 tablo başlığı),DARALTILDI,"Bet365 etiketi yalnızca ayna README'sine dayanır; marjsız Bet365 için 'bahis yok' yapısaldır (marj > 0 olduğundan p_marjsız·oran − 1 = 1/marj − 1 ≤ −0,0101 < 0,05)."
+docs/DIZI_ARASTIRMA_SONUCLARI.md,144,Bet365 oranlarının zamanı doğrulanamaz; piyasa kontrolü ve ROI bu nedenle varsayımsaldır.,DOGRULANDI,Zaman damgası yok (ham 48 sütunda quoted_at/fetched_at yok). 'Bet365' yalnızca README dayanaklı (DARALTILDI).
+docs/DIZI_ARASTIRMA_SOZLESMESI.md,29,1X2 oranı (Bet365; yayımlanma zamanı doğrulanamaz) ... varsayımsal getiri,DARALTILDI,"Bet365 = ayna README beyanı (OddHome: ""Bet365's Home Team Win Odd""); football-data özgün sütunuyla (B365H mi B365CH mi) çapraz doğrulanamadı."
+docs/DIZI_ARASTIRMA_SOZLESMESI.md,131,S0p: kalibre S0 + Bet365 1X2 marjsız olasılıkları ... Satırların ~%2'sinde oran yoktur.,DARALTILDI,"~%2 tüm veri için doğru (3.038/184.378 = %1,65 maçta tam 1X2 yok); araştırma dönemlerinde eksik pay %0,11–%0,21, F3 uygun satırlarında %0,05–%0,17."
+docs/DIZI_ARASTIRMA_SOZLESMESI.md,266,"S0, S1/S2 ve marjsız Bet365 aynı maç kümesinde",DARALTILDI,Bet365 = README beyanı.
+docs/DIZI_ARASTIRMA_SOZLESMESI.md,267,Oran zamanı doğrulanamadığı için varsayımsal,DOGRULANDI,Zaman damgası yok.
+bahis_tahmin/sequences/frame.py,11,"mkt_win/draw/loss, mkt_points : marjsız Bet365 1X2 (oran yoksa NaN; zamanı doğrulanamaz)",DARALTILDI,Bet365 = README beyanı; zaman uyarısı mevcut.
+bahis_tahmin/sequences/hazard.py,311,MKT_COLS (marjsız Bet365 galip/mağlup logiti ...),DARALTILDI,Bet365 = README; zaman uyarısı YOK.
+bahis_tahmin/sequences/hazard.py,616,7b/5: piyasa (marjsız Bet365 1X2 logitleri),DARALTILDI,Zaman uyarısı YOK.
+bahis_tahmin/sequences/hazard.py,825,F4 notu: 5 piyasa (marjsız Bet365 1X2 logitleri) kontrolü,DARALTILDI,JSON'a aynen yazılır (reports/dizi_sonuclar.json satır 52478); zaman uyarısı YOK.
+bahis_tahmin/sequences/models.py,15,"S0p ... (takım perspektifi, marjsız Bet365)",DARALTILDI,Bet365 = README.
+bahis_tahmin/sequences/models.py,667,p0_market docstring: marjsız Bet365; zamanı doğrulanamaz,DARALTILDI,Zaman uyarısı mevcut.
+bahis_tahmin/sequences/models.py,1128,"economic_eval: Bet365 oranları, zamanı doğrulanamaz → varsayımsal",DARALTILDI,Zaman uyarısı mevcut.
+bahis_tahmin/sequences/models.py,1176,not: Bet365 1X2 oranlarının yayımlanma zamanı doğrulanamaz; sonuçlar varsayımsaldır.,DARALTILDI,"JSON'da 4 kez (52980, 53040, 53162, 53222)."
+bahis_tahmin/sequences/models.py,1209,preds['Bet365_marjsiz'],DARALTILDI,"JSON anahtarı 4 kez (52974, 53034, 53156, 53216); 0 bahis yapısal."
+reports/dizi_sonuclar.json,52478,F4 notes: marjsız Bet365 1X2 logitleri,DARALTILDI,Zaman uyarısı yok.
+girdi/onceki_rapor.md,10,"Bet365 1X2 oranları (satırların yaklaşık %99,8'inde)",DARALTILDI,"Tüm veri (184.378 maç): %98,35 (181.340). Keşif %99,79, parametre %99,79, test %99,89 (maç); F3 uygun takım-satırları %99,83–%99,95. 2000–2005 ısınma: %92,03."
+girdi/onceki_rapor.md,21,Bet365 oran zamanı doğrulanamıyor,DOGRULANDI,Zaman damgası yok; README zaman belirtmez.
+girdi/onceki_rapor.md,13,Dördünde de etki piyasa kontrolüne (S0p) girince kayboldu,DARALTILDI,"5_piyasa her 4 adayda iki dönemde de geçmedi (betimsel doğru), fakat kayıtlı statü gerekçesi 3 adayda test ΔLL, 1 adayda parametre 7b/1–4; piyasa kontrolü belirleyici değildi."
+girdi/onceki_rapor.md,17,Piyasa kontrollü modeller eşiği geçen bahis bulmadı,DARALTILDI,"S0p için ampirik (0 bahis); Bet365_marjsiz için matematiksel olarak kaçınılmaz (min marj 1,0102)."
+bahis_tahmin/models/engine.py,48,ODDS_TYPE_LABELS 'avg': 'Piyasa ortalaması',DUZELTILDI,"Ayna kaynaklı veride o_h/o_d/o_a = OddHome/OddDraw/OddAway = README'ye göre Bet365 (tek bahisçi), ortalama değil. football-data yolunda (normalize_main) o_* = Avg/BbAv olduğundan etiket yalnız o yolda doğru."
+bahis_tahmin/models/engine.py,49,ODDS_TYPE_LABELS 'max': 'En yüksek oran (varsayımsal)',DARALTILDI,Ayna verisinde 2000/01–2004/05'te ham Max yok; omax = Bet365 ile dolduruldu (24.749 satır; 24.701'i ısınma döneminde).
+bahis_tahmin/ui/pages/settings.py,72,'Piyasa ortalaması' tipik bir bahis şirketini temsil eder,DUZELTILDI,"Ayna verisinde tek bahisçi (Bet365, README)."
+bahis_tahmin/ui/pages/likely.py,61,"1X2 ve 2.5 Alt/Üst, piyasa ortalaması",DUZELTILDI,Ayna verisinde o_o25/o_u25 = Over25/Under25 = README'ye göre Bet365.

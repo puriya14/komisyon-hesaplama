@@ -1,0 +1,96 @@
+/tmp/claude-0/-home-user-komisyon-hesaplama/bd37f391-ef82-5701-bf64-cae5433e5dc0/scratchpad/kabul_s2_01/denetim/anomali-uzlastirma/b_evren_kontrol.py:28: DtypeWarning: Columns (3: time) have mixed types. Specify dtype option on import or set low_memory=False.
+  matches = pd.read_csv(CSV, parse_dates=["date"])
+{
+ "sure_sn": 6.8,
+ "veri_sha256": "aff287d61bd4374a8956921ddc8e5e8e7e46b2869b1560dfc6e8053745480e33",
+ "veri_sha256_manifestle_ayni": false,
+ "mac": 184378,
+ "tm_satir": 368756,
+ "kayit": 1600,
+ "kayit_iki_taraf_uygun": 1247,
+ "kayit_tek_taraf_uygun": 353,
+ "kayit_hic_uygun_degil": 0,
+ "period_esit": true,
+ "lig_aciklar_vs_tek_taraf": {
+  "false": {
+   "false": 1247,
+   "true": 0
+  },
+  "true": {
+   "false": 0,
+   "true": 353
+  }
+ },
+ "lig_aciklar_eq_min_since_lt8": true,
+ "tek_taraf_uygun_neden": {
+  "since<8": 353
+ },
+ "tek_taraf_S": 94,
+ "tek_taraf_M": 261,
+ "kume_sayisi": 567,
+ "kume_S_kayitli": 449,
+ "kume_M_kayitli": 431,
+ "kume_S_kayitsiz_neden": {
+  "diğer (bayraklı maç seçilmemiş veya S0 yok)": 37,
+  "lig-sezon tam değil (hiçbir satır uygun değil)": 59,
+  "dönem yok (period None: sezon yılı > 2025 veya < 2000)": 22
+ },
+ "kume_M_kayitsiz_neden": {
+  "diğer (bayraklı maç seçilmemiş veya S0 yok)": 55,
+  "lig-sezon tam değil (hiçbir satır uygun değil)": 59,
+  "dönem yok (period None: sezon yılı > 2025 veya < 2000)": 22
+ },
+ "S_kayitsiz_diger_kumeler_sezon": {
+  "2000/01": 15,
+  "2001/02": 17,
+  "2020/21": 1,
+  "2012/13": 1,
+  "2010/11": 2,
+  "2025/26": 1
+ },
+ "M_kayitsiz_diger_kumeler_sezon": {
+  "2000/01": 15,
+  "2001/02": 17,
+  "2005/06": 3,
+  "2009/10": 2,
+  "2010/11": 4,
+  "2019/20": 1,
+  "2020/21": 1,
+  "2021/22": 1,
+  "2012/13": 3,
+  "2023/24": 1,
+  "2011/12": 2,
+  "2013/14": 1,
+  "2017/18": 1,
+  "2022/23": 1,
+  "2025/26": 1,
+  "2008/09": 1
+ },
+ "S_var_M_yok_kume": 20,
+ "S_var_M_yok_kume_oran_var_le100": 0,
+ "S_var_M_yok_kume_oran_var_hepsi": true,
+ "S_var_M_yok_kural_tahmini_M": 26,
+ "M_havuz_le_oran_var": true,
+ "M_havuz_eq_oran_var_kume": 429,
+ "S_havuz_gt_secilebilir_kume": 370,
+ "S_havuz_minus_secilebilir_toplam": 2491,
+ "S_havuz_le_iyms_bilinen": true,
+ "S_havuz_eq_iyms_bilinen_kume": 447,
+ "secilebilir_mac_toplam_noS0": 165621,
+ "secilebilir_mac_period_dagilim_noS0": {
+  "isinma": 22464,
+  "kesif": 47267,
+  "parametre": 46250,
+  "test": 49640
+ },
+ "iki_taraf_uygun_mac_period_noS0": {
+  "isinma": 21151,
+  "kesif": 43927,
+  "parametre": 42972,
+  "test": 46108
+ },
+ "kk_na_kaynakta_red_NaN": 429,
+ "kume_mac_le100": 30,
+ "S_kural_eksi_kayit": 11,
+ "M_kural_eksi_kayit": 69
+}

@@ -1,0 +1,46 @@
+{
+ "HEAD_code_sha256": "36ca6d117b4b7098a963417704f982fe732b6f0f845e55c21c38726a19042f8d",
+ "TEST_OPENED": {
+  "zaman_utc": "2026-10-10T10:36:06+00:00",
+  "git": "398b60b85f65c2d7000341d3aa2f9a40558d3456",
+  "parametre_ozeti": "fc12e4915484c78e1c33c7bb4c538205d3e9a247fa656cb59fd2f6e764d814a0",
+  "uygulama_kararlari_sha256": "a85fa19e41994746fda1f1a6bdbaccc3237cac5575ce946a02f90ada0a1441d1",
+  "kod_sha256": "8ca41041f0bb274b0c7981e86b1cad26c3ee943b89582df261da4aca485aa82e"
+ },
+ "experiments_F1_kayitlari": [
+  "2026-10-10T10:36:06+00:00"
+ ],
+ "A_ayni_kod_ayni_veri": {
+  "temiz": true,
+  "nedenler": [],
+  "onceki_acilis": 1
+ },
+ "B_farkli_veri": {
+  "temiz": true,
+  "nedenler": [],
+  "onceki_acilis": 1
+ },
+ "C_HEAD_kodu": {
+  "temiz": false,
+  "nedenler": [
+   "test dönemi 2026-10-10T10:36:06+00:00 resmi çalıştırmasında (git 398b60b) açıldı; bu çalıştırmada farklı: kod_sha256",
+   "test dönemi 2026-10-10T10:36:06+00:00 tarihinde farklı tanımla açılmış (kod_sha256)"
+  ],
+  "onceki_acilis": 1
+ },
+ "D_alanlar_yok_deneyler_bos": {
+  "temiz": true,
+  "nedenler": [],
+  "onceki_acilis": 0
+ },
+ "E_farkli_S0": {
+  "temiz": true,
+  "nedenler": [],
+  "onceki_acilis": 1
+ },
+ "F_deneyler_bos": {
+  "temiz": true,
+  "nedenler": [],
+  "onceki_acilis": 0
+ }
+}

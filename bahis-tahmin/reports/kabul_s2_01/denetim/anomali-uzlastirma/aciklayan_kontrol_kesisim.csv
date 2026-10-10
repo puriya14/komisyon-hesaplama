@@ -1,0 +1,9 @@
+bayrak,aciklayan_kontrol_birlesimi,kayit,kontrol_sayisi
+S,kırmızı kart,109,1
+S,lig değişikliği sonrası ilk maçlar,83,1
+S,lig değişikliği sonrası ilk maçlar + kırmızı kart,11,2
+S,takım adı kopukluğu,6,1
+S,takım adı kopukluğu + kırmızı kart,1,2
+M,lig değişikliği sonrası ilk maçlar,260,1
+M,takım adı kopukluğu,3,1
+M,takım adı kopukluğu + lig değişikliği sonrası ilk maçlar,1,2

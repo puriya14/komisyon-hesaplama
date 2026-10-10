@@ -1,0 +1,33 @@
+{
+ "BAHIS_TAHMIN_HOME": "/tmp/claude-0/-home-user-komisyon-hesaplama/bd37f391-ef82-5701-bf64-cae5433e5dc0/scratchpad/kabul_s2_01/denetim/akis-defter-fikstur-windows/cikti/Türkçe Klasör ĞÜŞİÖÇ ı/Bahis Tahmin",
+ "app_home": "/tmp/claude-0/-home-user-komisyon-hesaplama/bd37f391-ef82-5701-bf64-cae5433e5dc0/scratchpad/kabul_s2_01/denetim/akis-defter-fikstur-windows/cikti/Türkçe Klasör ĞÜŞİÖÇ ı/Bahis Tahmin",
+ "app_home_var": true,
+ "settings_gidis_donus": true,
+ "ledger_kayit_ve_zincir": [
+  true,
+  [
+   true,
+   "Zincir doğrulandı"
+  ]
+ ],
+ "resmi_kayit_yeniden_okuma": 1,
+ "deneyler_jsonl_okuma": 1,
+ "arastirma_defteri_yolu": "/tmp/claude-0/-home-user-komisyon-hesaplama/bd37f391-ef82-5701-bf64-cae5433e5dc0/scratchpad/kabul_s2_01/denetim/akis-defter-fikstur-windows/cikti/Türkçe Klasör ĞÜŞİÖÇ ı/Bahis Tahmin/dizi_arastirma/dizi_arastirma.sqlite",
+ "artefakt_yazildi": true,
+ "gunluk": [
+  "/tmp/claude-0/-home-user-komisyon-hesaplama/bd37f391-ef82-5701-bf64-cae5433e5dc0/scratchpad/kabul_s2_01/denetim/akis-defter-fikstur-windows/cikti/Türkçe Klasör ĞÜŞİÖÇ ı/Bahis Tahmin/logs/bahis_tahmin.log",
+  true
+ ],
+ "olusan_dosyalar": [
+  "deneme_artefakt.joblib",
+  "deneme_artefakt.manifest.json",
+  "dizi_arastirma",
+  "dizi_arastirma/deneyler.jsonl",
+  "dizi_arastirma/dizi_arastirma.sqlite",
+  "dizi_arastirma/resmi_kararlar.json",
+  "gol_pazarlari.sqlite",
+  "logs",
+  "logs/bahis_tahmin.log",
+  "settings.json"
+ ]
+}

@@ -399,7 +399,7 @@ class SequencesPage(Page):
         w = QWidget()
         lay = QVBoxLayout(w)
         lay.addWidget(banner(
-            "Anomali incelemesi tahminden AYRIDIR. Anomali puanı (bit cinsinden sürpriz) suç veya şike olasılığı değildir; "
+            "Anomali incelemesi tahminden AYRIDIR. Sürpriz değeri (bit) suç veya şike olasılığı değildir; "
             "kulüp, oyuncu veya hakem etiketlenmez; takım/lig bazında sıralama yapılmaz. Kaydın olmaması 'temiz' anlamına "
             "gelmez. Bu sayfanın karar motoruna, sanal takibe veya örüntü statülerine bağlantısı yoktur.", "warn"))
         self.an_text = QLabel("")
@@ -522,8 +522,33 @@ class SequencesPage(Page):
     def _render_anomalies(self, res: dict) -> None:
         an = pd.DataFrame(res.get("anomaliler", []))
         summ = res.get("anomali_ozeti", {})
-        self.an_text.setText(f"Özet (yalnızca tür/durum/dönem sayıları): {summ}" if summ else "Anomali kaydı yok.")
+        for col in ("type", "status"):
+            if col in an:
+                an[col] = an[col].map(lambda v: _ANOMALY_VALUES.get(v, v))
+        self.an_model.headers = _ANOMALY_HEADERS
+        self.an_text.setText(_anomaly_summary_text(summ) if summ else "Anomali kaydı yok.")
         self.an_model.set_frame(an)
+
+
+# Anomali görüntüleme etiketleri (yalnızca arayüz; kayıtlı değerler ve sözleşme adları değişmez — S2-KABUL-01).
+# Kayıt türü bir seçim kuralının sonucudur; "açıklanabilir" nedensellik değil, alternatif açıklamayla uyumdur.
+_ANOMALY_VALUES = {"UNEXPLAINED_ANOMALY": "Sonuç sürprizi (lig-sezon üst sırası)",
+                   "MODEL_PIYASA_FARKI": "Model–piyasa farkı (lig-sezon üst sırası)",
+                   "açıklanabilir": "alternatif açıklamayla uyumlu"}
+_ANOMALY_HEADERS = {"date": "Tarih", "league": "Lig", "season": "Sezon", "htft": "Ham İY/MS",
+                    "s0_p_gerceklesen": "S0 olasılığı (gerçekleşen)", "surprise_bits": "Sürpriz değeri (bit)",
+                    "model_market_gap": "Model–piyasa farkı", "type": "Seçim türü", "status": "Kontrol durumu",
+                    "explained_by": "Uyumlu kontrol", "period": "Dönem"}
+
+
+def _anomaly_summary_text(summ: dict) -> str:
+    def fmt(d: dict) -> str:
+        return ", ".join(f"{_ANOMALY_VALUES.get(k, k)}: {v}" for k, v in d.items())
+
+    return (f"{summ.get('toplam', 0)} maç işaretlendi (seçim kuralı her lig-sezonda havuz büyüklüğüne bağlı sabit sayıda "
+            f"maç işaretler; bu sayı bir yaygınlık tahmini değildir). Seçim türü: {fmt(summ.get('tur', {}))}. "
+            f"Kayıt durumu: {fmt(summ.get('durum', {}))}. Dönem: {fmt(summ.get('donem', {}))}. "
+            "'Alternatif açıklamayla uyumlu' nedensellik sınandı anlamına gelmez.")
 
 
 _CARD_HEADERS = {"pencere": "Pencere", "date": "Tarih", "opponent": "Rakip", "is_home": "Ev?", "gf_ht": "İY attığı",

@@ -1,0 +1,8 @@
+yontem,z_crit,not
+log p doğrusal ara değer (sıra 8 ↔ 9) [BİRİNCİL],3.984599500111763,|z| 4.2034 (p_adj 0.022977) ile |z| 3.8226 (p_adj 0.088911) arasında
+p doğrusal ara değer (sıra 8 ↔ 9),4.047331054940386,duyarlılık
+"log p ~ a + b·z² EKK uyumu (0,005<p_adj<0,5)",3.983031371302634,"n=10 desteklenen tekil hipotez; a=3.2790, b=-0.3955"
+parantez (alt/üst),,"[3.8226, 4.2034]"
+karşılaştırma: Bonferroni m=430 (iki yönlü),3.853841113526353,bağımsızlık/normal varsayımı; WY değil
+karşılaştırma: Bonferroni m=780 (iki yönlü),3.997176284290048,bağımsızlık/normal varsayımı; WY değil
+karşılaştırma: m=430 bağımsız normal |z| maksimumunun ortancası,3.153967238645693,yayımlanan referans ortanca 3.1383

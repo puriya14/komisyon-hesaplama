@@ -73,8 +73,9 @@ galip", deplasmanın aynı maçı ise "İY önde → MS mağlup"tur.
 - Uygulama klasöründe (`%LOCALAPPDATA%\BahisTahmin\dizi_arastirma\`): `son_sonuclar.json` (arayüz özeti),
   `sonuclar_tam.json` (tüm aileler), `manifest.json`, `f1_hipotezler.csv` (başarısızlar dahil 800 hipotez),
   `anomaliler.json` (tekil maç anomali kayıtları — yalnızca yerelde), `deneyler.jsonl`, `s0_soy.pkl`,
-  `s0_kalibre.pkl`. İleriye dönük sanal takip için ayrı bir defter (`dizi_arastirma.sqlite`) kullanılır; gerçek
-  para kullanılmaz.
+  `s0_kalibre.pkl`. Ayrı bir araştırma defteri sınıfı (`dizi_arastirma.sqlite`) vardır ancak şu an hiçbir arayüz/CLI
+  akışı bu dosyayı oluşturmaz (düzeltme D-35); A/B/C için ileriye dönük ölçüm gol pazarları defterinde
+  `FORECAST_RECORD` olarak tutulur. Gerçek para kullanılmaz.
 - Depoda: `reports/experiments.jsonl` (ön-kayıt ve tüm deneyler), `reports/dizi_sonuclar.json`,
   `reports/dizi_f1_hipotezler.csv`, `reports/dizi_sozlesme_kirmizi_takim.json` (sözleşme incelemesi). Depoya tekil
   maç anomali listesi yazılmaz; yalnızca tür/durum/dönem sayıları.
@@ -92,7 +93,7 @@ galip", deplasmanın aynı maçı ise "İY önde → MS mağlup"tur.
 | `s0_soy.pkl`, `s0_soy.json`, `s0_kalibre.pkl` | Önbellek (veriden yeniden üretilebilir; süre alır) | Silinmesi gerekmez; sorun varsa yedekleyip başka klasöre taşıyın |
 | `manifest.json`, `sonuclar_tam.json`, `son_sonuclar.json`, `f1_hipotezler.csv`, `anomaliler.json` | Deney sonucu (o çalıştırmanın kaydı; yeniden çalıştırma "temiz test" değildir) | Silmeyin; arşivleyin |
 | `deneyler.jsonl` | Deney geçmişi ve ön-kayıt (yalnızca eklenir) | Silmeyin, düzenlemeyin |
-| `dizi_arastirma.sqlite` | Değişmez kayıt defteri | Silmeyin, düzenlemeyin |
+| `dizi_arastirma.sqlite` (varsa; şu an hiçbir akış oluşturmaz) | Değişmez kayıt defteri | Silmeyin, düzenlemeyin |
 
 - Modülü devre dışı bırakmak veri silmeyi gerektirmez: arayüzde Dizi Araştırması sayfasını kullanmamak yeterlidir;
   maç öncesi görünüm `son_sonuclar.json` yoksa yalnızca tanımlayıcı bilgi gösterir.

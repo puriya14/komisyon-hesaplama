@@ -1,0 +1,26 @@
+{
+ "ust_tur_mac": 1051,
+ "karisik_siniflanan_mac": 12,
+ "lig_sezon": [
+  {
+   "league": "SC0",
+   "season": "2007/08",
+   "n": 4
+  },
+  {
+   "league": "SC0",
+   "season": "2010/11",
+   "n": 2
+  },
+  {
+   "league": "SC0",
+   "season": "2014/15",
+   "n": 2
+  },
+  {
+   "league": "SC0",
+   "season": "2024/25",
+   "n": 4
+  }
+ ]
+}

@@ -43,6 +43,9 @@ ALIASES = {
     "braga": "Sp Braga", "vitoria guimaraes": "Guimaraes", "benfica": "Benfica", "porto": "Porto",
     "club brugge": "Club Brugge", "royal antwerp": "Antwerp", "rangers": "Rangers", "celtic": "Celtic",
     "olympiacos": "Olympiakos", "olympiakos piraeus": "Olympiakos", "paok": "PAOK", "aek athens": "AEK",
+    # openfootball 2026-27 adları (S2-KABUL-01 gerçek fikstür denetiminde eşleşmeyenler)
+    "nec": "Nijmegen", "nec nijmegen": "Nijmegen", "stade rennais 1901": "Rennes",
+    "sport lisboa e benfica": "Benfica", "sporting clube portugal": "Sp Lisbon",
 }
 
 

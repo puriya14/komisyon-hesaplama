@@ -1,0 +1,55 @@
+{
+ "predict": {
+  "A": 0.0,
+  "B": 0.0,
+  "C": 0.0,
+  "BC": 0.0,
+  "h1_home": 0.0,
+  "h1_away": 0.0,
+  "h2_home": 0.0,
+  "h2_away": 0.0,
+  "FT_BTTS": 0.0,
+  "FH_BTTS": 0.0,
+  "SH_O15": 0.0,
+  "FT_O25": 0.0,
+  "FT_O45": 0.0,
+  "tail": 0.0,
+  "structural_A": 0.0,
+  "structural_B": 0.0,
+  "structural_C": 0.0
+ },
+ "interval": {
+  "BTTS_BOTH_HALVES_YES": 0.0,
+  "FT_OVER_3_5": 0.0,
+  "FH_OVER_1_5": 0.0
+ },
+ "labels": {
+  "BTTS_BOTH_HALVES_YES": 0.0,
+  "FT_OVER_3_5": 0.0,
+  "FH_OVER_1_5": 0.0
+ },
+ "predict_anahtarlari": [
+  "A",
+  "B",
+  "BC",
+  "C",
+  "FH_BTTS",
+  "FT_BTTS",
+  "FT_O25",
+  "FT_O45",
+  "SH_O15",
+  "h1_away",
+  "h1_home",
+  "h2_away",
+  "h2_home",
+  "structural_A",
+  "structural_B",
+  "structural_C",
+  "tail"
+ ],
+ "interval_anahtarlari": [
+  "BTTS_BOTH_HALVES_YES",
+  "FH_OVER_1_5",
+  "FT_OVER_3_5"
+ ]
+}

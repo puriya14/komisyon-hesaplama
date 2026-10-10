@@ -1,0 +1,104 @@
+# 01b7e9f kod ağacında anomali çıktısı tüketicileri (grep -rn, .py)
+## import/çağrı: 'anomaly' modülü veya flag_anomalies/anomaly_summary/surprise_bits
+./tests/test_seq_anomaly.py:18:from bahis_tahmin.sequences import anomaly as A
+./tests/test_seq_anomaly.py:113:    bits = A.surprise_bits(syn)
+./tests/test_seq_anomaly.py:126:    b2 = A.surprise_bits(fr2)
+./tests/test_seq_anomaly.py:132:    recs = A.flag_anomalies(syn)
+./tests/test_seq_anomaly.py:136:        assert r["surprise_bits"] == pytest.approx(-np.log2(r["s0_p_gerceklesen"]))
+./tests/test_seq_anomaly.py:140:    summ = A.anomaly_summary(recs)
+./tests/test_seq_anomaly.py:145:    recs = A.flag_anomalies(syn)
+./tests/test_seq_anomaly.py:149:    bits = A.surprise_bits(syn)[home]
+./tests/test_seq_anomaly.py:166:    sub = A.flag_anomalies(syn, per == "kesif")
+./tests/test_seq_anomaly.py:176:    full = _surprise_pairs(A.flag_anomalies(syn))
+./tests/test_seq_anomaly.py:179:        got = _surprise_pairs(A.flag_anomalies(syn, m))
+./tests/test_seq_anomaly.py:182:        A.flag_anomalies(syn, np.ones(len(tm), dtype=int))  # boolean olmayan maske
+./tests/test_seq_anomaly.py:184:        A.flag_anomalies(syn, np.ones(len(tm) - 1, dtype=bool))
+./tests/test_seq_anomaly.py:200:        recs = [r for r in A.flag_anomalies(fr) if r["cluster"] == c0]
+./tests/test_seq_anomaly.py:216:    recs = [r for r in A.flag_anomalies(fr2) if r["cluster"] == c0]
+./tests/test_seq_anomaly.py:218:    assert all(r["surprise_bits"] == np.inf and r["s0_p_gerceklesen"] == 0.0 for r in recs)
+./tests/test_seq_anomaly.py:222:    assert not [r for r in A.flag_anomalies(fr4) if r["cluster"] == c0]
+./tests/test_seq_anomaly.py:223:    b = A.surprise_bits(fr4)[home][cl == c0]
+./tests/test_seq_anomaly.py:228:    recs = A.flag_anomalies(syn)
+./tests/test_seq_anomaly.py:242:    base = A.flag_anomalies(syn)
+./tests/test_seq_anomaly.py:250:    rec0 = next(r for r in A.flag_anomalies(zero) if r["pair_id"] == cand["pair_id"])
+./tests/test_seq_anomaly.py:255:    rec = next(r for r in A.flag_anomalies(red) if r["pair_id"] == cand["pair_id"])
+./tests/test_seq_anomaly.py:260:    assert rec["surprise_bits"] == cand["surprise_bits"]  # açıklama sürprizi değiştirmez
+./tests/test_seq_anomaly.py:270:    cand = _unexplained_candidate(A.flag_anomalies(syn))
+./tests/test_seq_anomaly.py:280:    rec = next(r for r in A.flag_anomalies(fr) if r["pair_id"] == cand["pair_id"])
+./tests/test_seq_anomaly.py:289:    recs = A.flag_anomalies(fr)
+./tests/test_seq_anomaly.py:310:    assert not any(A.TYPE_MARKET in r["flags"] for r in A.flag_anomalies(syn))
+./tests/test_seq_anomaly.py:315:    recs = A.flag_anomalies(fr)
+./tests/test_seq_anomaly.py:316:    summ = A.anomaly_summary(recs)
+./tests/test_seq_anomaly.py:326:    dumped = json.dumps(A.anomaly_summary(leaked), ensure_ascii=False)
+./tests/test_seq_anomaly.py:332:    assert "flag_anomalies" in funcs and "anomaly_summary" in funcs
+./tests/test_seq_anomaly.py:336:    sig = inspect.signature(A.anomaly_summary)
+./tests/test_seq_anomaly.py:350:    a, b = A.flag_anomalies(fr), A.flag_anomalies(fr)
+./tests/test_seq_anomaly.py:352:    assert A.anomaly_summary(a) == A.anomaly_summary(b)
+./bahis_tahmin/sequences/research.py:41:from . import anomaly as A
+./bahis_tahmin/sequences/research.py:705:        "anomaliler": [{k: r.get(k) for k in ("date", "league", "season", "htft", "s0_p_gerceklesen", "surprise_bits",
+./bahis_tahmin/sequences/research.py:893:    anomalies = A.flag_anomalies(fr, mask=an_mask)
+./bahis_tahmin/sequences/research.py:894:    results["anomali_ozeti"] = A.anomaly_summary(anomalies)
+./bahis_tahmin/sequences/anomaly.py:45:def surprise_bits(fr) -> np.ndarray:
+./bahis_tahmin/sequences/anomaly.py:73:def _upper_share(values: np.ndarray, groups: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+./bahis_tahmin/sequences/anomaly.py:115:    bits = surprise_bits(fr)
+./bahis_tahmin/sequences/anomaly.py:137:    mt["bits_share"], mt["bits_n"], mt["is_s"] = _upper_share(mt["bits"].to_numpy(), mt["cluster"].to_numpy())
+./bahis_tahmin/sequences/anomaly.py:138:    mt["gap_share"], mt["gap_n"], mt["is_m"] = _upper_share(mt["gap"].to_numpy(), mt["cluster"].to_numpy())
+./bahis_tahmin/sequences/anomaly.py:233:def flag_anomalies(fr, mask: np.ndarray | None = None) -> list[dict]:
+./bahis_tahmin/sequences/anomaly.py:266:            "surprise_bits": float(row["bits"]) if pd.notna(row["bits"]) else None,
+./bahis_tahmin/sequences/anomaly.py:280:def anomaly_summary(records: list[dict]) -> dict:
+## anahtar okuma: 'anomaliler' / 'anomali_ozeti' / anomaliler.json
+./tests/test_seq_research.py:130:    assert "anomaliler" not in rep  # depoya tekil maç anomali kaydı yazılmaz
+./tests/test_seq_research.py:131:    summ = rep["anomali_ozeti"]
+./tests/test_seq_research.py:136:    assert ui["anomaliler"], "anomali listesi boş olmamalı (kontrol boşa geçmesin)"
+./tests/test_seq_research.py:137:    local = json.loads((base / "out" / "anomaliler.json").read_text(encoding="utf-8"))
+./tests/test_seq_research.py:138:    assert len(local) == len(ui["anomaliler"]) == summ["toplam"]
+./tests/test_seq_research.py:139:    for r in ui["anomaliler"]:
+./bahis_tahmin/cli.py:388:    print(f"Anomali özeti (yalnızca tür/durum/dönem sayıları): {res.get('anomali_ozeti', {}).get('durum')}")
+./bahis_tahmin/ui/pages/sequences.py:514:        an = pd.DataFrame(res.get("anomaliler", []))
+./bahis_tahmin/ui/pages/sequences.py:515:        summ = res.get("anomali_ozeti", {})
+./bahis_tahmin/sequences/research.py:705:        "anomaliler": [{k: r.get(k) for k in ("date", "league", "season", "htft", "s0_p_gerceklesen", "surprise_bits",
+./bahis_tahmin/sequences/research.py:708:        "anomali_ozeti": results.get("anomali_ozeti", {}),
+./bahis_tahmin/sequences/research.py:894:    results["anomali_ozeti"] = A.anomaly_summary(anomalies)
+./bahis_tahmin/sequences/research.py:922:    (out_dir / "anomaliler.json").write_text(json.dumps(jsonable(anomalies), ensure_ascii=False, indent=1),
+## maç öncesi yolları (prematch, patterns, models, hazard, null, features, s0, frame, timeline, research_ledger, goals/*, betting/*, models/*, ui/pages/{match,predictions,likely,goals,dashboard}.py) içinde 'anomal|surprise|UNEXPLAINED|MODEL_PIYASA' geçen satır sayısı:
+bahis_tahmin/sequences/prematch.py: 0
+bahis_tahmin/sequences/patterns.py: 0
+bahis_tahmin/sequences/models.py: 1
+bahis_tahmin/sequences/hazard.py: 0
+bahis_tahmin/sequences/null.py: 0
+bahis_tahmin/sequences/features.py: 0
+bahis_tahmin/sequences/s0.py: 0
+bahis_tahmin/sequences/frame.py: 0
+bahis_tahmin/sequences/timeline.py: 0
+bahis_tahmin/sequences/research_ledger.py: 0
+bahis_tahmin/goals/__init__.py: 0
+bahis_tahmin/goals/coverage.py: 0
+bahis_tahmin/goals/decision.py: 0
+bahis_tahmin/goals/engine.py: 0
+bahis_tahmin/goals/features.py: 0
+bahis_tahmin/goals/joint.py: 0
+bahis_tahmin/goals/ledger.py: 0
+bahis_tahmin/goals/markets.py: 0
+bahis_tahmin/goals/model.py: 0
+bahis_tahmin/goals/service.py: 0
+bahis_tahmin/goals/validation.py: 0
+bahis_tahmin/goals/value.py: 0
+bahis_tahmin/betting/backtest.py: 0
+bahis_tahmin/betting/odds.py: 0
+bahis_tahmin/models/artifacts.py: 0
+bahis_tahmin/models/dixon_coles.py: 0
+bahis_tahmin/models/elo.py: 0
+bahis_tahmin/models/engine.py: 0
+bahis_tahmin/models/features.py: 0
+bahis_tahmin/models/markets.py: 0
+bahis_tahmin/models/ml.py: 0
+bahis_tahmin/ui/pages/match.py: 0
+bahis_tahmin/ui/pages/predictions.py: 0
+bahis_tahmin/ui/pages/likely.py: 0
+bahis_tahmin/ui/pages/goals.py: 0
+bahis_tahmin/ui/pages/dashboard.py: 0
+bahis_tahmin/ui/match_view.py: 0
+bahis_tahmin/analysis.py: 0
+## prematch.py results anahtarları
+89:    for r in results.get("oruntuler", []) or []:
+91:    for dup, rep in (results.get("ayna_kopyalari") or {}).items():  # ayna kopyası → temsilcinin statüsü

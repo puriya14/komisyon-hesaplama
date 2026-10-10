@@ -1,0 +1,39 @@
+lig,openfootball_adi,eslesen_veri_adi,yontem,veride_son_2_sezonda
+N1,ADO Den Haag,Den Haag,jeton/benzerlik,True
+N1,AFC Ajax,Ajax,normalize,True
+N1,AZ,AZ Alkmaar,jeton/benzerlik,True
+N1,FC Groningen,Groningen,normalize,True
+N1,FC Twente '65,Twente,jeton/benzerlik,True
+N1,FC Utrecht,Utrecht,normalize,True
+N1,Feyenoord Rotterdam,Feyenoord,jeton/benzerlik,True
+N1,Fortuna Sittard,For Sittard,jeton/benzerlik,True
+N1,Go Ahead Eagles,Go Ahead Eagles,birebir,True
+N1,NEC,,ESLESMEDI,False
+N1,PEC Zwolle,Zwolle,jeton/benzerlik,True
+N1,PSV,PSV Eindhoven,takma_ad_tablosu,True
+N1,SBV Excelsior,Excelsior,jeton/benzerlik,True
+N1,SC Cambuur-Leeuwarden,Cambuur,jeton/benzerlik,True
+N1,SC Heerenveen,Heerenveen,normalize,True
+N1,Sparta Rotterdam,Sparta Rotterdam,birebir,True
+N1,Telstar 1963,Telstar,jeton/benzerlik,True
+N1,Willem II Tilburg,Willem II,jeton/benzerlik,True
+E0,AFC Bournemouth,Bournemouth,normalize,True
+E0,Arsenal FC,Arsenal,normalize,True
+E0,Aston Villa FC,Aston Villa,normalize,True
+E0,Brentford FC,Brentford,normalize,True
+E0,Brighton & Hove Albion FC,Brighton,takma_ad_tablosu,True
+E0,Chelsea FC,Chelsea,normalize,True
+E0,Coventry City FC,Coventry,jeton/benzerlik,True
+E0,Crystal Palace FC,Crystal Palace,normalize,True
+E0,Everton FC,Everton,normalize,True
+E0,Fulham FC,Fulham,normalize,True
+E0,Hull City AFC,Hull,jeton/benzerlik,True
+E0,Ipswich Town FC,Ipswich,takma_ad_tablosu,True
+E0,Leeds United FC,Leeds,takma_ad_tablosu,True
+E0,Liverpool FC,Liverpool,normalize,True
+E0,Manchester City FC,Man City,takma_ad_tablosu,True
+E0,Manchester United FC,Man United,takma_ad_tablosu,True
+E0,Newcastle United FC,Newcastle,takma_ad_tablosu,True
+E0,Nottingham Forest FC,Nott'm Forest,takma_ad_tablosu,True
+E0,Sunderland AFC,Sunderland,normalize,True
+E0,Tottenham Hotspur FC,Tottenham,takma_ad_tablosu,True

@@ -1,0 +1,30 @@
+{
+ "bir_kez": {
+  "kayit": 6,
+  "sanal_bahis": 1,
+  "sonuclanan": 0,
+  "bekleyen_veya_iade": 1,
+  "kazanan": 0,
+  "toplam_stake": 0,
+  "net": 0,
+  "yield": null
+ },
+ "iki_kez": {
+  "kayit": 12,
+  "sanal_bahis": 2,
+  "sonuclanan": 0,
+  "bekleyen_veya_iade": 2,
+  "kazanan": 0,
+  "toplam_stake": 0,
+  "net": 0,
+  "yield": null
+ },
+ "aday": [
+  [
+   "BTTS_BOTH_HALVES_NO",
+   "VALUE_CANDIDATE",
+   1.36,
+   0.07785404393655121
+  ]
+ ]
+}

@@ -1,0 +1,229 @@
+{
+ "not": "Tüm maçlar sentetiktir (bahis_tahmin.selftest.synthetic_matches); gerçek sonuç kullanılmadı.",
+ "veri": {
+  "toplam": 1092,
+  "kesim_eski": "2026-08-31",
+  "fikstur_gunu": "2026-10-19",
+  "eski_veri_mac": 938,
+  "guncel_veri_mac": 980,
+  "kesim_ile_fikstur_arasi_kayitsiz_mac": 42,
+  "fikstur_mac": 7
+ },
+ "tazelik_gol_motoru": {
+  "eski_motor_data_cutoff": "2026-08-31",
+  "guncel_motor_data_cutoff": "2026-10-12",
+  "notlarda_kesim_uyarisi_var_mi": false,
+  "eski_notlar_ornek": [
+   [],
+   [],
+   []
+  ],
+  "max_mutlak_fark": {
+   "A": 0.0640345974264339,
+   "B": 0.19760308043271002,
+   "C": 0.188084602930973
+  },
+  "ortalama_mutlak_fark": {
+   "A": 0.02792401130850983,
+   "B": 0.08451544906877809,
+   "C": 0.09901951290974309
+  },
+  "ornek_ozellik_eski": {
+   "h_rest": 30.0,
+   "a_rest": 30.0,
+   "h_n365": 21.0,
+   "a_n365": 18.0,
+   "season_n": 28.0
+  },
+  "ornek_ozellik_guncel": {
+   "h_rest": 7.0,
+   "a_rest": 7.0,
+   "h_n365": 26.0,
+   "a_n365": 24.0,
+   "season_n": 70.0
+  }
+ },
+ "tanimsiz_lig_fiksturu": {
+  "girdi": 1,
+  "tahmin": 0,
+  "kayit_veya_neden": "yok (predict_fixtures 'continue' ile atlar)"
+ },
+ "aday_yokken_kararlar": [
+  {
+   "pazar": "BTTS_BOTH_HALVES_YES",
+   "durum": "MODEL_NOT_VALIDATED",
+   "neden": [
+    "Model bu pazar için zaman sıralı testte doğrulama ölçütlerini geçmedi.",
+    "Bu pazar ve çizgi için karar anına ait gerçek oran yok."
+   ]
+  },
+  {
+   "pazar": "BTTS_BOTH_HALVES_NO",
+   "durum": "MODEL_NOT_VALIDATED",
+   "neden": [
+    "Model bu pazar için zaman sıralı testte doğrulama ölçütlerini geçmedi.",
+    "Bu pazar ve çizgi için karar anına ait gerçek oran yok."
+   ]
+  },
+  {
+   "pazar": "FT_OVER_3_5",
+   "durum": "MODEL_NOT_VALIDATED",
+   "neden": [
+    "Model bu pazar için zaman sıralı testte doğrulama ölçütlerini geçmedi.",
+    "Belirsizlik aralığı geniş (0.34–0.67)."
+   ]
+  },
+  {
+   "pazar": "FT_UNDER_3_5",
+   "durum": "MODEL_NOT_VALIDATED",
+   "neden": [
+    "Model bu pazar için zaman sıralı testte doğrulama ölçütlerini geçmedi.",
+    "Belirsizlik aralığı geniş (0.33–0.66)."
+   ]
+  },
+  {
+   "pazar": "FH_OVER_1_5",
+   "durum": "MODEL_NOT_VALIDATED",
+   "neden": [
+    "Model bu pazar için zaman sıralı testte doğrulama ölçütlerini geçmedi.",
+    "Bu pazar ve çizgi için karar anına ait gerçek oran yok."
+   ]
+  },
+  {
+   "pazar": "FH_UNDER_1_5",
+   "durum": "MODEL_NOT_VALIDATED",
+   "neden": [
+    "Model bu pazar için zaman sıralı testte doğrulama ölçütlerini geçmedi.",
+    "Bu pazar ve çizgi için karar anına ait gerçek oran yok."
+   ]
+  }
+ ],
+ "kaydedilen_alanlar": [
+  "away",
+  "created_at",
+  "data_cutoff",
+  "decision_status",
+  "decision_time",
+  "ev",
+  "ev_safe",
+  "event_id",
+  "feature_version",
+  "home",
+  "id",
+  "kickoff",
+  "league",
+  "market_key",
+  "model_version",
+  "odds",
+  "outcome",
+  "p",
+  "p_low",
+  "policy_version",
+  "reasons",
+  "stake_units",
+  "strategy_version"
+ ],
+ "kaydedilen_ornek": {
+  "event_id": "N1|2026-10-19|Takım M|Takım L",
+  "market_key": "BTTS_BOTH_HALVES_YES",
+  "decision_time": "2026-10-10T12:41:10.881223+00:00",
+  "created_at": "2026-10-10T12:41:10+00:00",
+  "kickoff": "2026-10-19T17:00:00+00:00",
+  "data_cutoff": "2026-08-31",
+  "model_version": "goal-joint-1.0/M10_ipf_kosullu",
+  "feature_version": "goal-feat-1.0",
+  "p": 0.09726146888433461,
+  "p_low": 0.06277634384976975,
+  "odds": null,
+  "decision_status": "MODEL_NOT_VALIDATED",
+  "stake_units": 0.0,
+  "policy_version": "karar-politikasi-v1 (2026-10-10)"
+ },
+ "p_high_kaydedildi_mi": false,
+ "oran_kimligi_kaydedildi_mi": false,
+ "ayni_kararlar_iki_kez": {
+  "kayit_sayisi": 12,
+  "beklenen_tekil": 6
+ },
+ "aday_deneme_durumlari": [
+  "SUSPICIOUS_EDGE",
+  "SUSPICIOUS_EDGE",
+  "HIGH_UNCERTAINTY",
+  "HIGH_UNCERTAINTY",
+  "SUSPICIOUS_EDGE",
+  "SUSPICIOUS_EDGE"
+ ],
+ "aday_iki_kez_kayit_ozet": {
+  "bir_kez": {
+   "kayit": 18,
+   "sanal_bahis": 0,
+   "sonuclanan": 0,
+   "bekleyen_veya_iade": 0,
+   "kazanan": 0,
+   "toplam_stake": 0,
+   "net": 0,
+   "yield": null
+  },
+  "iki_kez": {
+   "kayit": 24,
+   "sanal_bahis": 0,
+   "sonuclanan": 0,
+   "bekleyen_veya_iade": 0,
+   "kazanan": 0,
+   "toplam_stake": 0,
+   "net": 0,
+   "yield": null
+  }
+ },
+ "baslamadan_sonra_kayit": {
+  "kickoff_utc": "2026-08-24T17:00:00+00:00",
+  "decision_time": "2026-08-24T15:00:00+00:00",
+  "created_at_gercek": "2026-10-10T12:41:10+00:00",
+  "kabul_edilen_kayit": 6
+ },
+ "kismi_yazim": {
+  "istenen": 6,
+  "kalan": 3
+ },
+ "sonradan_alinan_oran": {
+  "karar_ani": "2026-10-10T12:11:10.881223+00:00",
+  "fetched_at": "2026-10-10T12:41:10.881223+00:00",
+  "latest_quote_dondu_mu": true,
+  "not": "latest_quote yalnızca quoted_at'e bakar; fetched_at > karar anı olan oran da döner"
+ },
+ "zincir": {
+  "ok": true,
+  "mesaj": "Zincir doğrulandı"
+ },
+ "oran_tablosu_zincir_disi": {
+  "dogrudan_sqlite_ekleme_sonrasi_verify_chain": [
+   true,
+   "Zincir doğrulandı"
+  ]
+ },
+ "sonuclandirma": {
+  "sonuclanan": 33,
+  "bekleyen": 0
+ },
+ "ertelenen_mac_sonuclandirma": {
+  "sonuclanan": 0,
+  "bekleyen": 6
+ },
+ "tazelik_mac_oncesi_dizi": {
+  "kesim": "2026-08-24",
+  "fikstur_gunu": "2026-10-12",
+  "yaklasan_satir": 10,
+  "tanimli_atom_eski": 140,
+  "tanimli_atom_guncel": 140,
+  "ikisinde_tanimli": 140,
+  "ikisinde_tanimli_ama_farkli": 25,
+  "eski_lig_arasi_gun_ornek": [
+   49.0,
+   49.0,
+   49.0
+  ],
+  "eski_season_complete": true,
+  "uyari_alani_var_mi": false
+ },
+ "sure_sn": 2.6
+}

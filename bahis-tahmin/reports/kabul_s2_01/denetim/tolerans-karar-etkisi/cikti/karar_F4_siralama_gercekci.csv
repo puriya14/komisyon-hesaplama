@@ -1,0 +1,5 @@
+kapsam,delta,n,aday_var,siralama,ust_aday,herhangi_durum,olay_bayrakli,bayraksiz_degisim,karar_bayrakli,karar_bayraksiz_karar_degisimi,karar_bayraksiz_siralama_degisimi
+A,4.1e-06,8000,5728,16,4,4,648,0,112,0,12
+A,5e-05,8000,5728,188,8,8,648,0,112,0,176
+ABC,4.1e-06,8000,5728,10,2,2,648,0,112,0,8
+ABC,5e-05,8000,5728,222,8,20,648,0,112,0,214

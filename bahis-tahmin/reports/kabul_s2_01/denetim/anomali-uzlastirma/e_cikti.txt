@@ -1,0 +1,9 @@
+ takim  mac  kume  kural  S_maskesiz_min  S_maskesiz_max  M_maskesiz_min  M_maskesiz_max  S_maskeli_toplam  S_aciklanamayan_toplam
+    10   90    18      0               0               0               0               0                 0                       0
+    11  100    18      0               0               0               0               0                 0                       0
+    14  182    18      1               1               1               1               1                17                      17
+    18  306    18      2               2               2               2               2                34                      34
+    20  380    18      2               2               2               2               2                32                      32
+    24  552    18      3               3               3               3               3                50                      50
+S maskesiz == kural her kümede: True
+M maskesiz == kural her kümede: True

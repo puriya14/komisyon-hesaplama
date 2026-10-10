@@ -1,0 +1,16 @@
+{
+ "kuyruk_silme_sonrasi": {
+  "kayit": 4,
+  "verify_chain": [
+   true,
+   "Zincir doğrulandı"
+  ]
+ },
+ "iki_yazar": {
+  "kayit": 3,
+  "verify_chain": [
+   false,
+   "predictions kaydı #3 zinciri bozuk"
+  ]
+ }
+}

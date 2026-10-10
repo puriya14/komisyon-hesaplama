@@ -86,6 +86,9 @@ dokunmaz (`tests/conftest.py`: `BAHIS_TAHMIN_HOME` geçici dizine yönlendirilir
 - [`docs/DIZI_ARASTIRMA_SOZLESMESI.md`](docs/DIZI_ARASTIRMA_SOZLESMESI.md) — dizi araştırması ön-kayıtlı sözleşmesi
 - [`docs/DIZI_ARASTIRMA_KULLANIM.md`](docs/DIZI_ARASTIRMA_KULLANIM.md) — dizi araştırması kullanımı ve dosyaları
 - [`docs/DIZI_ARASTIRMA_SONUCLARI.md`](docs/DIZI_ARASTIRMA_SONUCLARI.md) — dizi araştırması sonuçları ve zorunlu test eşlemesi
+- [`docs/DIZI_ARASTIRMA_DUZELTMELER.md`](docs/DIZI_ARASTIRMA_DUZELTMELER.md) — sonuç belgesinin kanıt denetimi: düzeltme ve daraltma kaydı (S2-KABUL-01)
+- [`docs/ILERIYE_DONUK_OLCUM.md`](docs/ILERIYE_DONUK_OLCUM.md) — A/B/C için ileriye dönük ölçüm protokolü ve elle günlük akış
+- `reports/kabul_s2_01/` — S2-KABUL-01 kabul raporu, denetim kanıtları, kontroller ve dondurulmuş protokol
 - `reports/` — deney günlüğü (`experiments.jsonl`) ve doğrulama sonuçları (JSON)
 
 ## Kaldırma / geri alma

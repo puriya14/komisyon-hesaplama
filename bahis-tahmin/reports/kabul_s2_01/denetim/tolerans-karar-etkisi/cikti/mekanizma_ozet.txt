@@ -1,0 +1,10 @@
+[varsayilan] varsayilan-yol vs CI-benzeri-yol: max|Δcoef(M5)|=6.965e-05 max|Δqcal|=3.013e-06
+   predict A=1.535e-06 B=5.551e-16 C=7.772e-16 BC=3.755e-07 max(tüm anahtarlar)=9.473e-06
+   interval BTTS_BOTH_HALVES_YES=4.072e-06 FT_OVER_3_5=5.551e-16 FH_OVER_1_5=5.551e-16
+   L-BFGS-B çağrıları (nit) default: [32, 3, 9] ci: [32, 3, 9]
+[siki] varsayilan-yol vs CI-benzeri-yol: max|Δcoef(M5)|=1.065e-06 max|Δqcal|=5.483e-07
+   predict A=3.428e-08 B=4.441e-16 C=8.882e-16 BC=4.651e-08 max(tüm anahtarlar)=3.269e-07
+   interval BTTS_BOTH_HALVES_YES=4.664e-08 FT_OVER_3_5=5.551e-16 FH_OVER_1_5=4.441e-16
+   L-BFGS-B çağrıları (nit) default: [42, 34, 11] ci: [42, 36, 11]
+[default yolu] varsayılan durma ölçütü vs sıkı: predict A=1.673e-04 max(tüm)=2.283e-03; interval A=1.650e-04
+[ci yolu] varsayılan durma ölçütü vs sıkı: predict A=1.670e-04 max(tüm)=2.280e-03; interval A=1.644e-04

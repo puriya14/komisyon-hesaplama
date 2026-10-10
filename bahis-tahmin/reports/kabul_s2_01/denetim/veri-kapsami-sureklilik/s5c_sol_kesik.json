@@ -1,0 +1,41 @@
+{
+ "takim": 728,
+ "ilk_dilim_global_veri_basinda": 276,
+ "ilk_dilim_lig_kapsam_basinda": 390,
+ "lig_kapsam_basinda_ama_window_rows_GAP_GT_400D_etiketli": 114,
+ "sonradan_giris": 338,
+ "lig_baslangiclari": {
+  "B1": "2000-08-12",
+  "D1": "2000-08-11",
+  "D2": "2000-08-11",
+  "E0": "2000-08-19",
+  "E1": "2000-08-12",
+  "E2": "2000-08-12",
+  "E3": "2001-04-16",
+  "EC": "2011-08-12",
+  "F1": "2000-07-28",
+  "F2": "2000-07-28",
+  "G1": "2005-08-27",
+  "I1": "2000-09-30",
+  "I2": "2000-09-01",
+  "N1": "2000-08-18",
+  "P1": "2000-08-18",
+  "SC0": "2001-07-28",
+  "SC1": "2001-08-04",
+  "SC2": "2001-08-04",
+  "SC3": "2001-08-04",
+  "SP1": "2000-09-09",
+  "SP2": "2000-09-02",
+  "T1": "2000-08-11"
+ },
+ "IY_GERIDE_MS_GALIP": {
+  "ilk_olayli_takim": 645,
+  "sol_kesik_lig_kapsam_basi": 371,
+  "sol_kesik_sonradan_giris": 274
+ },
+ "IY_ONDE_MS_MAGLUP": {
+  "ilk_olayli_takim": 683,
+  "sol_kesik_lig_kapsam_basi": 385,
+  "sol_kesik_sonradan_giris": 298
+ }
+}

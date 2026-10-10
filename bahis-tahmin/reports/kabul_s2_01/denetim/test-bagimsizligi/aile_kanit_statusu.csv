@@ -1,0 +1,9 @@
+aile,bagimliliklar,test_donemi_durumu,kanit_statusu,not
+F7,"S0 soy kaydı, 9 hücre kalibrasyonu (bağışçı S0 ondalığı, referans süreç)",test dönemi kullanılmaz (yalnızca keşif),"ön-kayıtlı, temiz (keşif)",0/20 tohum; gerçek sonuçla ilk hesap resmi çalıştırmada
+F1,"S0 soy kaydı; 9 hücre kalibrasyonu (E, referans süreç, FAVORI/FORM_BEKLENTI atomları, kapı); S0p v2 (7b/5); gösterge ΔLL S0 offset",4 adayın test aşaması,koşullu,"keşif WY ön-kayıtlı ve gerçek S0'a göre önceden hesaplanmadı; ancak (a) 9 hücreli kalibrasyon biçimi 2019+ örneklem içi bulguyu anan önerilerle seçildi, (b) 7b/5'in S0p tanımı F3'ün gerçek test sonuçları görüldükten sonra değişti. Statüler 7b/5'ten bağımsız (piyasa_kontrolu_duyarlilik.csv); 'dördü de piyasa kontrolünde kayboldu' ifadesi S0p v2'ye bağlı ve karar veren kural değil"
+F2,S0 soy kaydı; 9 hücre kalibrasyonu,statüler keşifte belirlendi (WY anlamsız); test sayıları bilgi amaçlı,"ön-kayıtlı, temiz (keşif); test iddiası yok",impl:patterns sahte S0 ile keşifte Sorgu 2 z gördü
+F3,"S0, kalibrasyon, S0p v2, S1/S2",test dahil önceden hesaplandı (09:01:27),keşifsel,SEEN_FAMILIES → en fazla EXPLORATORY; S1/GALIBIYET'in NO_ADDED_VALUE nedeni (7b/5) sonuç görüldükten sonra seçilen S0p'ye bağlı; 7b/5 çıkarılırsa OUT_OF_SAMPLE_SUPPORTED→(EXPLORATORY) olurdu
+F4,kalibre S0 offset; 7b/5'te S0 sıcaklığı + piyasa,test,"ön-kayıtlı, koşullu","gerçek sonuç resmi çalıştırmada ilk kez; 7b/5 yöntemi F3 kaynaklı öneriyle değişti ama karar veren kural değil (test Holm p=1,0 / 0,73 parametre)"
+F5,s0_v1 M10 A/B/C offset,2019+ önceki görevin final testi; impl:models 09:02:46,keşifsel,sözleşme zaten 2019+ için EXPLORATORY diyor; parametre dönemi statüsü NO_ADDED_VALUE
+F6,S0/S0p/S1/S2,test ROI 09:01:46'da görüldü,keşifsel (tanımlayıcı),statü üretmez
+Anomali,"kalibre S0 sürprizi, model-piyasa farkı",sayılar 09:29:52'de görüldü,"tanımlayıcı, önceden görülmüş",kural gerçek veride görülen işaret oranından sonra düzeltildi (sözleşme tanımına uyum)

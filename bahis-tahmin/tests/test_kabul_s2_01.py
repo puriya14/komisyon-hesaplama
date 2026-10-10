@@ -74,3 +74,69 @@ def test_odds_label_does_not_change_preregistered_parameters():
     from bahis_tahmin.sequences.research import PREREGISTERED
 
     assert C.config_hash() == PREREGISTERED["parametre_ozeti"]
+
+
+def test_anomaly_outputs_have_no_prematch_consumer():
+    """Ters yön koruması: anomali modülünü yalnızca araştırma yürütücüsü içe aktarır; maç öncesi/tahmin yolları
+    anomali çıktısını okumaz (eşikler geriye dönük, tüm sezonu kullanır)."""
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1] / "bahis_tahmin"
+    importers = sorted(str(p.relative_to(root)) for p in root.rglob("*.py")
+                       if re.search(r"from \.+(sequences\.)?anomaly import|from \.+sequences import anomaly|"
+                                    r"from \. import anomaly|sequences\.anomaly", p.read_text(encoding="utf-8"))
+                       and p.name != "anomaly.py")
+    assert importers == ["sequences/research.py"]
+    for rel in ("sequences/prematch.py", "sequences/patterns.py", "sequences/models.py", "goals/engine.py",
+                "goals/decision.py", "goals/forecast_log.py"):
+        path = root / rel
+        if path.exists():
+            assert not re.search(r"anomal|UNEXPLAINED|surprise_bits", path.read_text(encoding="utf-8")), rel
+
+
+def test_anomaly_display_labels_are_neutral():
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from bahis_tahmin.ui.pages import sequences as S
+
+    text = S._anomaly_summary_text({"toplam": 3, "tur": {"UNEXPLAINED_ANOMALY": 2, "MODEL_PIYASA_FARKI": 1},
+                                    "durum": {"açıklanabilir": 1, "UNEXPLAINED_ANOMALY": 2}, "donem": {"test": 3}})
+    assert "UNEXPLAINED_ANOMALY" not in text and "yaygınlık tahmini değildir" in text
+    assert "alternatif açıklamayla uyumlu" in text
+    assert all("şike" not in v and "suç" not in v for v in S._ANOMALY_VALUES.values())
+
+
+def test_openfootball_2026_names_map_to_store_names():
+    from bahis_tahmin.data.teams import match_team
+
+    known = ["Nijmegen", "PSV Eindhoven", "Rennes", "Benfica", "Sp Lisbon", "Porto", "Lens"]
+    assert match_team("NEC", known) == "Nijmegen"
+    assert match_team("Stade Rennais FC 1901", known) == "Rennes"
+    assert match_team("Sport Lisboa e Benfica", known) == "Benfica"
+    assert match_team("Sporting Clube de Portugal", known) == "Sp Lisbon"
+    assert match_team("PSV", known) == "PSV Eindhoven"
+
+
+def test_contract_hash_ignores_line_endings(tmp_path, monkeypatch):
+    from bahis_tahmin.sequences import research as RS
+
+    assert RS.contract_sha256() == RS.PREREGISTERED["sozlesme_sha256"]  # LF dosyada ön-kayıtla aynı
+    src = (RS._repo_root() / "docs" / "DIZI_ARASTIRMA_SOZLESMESI.md").read_bytes()
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "DIZI_ARASTIRMA_SOZLESMESI.md").write_bytes(src.replace(b"\n", b"\r\n"))
+    monkeypatch.setattr(RS, "_repo_root", lambda: tmp_path)
+    assert RS.contract_sha256() == RS.PREREGISTERED["sozlesme_sha256"]  # Windows CRLF checkout'u
+
+
+def test_redirected_cli_output_survives_ansi_code_page(monkeypatch):
+    import io
+    import sys
+
+    from bahis_tahmin import cli
+
+    buf = io.BytesIO()
+    out = io.TextIOWrapper(buf, encoding="cp1252", errors="strict")
+    monkeypatch.setattr(sys, "stdout", out)
+    assert cli.main(["gol-olcum-degerlendir", "--protokol"]) == 0
+    out.flush()
+    assert "maç günü 00:00" in buf.getvalue().decode("utf-8")

@@ -1,0 +1,24 @@
+satir 184378 data_sha256 6ca929a2c62fb0aa304bb672339d290347db416e1c8bbfea758f6a46b53b4bc2
+anahtar_sirasi_ayni True
+o_h ayni
+o_d ayni
+o_a ayni
+omax_h ayni
+omax_d ayni
+omax_a ayni
+b365_h ayni
+b365_d ayni
+b365_a ayni
+ps_h ayni
+ps_d ayni
+ps_a ayni
+oc_h ayni
+oc_d ayni
+oc_a ayni
+o_o25 ayni
+o_u25 ayni
+omax_o25 ayni
+omax_u25 ayni
+dtypes_bellek {'league': 'str', 'season': 'object', 'date': 'datetime64[us]', 'time': 'object', 'home': 'str', 'away': 'str', 'fthg': 'int64', 'ftag': 'int64', 'hthg': 'float64', 'htag': 'float64', 'h_shots': 'float64', 'a_shots': 'float64', 'h_sot': 'float64', 'a_sot': 'float64', 'h_corners': 'float64', 'a_corners': 'float64', 'h_fouls': 'float64', 'a_fouls': 'float64', 'h_yellow': 'float64', 'a_yellow': 'float64', 'h_red': 'float64', 'a_red': 'float64', 'o_h': 'float64', 'o_d': 'float64', 'o_a': 'float64', 'omax_h': 'float64', 'omax_d': 'float64', 'omax_a': 'float64', 'b365_h': 'float64', 'b365_d': 'float64', 'b365_a': 'float64', 'ps_h': 'float64', 'ps_d': 'float64', 'ps_a': 'float64', 'oc_h': 'float64', 'oc_d': 'float64', 'oc_a': 'float64', 'o_o25': 'float64', 'o_u25': 'float64', 'omax_o25': 'float64', 'omax_u25': 'float64', 'source': 'str'}
+ham okuma aff287d61bd4374a8956921ddc8e5e8e7e46b2869b1560dfc6e8053745480e33 str str
+time/season dtype duzeltilmis 6ca929a2c62fb0aa304bb672339d290347db416e1c8bbfea758f6a46b53b4bc2

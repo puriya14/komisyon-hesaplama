@@ -1,0 +1,42 @@
+league,season,team,n,reg,tam,ong,short,eksik
+E1,2024/25,Cardiff,45,46.0,True,False,False,1.0
+E1,2024/25,Hull,45,46.0,True,False,False,1.0
+E1,2024/25,Middlesbrough,45,46.0,True,False,False,1.0
+E1,2024/25,Stoke,45,46.0,True,False,False,1.0
+E2,2024/25,Barnsley,45,46.0,True,False,False,1.0
+E2,2024/25,Birmingham,45,46.0,True,False,False,1.0
+E2,2024/25,Huddersfield,45,46.0,True,False,False,1.0
+E2,2024/25,Leyton Orient,45,46.0,True,False,False,1.0
+E2,2024/25,Northampton,45,46.0,True,False,False,1.0
+E2,2024/25,Wigan,45,46.0,True,False,False,1.0
+E3,2024/25,Accrington,45,46.0,True,False,False,1.0
+E3,2024/25,Bradford,45,46.0,True,False,False,1.0
+E3,2024/25,Bromley,45,46.0,True,False,False,1.0
+E3,2024/25,Cheltenham,45,46.0,True,False,False,1.0
+E3,2024/25,Fleetwood Town,45,46.0,True,False,False,1.0
+E3,2024/25,Gillingham,45,46.0,True,False,False,1.0
+E3,2024/25,Tranmere,45,46.0,True,False,False,1.0
+E3,2024/25,Walsall,45,46.0,True,False,False,1.0
+F1,2024/25,Monaco,33,34.0,True,False,False,1.0
+F1,2024/25,Paris SG,33,34.0,True,False,False,1.0
+F2,2022/23,Bordeaux,37,38.0,True,False,False,1.0
+F2,2022/23,Rodez,37,38.0,True,False,False,1.0
+F2,2023/24,Troyes,37,38.0,True,False,False,1.0
+F2,2023/24,Valenciennes,37,38.0,True,False,False,1.0
+F2,2025/26,Bastia,33,34.0,True,False,False,1.0
+F2,2025/26,Red Star,33,34.0,True,False,False,1.0
+G1,2014/15,Niki Volos,33,34.0,True,False,False,1.0
+G1,2014/15,OFI,33,34.0,True,False,False,1.0
+G1,2018/19,Olympiakos,29,30.0,True,False,False,1.0
+G1,2018/19,Panathinaikos,29,30.0,True,False,False,1.0
+SC0,2007/08,Motherwell,32,33.0,True,False,False,1.0
+SC0,2007/08,Rangers,31,33.0,True,False,False,2.0
+SC0,2007/08,St Mirren,32,33.0,True,False,False,1.0
+SC0,2010/11,Celtic,32,33.0,True,False,False,1.0
+SC0,2010/11,Inverness C,32,33.0,True,False,False,1.0
+SC0,2014/15,Dundee United,32,33.0,True,False,False,1.0
+SC0,2014/15,Inverness C,32,33.0,True,False,False,1.0
+SC0,2024/25,Dundee United,32,33.0,True,False,False,1.0
+SC0,2024/25,Hibernian,32,33.0,True,False,False,1.0
+SC0,2024/25,Ross County,32,33.0,True,False,False,1.0
+SC0,2024/25,St Mirren,32,33.0,True,False,False,1.0

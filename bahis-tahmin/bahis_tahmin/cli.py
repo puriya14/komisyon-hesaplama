@@ -523,8 +523,19 @@ def cmd_self_test(a) -> int:
     return run_self_test()
 
 
+def _utf8_redirected_output() -> None:
+    """Dosyaya/boruya yönlendirilen çıktı Windows ANSI kod sayfasında Türkçe karakterlerle düşmesin."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            if stream is not None and not stream.isatty():
+                stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, OSError):
+            continue
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
+    _utf8_redirected_output()
     if not argv:
         from .ui.app import run
 

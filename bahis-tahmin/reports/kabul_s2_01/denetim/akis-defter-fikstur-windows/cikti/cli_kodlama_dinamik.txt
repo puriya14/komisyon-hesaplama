@@ -1,0 +1,11 @@
+--- stdout kodlamasÄ±=cp1252 (strict; Windows'ta yÃ¶nlendirilmiÅŸ stdout benzetimi; -I nedeniyle PYTHONIOENCODING yerine TextIOWrapper)
+exit=1
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u011f' in position 9: character maps to <undefined>
+--- stdout kodlamasÄ±=cp1254 (strict; Windows'ta yÃ¶nlendirilmiÅŸ stdout benzetimi; -I nedeniyle PYTHONIOENCODING yerine TextIOWrapper)
+exit=0
+Zincir doğrulandı. 1 kayıt · 0 sanal bahis · 0 sonuçlandı · net +0.00 birim · yield hesaplanamıyor
+--- stdout kodlamasÄ±=utf-8 (strict; Windows'ta yÃ¶nlendirilmiÅŸ stdout benzetimi; -I nedeniyle PYTHONIOENCODING yerine TextIOWrapper)
+exit=0
+Zincir doÄŸrulandÄ±. 1 kayÄ±t Â· 0 sanal bahis Â· 0 sonuÃ§landÄ± Â· net +0.00 birim Â· yield hesaplanamÄ±yor

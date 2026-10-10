@@ -275,7 +275,8 @@ def _quote_block(ledger: Ledger | None, eid: str, market: str, target: dt.dateti
     blk = {"decimal_odds": q.decimal_odds, "provider": q.provider, "bookmaker": q.bookmaker,
            "quoted_at": q.quoted_at.astimezone(dt.timezone.utc).isoformat(),
            "fetched_at": q.fetched_at.astimezone(dt.timezone.utc).isoformat(),
-           "zaman_dogrulandi": bool(q.quoted_at < target)}
+           # Oranın hem geçerli olduğu an hem sisteme alındığı an karar anından önce olmalı
+           "zaman_dogrulandi": bool(q.quoted_at < target and q.fetched_at < target)}
     return blk, ("ZAMANI_DOGRULANMIS_ORAN" if blk["zaman_dogrulandi"] else "HISTORICAL_REFERENCE_ONLY")
 
 

@@ -1,0 +1,372 @@
+{
+ "ham_satir": 238858,
+ "ham_sutun_sayisi": 48,
+ "ham_sutunlar": [
+  "Division",
+  "MatchDate",
+  "MatchTime",
+  "HomeTeam",
+  "AwayTeam",
+  "HomeElo",
+  "AwayElo",
+  "Form3Home",
+  "Form5Home",
+  "Form3Away",
+  "Form5Away",
+  "FTHome",
+  "FTAway",
+  "FTResult",
+  "HTHome",
+  "HTAway",
+  "HTResult",
+  "HomeShots",
+  "AwayShots",
+  "HomeTarget",
+  "AwayTarget",
+  "HomeFouls",
+  "AwayFouls",
+  "HomeCorners",
+  "AwayCorners",
+  "HomeYellow",
+  "AwayYellow",
+  "HomeRed",
+  "AwayRed",
+  "OddHome",
+  "OddDraw",
+  "OddAway",
+  "MaxHome",
+  "MaxDraw",
+  "MaxAway",
+  "Over25",
+  "Under25",
+  "MaxOver25",
+  "MaxUnder25",
+  "HandiSize",
+  "HandiHome",
+  "HandiAway",
+  "C_LTH",
+  "C_LTA",
+  "C_VHD",
+  "C_VAD",
+  "C_HTB",
+  "C_PHB"
+ ],
+ "abc_htft_aday_sutunlar": [],
+ "yeniden_kurulan_satir": 184378,
+ "baseline_parser_satir": 238854,
+ "yeniden_kurulan_data_sha256": "aff287d61bd4374a8956921ddc8e5e8e7e46b2869b1560dfc6e8053745480e33",
+ "baseline_parser_data_sha256": "db3df82ea6851ba6191c1bb699630aee97be39f27b92756b2cbc7a11854d6c8b",
+ "eslesen_satir": 184378,
+ "esleme_kontrolleri": {
+  "o_h==_odds(Odd*)": true,
+  "b365_h==o_h": true,
+  "omax_h==Max*.fillna(Odd*)": true,
+  "o_d==_odds(Odd*)": true,
+  "b365_d==o_d": true,
+  "omax_d==Max*.fillna(Odd*)": true,
+  "o_a==_odds(Odd*)": true,
+  "b365_a==o_a": true,
+  "omax_a==Max*.fillna(Odd*)": true,
+  "o_o25==_odds(raw)": true,
+  "omax_o25==Max.fillna(raw)": true,
+  "o_u25==_odds(raw)": true,
+  "omax_u25==Max.fillna(raw)": true
+ },
+ "genel": {
+  "n_mac": 184378,
+  "1x2_uc_oran_tam": 181340,
+  "1x2_uc_oran_tam_pay": 0.9835229799650718,
+  "1x2_en_az_bir_oran": 181347,
+  "1x2_ham_var_ama_gecersiz_(<=1_veya_>=1000)_satir": 7,
+  "max_ham_uc_oran_tam": 156742,
+  "max_ham_uc_oran_tam_pay": 0.850112269359685,
+  "omax_uc_oran_tam_(doldurma_sonrasi)": 181491,
+  "omax_en_az_bir_taraf_Odd_ile_doldurulmus_satir": 24749,
+  "ou25_iki_oran_tam": 156684,
+  "ou25_iki_oran_tam_pay": 0.8497976982069444,
+  "ou25_max_ham_tam": 156684,
+  "omax_ou25_ham_Over/Under_ile_doldurulmus_satir": 0,
+  "ps_oc_dolu_satir": 0
+ },
+ "odd_gt_max_satir": {
+  "iki_taraf_da_var": 156591,
+  "Odd>Max_en_az_bir_secim": 1354
+ },
+ "donem": {
+  "donem_disi": {
+   "n_mac": 654,
+   "n_1x2_tam": 654,
+   "pay_1x2_tam": 1.0,
+   "n_max_ham_tam": 654,
+   "pay_max_ham_tam": 1.0,
+   "n_omax_Odd_ile_doldurulan": 0,
+   "n_ou25_tam": 654,
+   "pay_ou25_tam": 1.0
+  },
+  "isinma": {
+   "n_mac": 34774,
+   "n_1x2_tam": 32002,
+   "pay_1x2_tam": 0.920285,
+   "n_max_ham_tam": 7322,
+   "pay_max_ham_tam": 0.21056,
+   "n_omax_Odd_ile_doldurulan": 24701,
+   "n_ou25_tam": 7317,
+   "pay_ou25_tam": 0.210416
+  },
+  "kesif": {
+   "n_mac": 49860,
+   "n_1x2_tam": 49753,
+   "pay_1x2_tam": 0.997854,
+   "n_max_ham_tam": 49782,
+   "pay_max_ham_tam": 0.998436,
+   "n_omax_Odd_ile_doldurulan": 48,
+   "n_ou25_tam": 49739,
+   "pay_ou25_tam": 0.997573
+  },
+  "parametre": {
+   "n_mac": 46804,
+   "n_1x2_tam": 46705,
+   "pay_1x2_tam": 0.997885,
+   "n_max_ham_tam": 46758,
+   "pay_max_ham_tam": 0.999017,
+   "n_omax_Odd_ile_doldurulan": 0,
+   "n_ou25_tam": 46749,
+   "pay_ou25_tam": 0.998825
+  },
+  "test": {
+   "n_mac": 52286,
+   "n_1x2_tam": 52226,
+   "pay_1x2_tam": 0.998852,
+   "n_max_ham_tam": 52226,
+   "pay_max_ham_tam": 0.998852,
+   "n_omax_Odd_ile_doldurulan": 0,
+   "n_ou25_tam": 52225,
+   "pay_ou25_tam": 0.998833
+  }
+ },
+ "lig_sezon_sayisi": 567,
+ "lig_sezon_1x2_pay_lt_0.95": [
+  {
+   "league": "B1",
+   "season": "2001/02",
+   "n_mac": 306,
+   "pay_1x2_tam": 0.738562
+  },
+  {
+   "league": "D1",
+   "season": "2001/02",
+   "n_mac": 306,
+   "pay_1x2_tam": 0.761438
+  },
+  {
+   "league": "D2",
+   "season": "2001/02",
+   "n_mac": 306,
+   "pay_1x2_tam": 0.751634
+  },
+  {
+   "league": "E0",
+   "season": "2001/02",
+   "n_mac": 380,
+   "pay_1x2_tam": 0.781579
+  },
+  {
+   "league": "E1",
+   "season": "2001/02",
+   "n_mac": 552,
+   "pay_1x2_tam": 0.75
+  },
+  {
+   "league": "E2",
+   "season": "2000/01",
+   "n_mac": 552,
+   "pay_1x2_tam": 0.898551
+  },
+  {
+   "league": "E2",
+   "season": "2001/02",
+   "n_mac": 552,
+   "pay_1x2_tam": 0.728261
+  },
+  {
+   "league": "E3",
+   "season": "2001/02",
+   "n_mac": 552,
+   "pay_1x2_tam": 0.719203
+  },
+  {
+   "league": "EC",
+   "season": "2011/12",
+   "n_mac": 552,
+   "pay_1x2_tam": 0.934783
+  },
+  {
+   "league": "F1",
+   "season": "2001/02",
+   "n_mac": 306,
+   "pay_1x2_tam": 0.728758
+  },
+  {
+   "league": "F2",
+   "season": "2000/01",
+   "n_mac": 380,
+   "pay_1x2_tam": 0.368421
+  },
+  {
+   "league": "F2",
+   "season": "2001/02",
+   "n_mac": 351,
+   "pay_1x2_tam": 0.689459
+  },
+  {
+   "league": "F2",
+   "season": "2002/03",
+   "n_mac": 159,
+   "pay_1x2_tam": 0.874214
+  },
+  {
+   "league": "G1",
+   "season": "2014/15",
+   "n_mac": 305,
+   "pay_1x2_tam": 0.904918
+  },
+  {
+   "league": "I1",
+   "season": "2001/02",
+   "n_mac": 306,
+   "pay_1x2_tam": 0.77451
+  },
+  {
+   "league": "I1",
+   "season": "2003/04",
+   "n_mac": 194,
+   "pay_1x2_tam": 0.876289
+  },
+  {
+   "league": "I2",
+   "season": "2000/01",
+   "n_mac": 380,
+   "pay_1x2_tam": 0.731579
+  },
+  {
+   "league": "I2",
+   "season": "2001/02",
+   "n_mac": 332,
+   "pay_1x2_tam": 0.698795
+  },
+  {
+   "league": "I2",
+   "season": "2003/04",
+   "n_mac": 328,
+   "pay_1x2_tam": 0.847561
+  },
+  {
+   "league": "I2",
+   "season": "2004/05",
+   "n_mac": 94,
+   "pay_1x2_tam": 0.851064
+  },
+  {
+   "league": "N1",
+   "season": "2001/02",
+   "n_mac": 306,
+   "pay_1x2_tam": 0.74183
+  },
+  {
+   "league": "P1",
+   "season": "2001/02",
+   "n_mac": 306,
+   "pay_1x2_tam": 0.761438
+  },
+  {
+   "league": "SC0",
+   "season": "2001/02",
+   "n_mac": 228,
+   "pay_1x2_tam": 0.758772
+  },
+  {
+   "league": "SC1",
+   "season": "2001/02",
+   "n_mac": 180,
+   "pay_1x2_tam": 0.722222
+  },
+  {
+   "league": "SC2",
+   "season": "2001/02",
+   "n_mac": 180,
+   "pay_1x2_tam": 0.711111
+  },
+  {
+   "league": "SC3",
+   "season": "2001/02",
+   "n_mac": 180,
+   "pay_1x2_tam": 0.705556
+  },
+  {
+   "league": "SP1",
+   "season": "2001/02",
+   "n_mac": 380,
+   "pay_1x2_tam": 0.789474
+  },
+  {
+   "league": "SP2",
+   "season": "2000/01",
+   "n_mac": 462,
+   "pay_1x2_tam": 0.735931
+  },
+  {
+   "league": "SP2",
+   "season": "2001/02",
+   "n_mac": 414,
+   "pay_1x2_tam": 0.729469
+  },
+  {
+   "league": "SP2",
+   "season": "2002/03",
+   "n_mac": 239,
+   "pay_1x2_tam": 0.933054
+  },
+  {
+   "league": "SP2",
+   "season": "2003/04",
+   "n_mac": 158,
+   "pay_1x2_tam": 0.689873
+  },
+  {
+   "league": "SP2",
+   "season": "2004/05",
+   "n_mac": 462,
+   "pay_1x2_tam": 0.896104
+  },
+  {
+   "league": "T1",
+   "season": "2000/01",
+   "n_mac": 306,
+   "pay_1x2_tam": 0.679739
+  },
+  {
+   "league": "T1",
+   "season": "2001/02",
+   "n_mac": 306,
+   "pay_1x2_tam": 0.751634
+  },
+  {
+   "league": "T1",
+   "season": "2003/04",
+   "n_mac": 306,
+   "pay_1x2_tam": 0.895425
+  },
+  {
+   "league": "T1",
+   "season": "2022/23",
+   "n_mac": 342,
+   "pay_1x2_tam": 0.915205
+  }
+ ],
+ "lig_sezon_1x2_sifir": 0,
+ "lig_sezon_ou25_sifir": 96,
+ "lig_sezon_maxham_sifir": 96,
+ "max_ham_ilk_sezon_yili": 2005,
+ "ou25_ilk_sezon_yili": 2005,
+ "1x2_ilk_sezon_yili": 2000
+}
