@@ -40,11 +40,12 @@ def pytest_sessionfinish(session, exitstatus):
     for t in [o for o in gc.get_objects() if isinstance(o, QThread)]:
         if shiboken6.isValid(t) and t.isRunning():
             t.wait(10_000)
+    app.processEvents()  # bekleyen olaylar pencereler hâlâ canlıyken işlenir
     for w in qw.QApplication.topLevelWidgets():
         w.close()
         w.deleteLater()
+    # Yalnızca ertelenmiş silmeler işlenir; silinen pencerelere bağlı zamanlayıcılar artık tetiklenmez.
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-    app.processEvents()
     gc.collect()
 
 
