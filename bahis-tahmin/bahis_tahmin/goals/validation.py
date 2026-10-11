@@ -93,12 +93,24 @@ def calibration_bins(y, p, n_bins: int = 10) -> list[dict]:
 
 
 def calibration_slope(y, p) -> tuple[float, float]:
-    """logit(gerçekleşme) ≈ a + b·logit(p) — b≈1 ve a≈0 iyi kalibrasyon."""
+    """logit(gerçekleşme) ≈ a + b·logit(p) — b≈1 ve a≈0 iyi kalibrasyon.
+
+    Eğim tanımsızsa (nan, nan) döner, sayı uydurulmaz: tek sınıf, sabit tahmin (eğim kesişimden ayrılamaz; S4-MODEL-01
+    öncesinde cezalandırılmış uyum sabite göre ±0,41 gibi sahte eğimler veriyordu), tam/yarı tam ayrışma (en çok
+    olabilirlik kestirimi sonlu değil) veya geçersiz girdi."""
     from sklearn.linear_model import LogisticRegression
 
+    y = np.asarray(y, dtype=float)
+    p = np.asarray(p, dtype=float)
+    nan = (float("nan"), float("nan"))
+    if len(y) == 0 or len(y) != len(p) or not (np.isfinite(p).all() and np.isin(y, (0.0, 1.0)).all()):
+        return nan
     lp = np.log(np.clip(p, 1e-9, 1 - 1e-9) / (1 - np.clip(p, 1e-9, 1 - 1e-9)))
-    if len(np.unique(y)) < 2:
-        return float("nan"), float("nan")
+    if len(np.unique(y)) < 2 or np.ptp(lp) < 1e-9:
+        return nan
+    x1, x0 = lp[y == 1], lp[y == 0]
+    if x1.min() >= x0.max() or x1.max() <= x0.min():
+        return nan
     m = LogisticRegression(C=1e6, max_iter=1000).fit(lp[:, None], y)
     return float(m.coef_[0, 0]), float(m.intercept_[0])
 

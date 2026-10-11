@@ -57,7 +57,8 @@ Veriler, modeller ve sanal takip dosyası yalnızca bilgisayarınızda tutulur:
 
 Tek ligde gerçek veri pilotu (S4; openfootball sonuçları, İngiltere Premier League; bütün yazmalar yalnızca `--ev`
 ile verilen ayrı pilot klasörüne): `pilot-hazirla`, `pilot-kapsam` (salt okunur), `pilot-egit`, `pilot-tahmin`
-(varsayılan kuru çalıştırma; `--uygula` pilot defterine yazar). Ayrıntılar: [`docs/S4_PILOT.md`](docs/S4_PILOT.md).
+(varsayılan kuru çalıştırma; `--uygula` pilot defterine yazar), `pilot-tani` (M10 aşama tanılaması; ayrı çıktı
+klasörü). Ayrıntılar: [`docs/S4_PILOT.md`](docs/S4_PILOT.md).
 
 ## Gol pazarları kısaca
 

@@ -451,3 +451,122 @@ def forecast(home, apply: bool = False, now: dt.datetime | None = None) -> dict:
     finally:
         if led is not None:
             led.close()
+
+
+# ----------------------------------------------------------------------------
+# M10 aşama tanılaması (S4-MODEL-01; ayrı çıktı klasörü, pilot dosyaları değişmez)
+# ----------------------------------------------------------------------------
+
+DIAG_MARKER = "tani_isareti.json"
+DIAG_SUMMARY = "tani.json"
+DIAG_ROWS = "asamalar.csv"  # gerçek maç satırları: yalnızca yerel çıktı klasöründe kalır
+
+
+def check_output_dir(out, pilot_home: Path) -> Path:
+    """Tanılama çıktı klasörü: açıkça verilmeli; kullanıcı uygulama klasörü ve pilot klasörüyle çakışamaz; boş
+    olmayan ve tanılama işareti taşımayan klasöre yazılmaz."""
+    if out is None or not str(out).strip():
+        raise PilotError("Tanılama çıktı klasörü açıkça verilmeli (--cikti).")
+    path = Path(out).expanduser().resolve()
+    for other, name in ((app_home_path().expanduser().resolve(), "kullanıcı uygulama klasörüyle"),
+                        (Path(pilot_home).resolve(), "pilot klasörüyle")):
+        if path == other or other in path.parents or path in other.parents:
+            raise PilotError(f"Tanılama çıktı klasörü {name} çakışıyor ({other}); ayrı bir klasör verin.")
+    if path.exists() and not path.is_dir():
+        raise PilotError(f"{path} bir klasör değil.")
+    if path.exists() and any(path.iterdir()) and not (path / DIAG_MARKER).is_file():
+        raise PilotError(f"{path} boş değil ve tanılama işareti ({DIAG_MARKER}) taşımıyor; üzerine yazılmaz.")
+    path.mkdir(parents=True, exist_ok=True)
+    if not (path / DIAG_MARKER).is_file():
+        (path / DIAG_MARKER).write_text(json.dumps({"tani": "m10-asama", "olusturma_utc": _now().isoformat(
+            timespec="seconds")}, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
+def _verified_engine(home: Path, st):
+    """Model dosyasını YÜKLEMEDEN önce yerel kökeni doğrular: pilot verisinin kökeni, manifestteki veri özeti ve pilot
+    model bilgisi aynı veriyi göstermeli; ardından manifest özetiyle doğrulanan yükleme (``load_artifact``)."""
+    from .goals.engine import GOAL_ENGINE_VERSION, SELECTED_VARIANT, GoalEngine
+    from .goals.validation import data_manifest
+    from .models.artifacts import manifest_path
+
+    ok, problems = verify_results(st.matches, (st.meta or {}).get("kaynak_kokeni") or [], st.raw_dir)
+    if not ok:
+        raise PilotError("Pilot verisinin kökeni doğrulanamadı: " + "; ".join(problems))
+    labels = set(st.matches["source"].dropna().astype(str))
+    if labels != {OPENFOOTBALL_RESULT_LABEL}:
+        raise PilotError(f"Pilot deposunda beklenmeyen kaynak etiketi: {sorted(labels)}")
+    sha = data_manifest(st.matches)["sha256"]
+    mp = manifest_path(home / GOAL_ENGINE_FILE)
+    try:
+        man = json.loads(mp.read_text(encoding="utf-8"))
+        info = json.loads((home / MODEL_INFO).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        raise PilotError(f"Model manifesti veya pilot model bilgisi okunamadı: {e}") from e
+    if man.get("kind") != "goal-engine" or man.get("version") != GOAL_ENGINE_VERSION:
+        raise PilotError("Model manifestinin türü/sürümü beklenen değil; yüklenmedi.")
+    if (man.get("data_manifest") or {}).get("sha256") != sha or info.get("veri_sha256") != sha:
+        raise PilotError("Model manifesti veya pilot model bilgisi bu pilot verisiyle eğitilmiş modeli göstermiyor; "
+                         "yüklenmedi.")
+    eng, err = GoalEngine.load(home / GOAL_ENGINE_FILE)  # dosya özeti manifestle eşleşmezse yüklenmez
+    if err:
+        raise PilotError(f"Model yüklenmedi: {err}")
+    if eng.variant != SELECTED_VARIANT or eng.data_sha != sha or not eng.validation:
+        raise PilotError("Yüklenen model beklenen varyant/veri/doğrulama kaydını taşımıyor.")
+    return eng, man, sha
+
+
+def diagnose(home, out_dir, progress=None) -> dict:
+    """Pilot modelinin iç zaman sıralı doğrulamasını aynı veri ve aynı bölmeyle BİR KEZ yeniden üretir, aynı M10'un
+    aşama çıktılarını ve bağımsız ölçütleri ayrı çıktı klasörüne yazar. Pilot dosyaları değişmez; kayıtlı doğrulamayla
+    birebir uyuşmazsa sonuç "aynı deney" sayılmaz (``ayni_deney = False``)."""
+    from .goals import diagnostics as G
+    from .goals.engine import HOLDOUT_SEASONS
+    from .goals.features import build_goal_features
+    from .goals.validation import evaluate, season_year
+
+    home = check_pilot_dir(home)
+    st = _store(home)
+    eng, man, sha = _verified_engine(home, st)
+    out = check_output_dir(out_dir, home)
+    plan = {"tani_surumu": G.DIAG_VERSION, "kayit_utc": _now().isoformat(timespec="seconds"),
+            "bootstrap": {"tekrar": G.BOOT_REPS, "tohum": G.BOOT_SEED, "blok": "ISO hafta"}, "bolme": G.N_BINS,
+            "asamalar": list(G.STAGES), "veri_sha256": sha, "model_sha256": man.get("sha256")}
+    (out / "on_kayit.json").write_text(json.dumps(plan, ensure_ascii=False, indent=1), encoding="utf-8")
+    feat, _ = build_goal_features(st.matches)
+    years = season_year(feat["date"])
+    last = int(years.max())
+    val_years = [y for y in range(last - HOLDOUT_SEASONS, last + 1) if (years == y).any()]
+    if val_years != list(eng.validation_years):
+        raise PilotError(f"Doğrulama sezonları modelinkiyle aynı değil ({val_years} ≠ {eng.validation_years}).")
+    rows, folds = G.stage_walk_forward(feat, val_years)
+    if rows.empty:
+        raise PilotError("Doğrulama katı üretilemedi (eğitim satırı yetersiz); ölçüt üretilmedi.")
+    new_eval = evaluate(G.as_validation_pred(rows), [eng.variant])
+    same = G.compare_validation(new_eval, eng.validation)
+    report = G.stage_report(rows)
+    checks = G.structural_checks(rows)
+    lg = LEAGUES[PILOT_LEAGUE]
+    qprof = {}
+    for rec in (st.meta or {}).get("kaynak_kokeni") or []:
+        p = Path(st.raw_dir) / rec["cache_rel"]
+        prof = G.quarantine_profile(p.read_bytes(), rec["league"], rec["season"])
+        if prof["karantina"]:
+            qprof[rec["season"]] = prof
+    summary = {"tani_surumu": G.DIAG_VERSION, "lig": PILOT_LEAGUE, "lig_adi": lg.name, "veri_sha256": sha,
+               "model_sha256": man.get("sha256"), "kaynak_commit": (st.meta or {}).get("kaynak_commit"),
+               "dogrulama_sezonlari": val_years, "ayni_deney": same["birebir"], "kayitli_dogrulama_karsilastirma": same,
+               "katlar": folds, "asama_iliskileri": checks, "olcutler": report,
+               "ilk_yari_eksik": G.ht_missing_profile(st.matches), "karantina": qprof,
+               "uretim_utc": _now().isoformat(timespec="seconds")}
+    (out / DIAG_SUMMARY).write_text(json.dumps(summary, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
+    rows.to_csv(out / DIAG_ROWS, index=False)
+    brief = {"ayni_deney": same["birebir"], "max_mutlak_fark": same["max_mutlak_fark"], "cikti": str(out)}
+    for s, mk in report.items():
+        if s == "uyari":
+            brief["uyari"] = mk
+            continue
+        brief[s] = {"n": mk["n"], **{st_: {"ll": round(v["log_loss"], 6), "dll_m0": round(v.get("dll_ref", 0.0), 6),
+                                          "egim": v["kal_egim"], "auc": round(v["auc"], 4)}
+                                    for st_, v in mk["asamalar"].items()}}
+    return brief

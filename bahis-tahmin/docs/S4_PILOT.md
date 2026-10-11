@@ -118,6 +118,31 @@ denetlenir. Uygunluk geçmeyen maç nedenli `TAHMIN_YOK` olur. Aynı maç/pazar/
 yazılmaz. Çıktıdaki `model_dogrulama`, modelin pazar başına doğrulama etiketini (`MODEL_NOT_VALIDATED` /
 `VALIDATED_FOR_PAPER_TRADING`) gösterir; bu olasılık kalitesi etiketidir, bahis avantajı değildir.
 
+## Model aşama tanılaması (S4-MODEL-01)
+
+`pilot-tani`, eğitilmiş pilot modelinin iç zaman sıralı doğrulamasını aynı veri ve aynı bölmeyle **bir kez** yeniden
+üretir. Her doğrulama katında tek bir M10 eğitilir; aşamalar bu aynı modelin kendi bileşenlerinden okunur:
+S0 M0_taban → S1 yapısal ortak dağılım (M10'un M5 tabanı) → S2 B/C lojistik hedefleri → S3 IPF (q öncesi) → S4 nihai.
+
+```bash
+python -m bahis_tahmin pilot-tani --ev <PILOT_KLASORU> --cikti <TANI_KLASORU>
+```
+
+```bat
+.venv\Scripts\python -m bahis_tahmin pilot-tani --ev "<PILOT_KLASORU>" --cikti "<TANI_KLASORU>"
+```
+
+- Pilot dosyaları değişmez. Çıktı klasörü zorunludur; pilot klasörüyle veya uygulama veri klasörüyle çakışamaz.
+- Model dosyası yüklenmeden önce şu kontroller yapılır: pilot verisinin kökeni, manifestteki veri özeti ve pilot model
+  bilgisi aynı veriyi göstermeli. Model dosyasının özeti manifestle eşleşmezse dosya yüklenmez.
+- Yeniden hesaplanan doğrulama kayıtlı doğrulamayla bit düzeyinde uyuşmazsa `ayni_deney: false` yazılır.
+- Ölçütler ürün koduna bağımlı olmadan hesaplanır:
+  - log-kayıp doğrudan formülle;
+  - kalibrasyon eğimi cezasız Newton-IRLS ile; sabit tahmin, tek sınıf ve ayrışmada eğim tanımsız döner;
+  - AUC sıra formülüyle.
+- Güven aralıkları ISO hafta blok bootstrap ile hesaplanır (1000 tekrar, tohum 20261011, önceden sabit).
+- `asamalar.csv` gerçek maç satırları içerir ve yalnızca yerel çıktı klasöründe kalır.
+
 ## Saklama
 
 Pilot dosyaları (ham sezon dosyaları, veri deposu, model, defter) yalnızca pilot klasöründedir; depoya veya

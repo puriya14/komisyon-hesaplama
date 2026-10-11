@@ -629,6 +629,13 @@ def cmd_pilot_forecast(a) -> int:
     return _pilot_run(lambda: forecast(a.ev, apply=a.uygula))
 
 
+def cmd_pilot_diagnose(a) -> int:
+    """S4 pilotu: M10 aşama tanılaması (iç doğrulamanın tek yeniden üretimi; ayrı çıktı klasörü, pilot değişmez)."""
+    from .pilot import diagnose
+
+    return _pilot_run(lambda: diagnose(a.ev, a.cikti, progress=_progress))
+
+
 def cmd_self_test(a) -> int:
     from .selftest import run_self_test
 
@@ -732,5 +739,11 @@ def main(argv: list[str] | None = None) -> int:
     pt.add_argument("--ev", required=True, help="pilot klasörü")
     pt.add_argument("--uygula", action="store_true", help="kayıtları pilot defterine yaz (değişmez)")
     pt.set_defaults(fn=cmd_pilot_forecast)
+    pd_ = sub.add_parser("pilot-tani", help="S4 pilotu: M10 aşama tanılaması (iç doğrulamayı aynı veri ve bölmeyle "
+                                            "bir kez yeniden üretir; pilot dosyaları değişmez)")
+    pd_.add_argument("--ev", required=True, help="pilot klasörü (eğitilmiş pilot modeli olmalı)")
+    pd_.add_argument("--cikti", required=True, help="tanılama çıktı klasörü (pilot ve uygulama veri klasöründen ayrı; "
+                                                    "maç satırları yalnızca burada kalır)")
+    pd_.set_defaults(fn=cmd_pilot_diagnose)
     a = p.parse_args(argv)
     return a.fn(a)

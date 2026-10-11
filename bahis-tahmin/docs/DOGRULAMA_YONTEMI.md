@@ -27,7 +27,15 @@ tekrarlar ve doğrulama statüsünü buna göre belirler; nihai model ardından 
   birlikte örneklenir; tohum 7).
 - **Brier skoru** ve **Brier becerisi** `1 − Brier/Brier_taban`.
 - **Ortalama kesinlik (AP):** nadir pazar A için sıralama gücü.
-- **Kalibrasyon eğimi/kesişimi:** `logit(y) ≈ a + b·logit(p)`; `b≈1` iyi, `b<1` aşırı güven.
+- **Kalibrasyon eğimi/kesişimi:** `logit(y) ≈ a + b·logit(p)`; `b≈1` iyi, `b<1` aşırı güven. Şu durumlarda eğim
+  tanımsızdır ve `NaN` döner; NaN eğim doğrulama kuralını geçemez:
+  - tek sınıf;
+  - sabit tahmin;
+  - tam ayrışma;
+  - geçersiz girdi.
+
+  Bu davranış S4-MODEL-01 ile eklendi; önceki sürüm sabit tahminde sahte bir eğim üretiyordu. Tahminler çok dar bir
+  aralıkta değişiyorsa eğim çok belirsizdir; aralığı ile birlikte okunmalıdır.
 - **ECE:** eşit örnekli 10 bölmede |tahmin − gerçekleşme| ağırlıklı ortalaması; bölmeler için Wilson %95 aralığı.
 - **Tutarlılık:** A>B, A>C ve [0,1] dışı olasılık sayısı (hepsi 0 olmalı).
 - Referanslar: **M0** (ligin zaman ağırlıklı taban oranı), **C1** (pazar başına ayrı lojistik regresyon;
