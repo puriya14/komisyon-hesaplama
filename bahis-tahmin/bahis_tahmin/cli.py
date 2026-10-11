@@ -17,6 +17,11 @@
     python -m bahis_tahmin dizi-olay --takim "PSV Eindhoven" --iyms 2/1    # geçmiş inceleme (olay seçimli)
     python -m bahis_tahmin dizi-arastir --isci 3                           # ön-kayıtlı dizi araştırması
     python -m bahis_tahmin dizi-benzer --takim "PSV Eindhoven"             # maç öncesi benzer diziler
+    python -m bahis_tahmin update --profil github   # yalnızca seçili GitHub depolarından güncelle
+    python -m bahis_tahmin arsiv-hazirla --ev ARSIV --kaynak openfootball,hudl   # GitHub tarihsel arşivi (ayrı klasör)
+    python -m bahis_tahmin arsiv-katalog --ev ARSIV
+    python -m bahis_tahmin arsiv-maclar --ev ARSIV --sezon 2024/25 --takim "Arsenal FC"
+    python -m bahis_tahmin arsiv-ozet --ev ARSIV --sezon 2024/25
 """
 
 from __future__ import annotations
@@ -25,7 +30,7 @@ import argparse
 import sys
 import time
 
-from .config import Settings, app_home
+from .config import Settings, app_home, app_home_path
 from .data.leagues import LEAGUES, league_name
 
 ENGINE_FILE = "engine.joblib"
@@ -108,16 +113,26 @@ def cmd_update(a) -> int:
                 return 2
             print(f"{SOURCES[key].name} kullanım koşulları onaylandı ({SOURCES[key].terms_url}).")
             s.source_consent[key] = dt.datetime.now().isoformat(timespec="seconds")
+    if a.profil:
+        s.data_profile = a.profil
     s.save()
-    if not ({"football-data", "github-mirror"} & s.allowed_sources()):
+    from .data.github_kaynak import PROFILE_GITHUB
+
+    github = s.data_profile == PROFILE_GITHUB
+    if github and a.no_mirror:
+        print("GitHub veri profilinde geçmiş sonuçların kaynağı GitHub yedek veri setidir; --no-mirror ile "
+              "kullanılamaz.", file=sys.stderr)
+        return 2
+    if not (({"github-mirror"} if github else {"football-data", "github-mirror"}) & s.allowed_sources()):
         print("Geçmiş veri kaynaklarının kullanım koşulları onaylanmadı. Koşulları okuyup onaylamak için:\n"
-              "  python -m bahis_tahmin update --accept-terms football-data[,github-mirror]", file=sys.stderr)
+              + ("  python -m bahis_tahmin update --profil github --accept-terms github-mirror" if github else
+                 "  python -m bahis_tahmin update --accept-terms football-data[,github-mirror]"), file=sys.stderr)
         return 3
     st = DataStore(app_home())
     st.load()
     rep = st.update(s.leagues, s.years_back, progress=_progress, force=a.force,
                     use_mirror_fallback=not a.no_mirror, fixture_days=s.fixture_days,
-                    allowed=s.allowed_sources())
+                    allowed=s.allowed_sources(), profile=s.data_profile)
     print(rep.summary())
     print(st.summary().to_string(index=False))
     return 0 if st.has_data else 1
@@ -600,6 +615,130 @@ def _pilot_run(fn) -> int:
     return 0
 
 
+def _archive_run(fn) -> int:
+    """Arşiv komutlarının ortak hata yolu (S5-GITHUB-01)."""
+    import json as _json
+
+    from .archive import ArchiveError
+    from .data.github_kaynak import GitHubError
+
+    try:
+        out = fn()
+    except (ArchiveError, GitHubError) as e:
+        print(f"Arşiv: {e}", file=sys.stderr)
+        return 3
+    if out is not None:
+        print(_json.dumps(out, ensure_ascii=False, indent=1, default=str))
+    return 0
+
+
+def _archive_filters(a) -> dict:
+    return {"kaynak": a.kaynak, "lig": a.lig, "sezon": a.sezon, "takim": a.takim, "yer": a.yer, "bas": a.bas,
+            "son": a.son}
+
+
+def cmd_archive_build(a) -> int:
+    """GitHub tarihsel arşivi: seçili depoları sabit commit'ten AYRI arşiv klasörüne alır (kullanıcı verisi, pilot,
+    model ve defter değişmez; eğitim yapılmaz)."""
+    from . import archive as A
+
+    def run():
+        sources = [A.resolve_source(x.strip()) for x in a.kaynak.split(",") if x.strip()] if a.kaynak else None
+        consent = {A.resolve_source(x.strip()) for x in (a.erisim_onayi or "").split(",") if x.strip()}
+        if (app_home_path() / "settings.json").is_file():  # uygulamada verilmiş erişim onayları (hak vermez)
+            consent |= set(Settings.load().source_consent)
+        return A.build(a.ev, sources=tuple(sources or A.SOURCE_KEYS), pilot_home=a.pilot, offline=a.cevrimdisi,
+                       consent=tuple(consent), hudl_sample=a.hudl_ornek, progress=_progress)
+
+    return _archive_run(run)
+
+
+def cmd_archive_catalog(a) -> int:
+    """Arşiv kataloğu: kaynak durumu, kullanım kapsamı ve lig-sezon blokları (salt okunur)."""
+    from . import archive as A
+    from .data.source_registry import ARCHIVE_OPERATIONS
+
+    def run():
+        ar = A.load(a.ev)
+        cov = ar.coverage_frame()
+        cat = ar.catalog
+        print(f"Arşiv {cat['arsiv']} — oluşturma {cat['olusturma_utc']} (bilgi kesimi {cat['bilgi_kesimi']})")
+        for key, st in cat["kaynaklar"].items():
+            scope = st.get("kapsam") or {}
+            ops = ", ".join(f"{op}={scope.get(op, '-')}" for op in ARCHIVE_OPERATIONS)
+            print(f"\n[{key}] {st.get('depo')} @ {str(st.get('commit') or '-')[:12]} — {st.get('durum')}"
+                  f" ({st.get('uc_notu') or st.get('hata') or ''})\n  kapsam: {ops}")
+            if st.get("kimlik_notu"):
+                print(f"  kimlik: {st['kimlik_notu']}")
+            if st.get("olay_ornegi"):
+                print(f"  olay örneği: n={st['olay_ornegi']['n']} — {st['olay_ornegi']['kural']}")
+        for lg, g in (cat.get("guncel_veri") or {}).items():
+            print(f"\nGüncel veri {lg} {g['sezon']}: {g['durum']}")
+        if ar.rejected:
+            print("\nKökeni doğrulanamayan bloklar (kullanılmadı):")
+            for r in ar.rejected:
+                print(f"  {r['kaynak']} {r['yol']}: {r['neden']}")
+        if not cov.empty:
+            cols = ["kaynak", "lig", "sezon", "commit", "durum", "son_gecerli_mac", "mac", "ms_gecerli", "iy_gecerli",
+                    "iy_mantiksal", "kapsam", "tarihsel_analiz"]
+            print()
+            print(cov[cols].fillna("").to_string(index=False))
+        return None
+
+    return _archive_run(run)
+
+
+_ABC_TEXT = {1.0: "evet", 0.0: "hayır"}
+
+
+def cmd_archive_matches(a) -> int:
+    """Birleşik geçmiş maç listesi (aynı maç bir kez; çelişki/inceleme ayrı) ve pazar etiketleri (salt okunur)."""
+    from . import archive as A
+
+    def run():
+        import pandas as pd
+
+        def sc(h, w):
+            return "-" if pd.isna(h) or pd.isna(w) else f"{int(h)}-{int(w)}"
+
+        lab, out = A.explore(A.load(a.ev), **_archive_filters(a))
+        if lab.empty:
+            print("Filtreye uyan maç yok.")
+        else:
+            view = lab.sort_values("date").head(a.limit if a.limit and a.limit > 0 else len(lab))
+            rows = []
+            for _, r in view.iterrows():
+                rows.append({"mac_kimligi": r["mac_kimligi"], "iy": sc(r["hthg"], r["htag"]),
+                             "ms": sc(r["fthg"], r["ftag"]),
+                             **{k: _ABC_TEXT.get(r[k], "bilinmiyor") for k in ("A", "B", "C")},
+                             "iy_ms": r["iy_ms"] or "bilinmiyor", "kalite": r["veri_kalitesi"],
+                             "kaynaklar": r["kaynaklar"]})
+            print(pd.DataFrame(rows).to_string(index=False))
+            if len(lab) > len(view):
+                print(f"... {len(lab) - len(view)} maç daha (--limit)")
+        print(f"\nmaç {out['mac']} | birleşik geçerli {out['birlesik_gecerli']} | MS geçerli {out['ms_gecerli']} | "
+              f"İY geçerli {out['iy_gecerli']} (mantıksal 0-0: {out['iy_mantiksal_0_0']}) | çelişkili "
+              f"{out['celiskili']} | inceleme {out['incelemede'] + out['kimlik_veya_tarih_incelemesi']}")
+        print(A.ARCHIVE_NOTE)
+        return None
+
+    return _archive_run(run)
+
+
+def cmd_archive_summary(a) -> int:
+    """Toplu tarihsel gerçekleşme özeti (geçerli örnek sayılarıyla; olasılık veya bahis avantajı değildir)."""
+    from . import archive as A
+
+    return _archive_run(lambda: A.explore(A.load(a.ev), **_archive_filters(a))[1])
+
+
+def cmd_archive_card(a) -> int:
+    """Seçili geçmiş maç için mevcut dizi olay kartı (önce/sonra; geçmiş inceleme)."""
+    from . import archive as A
+
+    return _archive_run(lambda: A.event_card_for(A.load(a.ev), a.mac, a.takim))
+
+
 def cmd_pilot_coverage(a) -> int:
     """S4 pilotu: kaynak kapsamı, köken, katılımcı referansı, model ve defter durumu (salt okunur)."""
     from .pilot import summary
@@ -667,6 +806,8 @@ def main(argv: list[str] | None = None) -> int:
     u.add_argument("--force", action="store_true")
     u.add_argument("--no-mirror", action="store_true", help="GitHub yedek veri setini kullanma")
     u.add_argument("--accept-terms", help="kullanım koşullarını okuyup onayladığınız kaynaklar, ör. football-data")
+    u.add_argument("--profil", choices=["varsayilan", "github"],
+                   help="veri profili (kaydedilir): github = yalnızca seçili GitHub depoları, football-data yok")
     u.set_defaults(fn=cmd_update)
     sub.add_parser("train", help="modeli eğit").set_defaults(fn=cmd_train)
     pr = sub.add_parser("predict", help="yaklaşan maç tahminleri")
@@ -749,5 +890,39 @@ def main(argv: list[str] | None = None) -> int:
                           "aynı bölmeyle bir walk-forward çalıştırır (pilot verisi/modeli değişmez; verilmezse kayıtlı "
                           "doğrulamanın birebir yeniden üretimi)")
     pd_.set_defaults(fn=cmd_pilot_diagnose)
+    # S5-GITHUB-01: GitHub tarihsel arşivi; bütün yazmalar yalnızca --ev arşiv klasörüne
+    ah = sub.add_parser("arsiv-hazirla", help="GitHub tarihsel arşivi: seçili depoları sabit commit'ten ayrı arşiv "
+                                               "klasörüne al (kullanıcı verisi/model değişmez, eğitim yok)")
+    ah.add_argument("--ev", required=True, help="arşiv klasörü (uygulama veri klasöründen ayrı olmalı)")
+    ah.add_argument("--kaynak", help="openfootball,datasets,xgabora,hudl (varsayılan: hepsi)")
+    ah.add_argument("--pilot", help="openfootball dosyalarını özetleri doğrulanarak kopyalamak için pilot klasörü "
+                                    "(salt okunur)")
+    ah.add_argument("--erisim-onayi", help="kullanım koşullarını okuyup erişimi onayladığınız kaynaklar (yalnızca bu "
+                                           "çalıştırma; analiz hakkı vermez), ör. datasets,xgabora")
+    ah.add_argument("--hudl-ornek", type=int, default=12, help="olay okuyucu örneklemi (en çok 12 maç; 0 = yok)")
+    ah.add_argument("--cevrimdisi", action="store_true", help="ağ kullanma; yalnızca arşivdeki doğrulanmış kopyalar")
+    ah.set_defaults(fn=cmd_archive_build)
+    ak = sub.add_parser("arsiv-katalog", help="arşiv kataloğu: kaynak/commit/kapsam/haklar (salt okunur)")
+    ak.add_argument("--ev", required=True)
+    ak.set_defaults(fn=cmd_archive_catalog)
+    for name, fn, hlp in (("arsiv-maclar", cmd_archive_matches, "birleşik geçmiş maç listesi ve A/B/C etiketleri"),
+                          ("arsiv-ozet", cmd_archive_summary, "toplu tarihsel gerçekleşme özeti (JSON)")):
+        ap = sub.add_parser(name, help=hlp)
+        ap.add_argument("--ev", required=True)
+        ap.add_argument("--kaynak", help="openfootball, datasets, xgabora, hudl")
+        ap.add_argument("--lig")
+        ap.add_argument("--sezon", help="ör. 2024/25")
+        ap.add_argument("--takim", help="birleşik görünümdeki tam takım adı, ör. \"Arsenal FC\"")
+        ap.add_argument("--yer", choices=["ev", "deplasman"])
+        ap.add_argument("--bas", help="başlangıç tarihi YYYY-AA-GG")
+        ap.add_argument("--son", help="bitiş tarihi YYYY-AA-GG")
+        if name == "arsiv-maclar":
+            ap.add_argument("--limit", type=int, default=50)
+        ap.set_defaults(fn=fn)
+    ac = sub.add_parser("arsiv-kart", help="geçmiş maç için dizi olay kartı (geçmiş inceleme)")
+    ac.add_argument("--ev", required=True)
+    ac.add_argument("--mac", required=True, help="maç kimliği, ör. 'E0|2024-08-17|Arsenal FC|Wolverhampton Wanderers FC'")
+    ac.add_argument("--takim", required=True)
+    ac.set_defaults(fn=cmd_archive_card)
     a = p.parse_args(argv)
     return a.fn(a)

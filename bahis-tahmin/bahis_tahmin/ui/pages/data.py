@@ -5,6 +5,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -14,6 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from ...config import DEFAULT_LEAGUES
+from ...data.github_kaynak import PROFILE_DEFAULT, PROFILE_GITHUB
 from ...data.leagues import LEAGUES, league_name
 from ...data.source_registry import IMPLEMENTED, SOURCES
 from ..widgets import DataFrameModel, banner, make_table, section
@@ -24,7 +26,8 @@ class DataPage(Page):
     title = "Veri"
     subtitle = ("Veriler ücretsiz kaynaklardan, yalnızca sizin onay verdiğiniz kaynaklardan indirilir: maç sonuçları, "
                 "istatistikler ve 1X2 / 2,5 Alt-Üst oranları football-data.co.uk'tan; site erişilemezse ve onay "
-                "verdiyseniz GitHub'daki türetilmiş veri setinden alınır.")
+                "verdiyseniz GitHub'daki türetilmiş veri setinden alınır. 'Yalnızca GitHub' profilinde bütün güncellemeler "
+                "seçili GitHub depolarından yapılır.")
 
     def __init__(self, controller, parent=None):
         super().__init__(controller, parent)
@@ -37,6 +40,15 @@ class DataPage(Page):
         b_consent.clicked.connect(self._consent)
         crow.addWidget(b_consent)
         self.body.addLayout(crow)
+        prow = QHBoxLayout()
+        prow.addWidget(QLabel("Veri profili:"))
+        self.cb_profile = QComboBox()
+        self.cb_profile.addItem("Varsayılan: football-data.co.uk (onay verildiyse GitHub yedek)", PROFILE_DEFAULT)
+        self.cb_profile.addItem("Yalnızca GitHub: seçili depolar (football-data adreslerine istek yok)", PROFILE_GITHUB)
+        self.cb_profile.setToolTip("Seçim yalnızca kaydedilir; indirme 'Kaydet, Güncelle ve Eğit' ile başlar.")
+        self.cb_profile.currentIndexChanged.connect(self._profile_changed)
+        prow.addWidget(self.cb_profile, 1)
+        self.body.addLayout(prow)
         self.body.addWidget(section("Ligler"))
         self.tree = QTreeWidget()
         self.tree.setHeaderHidden(True)
@@ -76,6 +88,12 @@ class DataPage(Page):
         self.report.setObjectName("muted")
         self.report.setWordWrap(True)
         self.body.addWidget(self.report)
+
+        from .archive_panel import ArchivePanel
+
+        self.body.addWidget(section("GitHub Veri ve Arşiv"))
+        self.archive_panel = ArchivePanel(controller)
+        self.body.addWidget(self.archive_panel)
         self.body.addStretch(1)
 
         self._build_tree()
@@ -115,10 +133,24 @@ class DataPage(Page):
         s = self.ctl.settings
         self._check(set(s.leagues))
         self.sp_years.setValue(s.years_back)
+        i = self.cb_profile.findData(s.data_profile)
+        if i >= 0 and i != self.cb_profile.currentIndex():
+            self.cb_profile.blockSignals(True)
+            self.cb_profile.setCurrentIndex(i)
+            self.cb_profile.blockSignals(False)
         names = [SOURCES[k].name for k in IMPLEMENTED if SOURCES[k].requires_consent and k in s.source_consent]
         self.consent_label.setText(
             "Onay verilen kaynaklar: " + ", ".join(names) if names else
             "Geçmiş maç verisi için henüz hiçbir kaynağın kullanım koşulları onaylanmadı; veri indirilemez.")
+
+    def _profile_changed(self) -> None:
+        """Profil seçimi yalnızca ayarlara kaydedilir; indirme veya eğitim başlatmaz."""
+        s = self.ctl.settings
+        val = self.cb_profile.currentData()
+        if val and val != s.data_profile:
+            s.data_profile = val
+            s.save()
+            self.ctl.settingsChanged.emit()
 
     def _consent(self) -> None:
         from ..consent import ask_consent

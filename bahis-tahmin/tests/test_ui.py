@@ -285,10 +285,13 @@ def test_goals_page(app, window, goal_setup):
     last = page.scan_model.frame.iloc[-1]
     assert last["A"] != last["A"] and last["data"].startswith("Doğrulanamıyor") and "BAGLAM_YOK" in last["neden"]
     page.refresh_coverage()
-    # S4-PILOT-01: kaynak kaydına pilotun sonuç kaynağı eklendi (5. satır); ana uygulamada kullanılmadığı açıkça yazar
-    assert page.cov_model.rowCount() > 0 and page.src_model.rowCount() == 5
+    # S4-PILOT-01: kaynak kaydına pilotun sonuç kaynağı eklendi (5. satır); ana uygulamada kullanılmadığı açıkça yazar.
+    # S5-GITHUB-01: iki arşiv kaynağı eklendi (6. ve 7. satır); yalnızca ayrı GitHub arşivinde kullanıldıkları yazar.
+    assert page.cov_model.rowCount() > 0 and page.src_model.rowCount() == 7
     status = dict(zip(page.src_model.frame["Kaynak"], page.src_model.frame["Durum"]))
     assert status["openfootball/football.json (maç sonuçları; S4 pilotu)"].startswith("Yalnızca S4 pilotu")
+    assert status["datasets/football-datasets (GitHub; Premier League sezon CSV'leri)"].startswith("Yalnızca GitHub arşivi")
+    assert status["StatsBomb açık verisi (hudl/open-data)"].startswith("Yalnızca GitHub arşivi")
     assert status["The Odds API"] == "Entegre edilmedi" and status["openfootball/football.json"] == "Onay gerekmez"
 
 

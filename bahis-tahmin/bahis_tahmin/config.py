@@ -63,6 +63,8 @@ class Settings:
     source_consent: dict = field(default_factory=dict)
     # Gerçek para miktarı önerisi yalnızca kullanıcı risk sınırlarını kendisi belirleyip açarsa gösterilir
     stake_suggestions: bool = False
+    # Veri profili (S5-GITHUB-01): "varsayilan" veya "github" (bütün güncelleme yolları yalnızca seçili GitHub depoları)
+    data_profile: str = "varsayilan"
 
     @classmethod
     def path(cls) -> Path:
@@ -98,6 +100,10 @@ class Settings:
         self.kelly_fraction = float(min(max(self.kelly_fraction, 0.0), 1.0))
         self.max_stake_pct = float(min(max(self.max_stake_pct, 0.0), 1.0))
         self.fixture_days = int(min(max(int(self.fixture_days), 1), 60))
+        from .data.github_kaynak import PROFILE_DEFAULT, PROFILES
+
+        if self.data_profile not in PROFILES:
+            self.data_profile = PROFILE_DEFAULT
 
     def allowed_sources(self) -> set[str]:
         from .data.source_registry import allowed_sources

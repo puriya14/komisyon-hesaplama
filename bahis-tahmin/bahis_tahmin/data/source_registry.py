@@ -57,7 +57,10 @@ SOURCES: dict[str, SourceInfo] = {
         terms_url="https://github.com/xgabora/Club-Football-Match-Data-2000-2025/blob/main/LICENSE",
         license_summary=(
             "Depo MIT lisanslı; ancak maç verileri football-data.co.uk'tan, Elo verileri ClubElo'dan derlenmiştir. "
-            "Depo sahibi kaynak verinin haklarını devredemeyeceği için asıl kaynakların koşulları geçerlidir."
+            "Depo sahibi kaynak verinin haklarını devredemeyeceği için asıl kaynakların koşulları geçerlidir. "
+            "README (commit 25882a58a736): Elo 1 Haziran 2025'e kadar ClubElo'dan; 15 Haziran 2025'ten sonrası yazarın "
+            "son ClubElo görüntüsünden yeni sonuçlarla ürettiği geçici devam serisidir (aynı yöntem sayılmaz). Elo, "
+            "form, küme olasılıkları ve oranlar türetilmiş/piyasa alanlarıdır; model girdisi yapılmaz."
         ),
         commercial_use="Asıl kaynağa bağlı (doğrulanamadı).",
         automated_download="GitHub üzerinden tek dosya indirme.",
@@ -99,6 +102,46 @@ SOURCES: dict[str, SourceInfo] = {
         cost="Ücretsiz",
         requires_consent=False,
     ),
+    "football-datasets": SourceInfo(
+        key="football-datasets",
+        name="datasets/football-datasets (GitHub; Premier League sezon CSV'leri)",
+        url="https://github.com/datasets/football-datasets",
+        terms_url="https://github.com/datasets/football-datasets/blob/main/README.md",
+        license_summary=(
+            "README: lig veri setleri ODC-PDDL 1.0 ile yayımlanır; veri football-data.co.uk'tan alınır (depodaki "
+            "scripts/process.py asıl siteden indirir; uygulama bu betiği çalıştırmaz). premier-league/README: 'yalnızca "
+            "eğitim ve araştırma amaçlı; ötesi için Football Data UK koşullarını inceleyin'. Depo lisansı asıl kaynağın "
+            "haklarını kanıtlamaz; asıl kaynağın koşulları doğrulanamadı (football-data kaydıyla aynı)."
+        ),
+        commercial_use="Asıl kaynağa bağlı (doğrulanamadı).",
+        automated_download="GitHub raw, sabit commit; yalnızca depodaki dosyalar okunur.",
+        model_training="Asıl kaynağa bağlı (doğrulanamadı).",
+        redistribution="İzin varsayılmaz (uygulama veri dağıtmaz).",
+        coverage=("Premier League 1993/94–2025/26 sezon dosyaları (commit 436a51f15258): MS her sezonda; İY 1995/96'dan; "
+                  "hakem/şut/faul/korner/kart 2000/01'den. Oran sütunu yok."),
+        cost="Ücretsiz",
+        requires_consent=True,
+    ),
+    "statsbomb-acik": SourceInfo(
+        key="statsbomb-acik",
+        name="StatsBomb açık verisi (hudl/open-data)",
+        url="https://github.com/hudl/open-data",
+        terms_url="https://github.com/hudl/open-data/blob/master/LICENSE.pdf",
+        license_summary=(
+            "StatsBomb Public Data User Agreement (LICENSE.pdf, son güncelleme 8 Eylül 2023; commit 4b73468fc5b0'da "
+            "okundu): 1.1 analiz ve araştırma için erişim; 1.2.1 veriyi düzenleme, çoğaltma, dağıtma ve üçüncü kişiye "
+            "verme yasak; 1.2.2 veriyi veya türetilen analizi ticari kullanma yasak; 1.4 yayımlanan analizde StatsBomb "
+            "atfı/logosu; 2.2 kullanıcılardan web sitesinde kayıt isteniyor (uygulama kullanıcı adına kayıt yapmaz)."
+        ),
+        commercial_use="Yasak (madde 1.2.2).",
+        automated_download="GitHub raw, sabit commit; yalnızca seçili dosyalar (360 dosyaları indirilmez).",
+        model_training="Bahis amaçlı kullanım ticari kullanım sayılabilir; belgeyle doğrulanmadı (kapalı).",
+        redistribution="Yasak (madde 1.2.1); uygulama ham veriyi dağıtmaz.",
+        coverage=("Olay verisi seçili yarışmalar: Premier League 2015/16 tam sezon (380 maç) ve 2003/04 yalnızca "
+                  "Arsenal maçları (38); her maç için olay, kadro; seçili maçlarda 360."),
+        cost="Ücretsiz",
+        requires_consent=False,
+    ),
     "the-odds-api": SourceInfo(
         key="the-odds-api",
         name="The Odds API",
@@ -124,7 +167,8 @@ IMPLEMENTED = ("football-data", "github-mirror", "openfootball")
 
 # Veri deposundaki ``source`` etiketi -> kaynak anahtarı
 SOURCE_LABELS = {"football-data.co.uk": "football-data", "github-yedek": "github-mirror", "openfootball": "openfootball",
-                 "openfootball-sonuc": "openfootball-sonuc"}
+                 "openfootball-sonuc": "openfootball-sonuc", "football-datasets": "football-datasets",
+                 "statsbomb-acik": "statsbomb-acik"}
 
 # Kullanım kapsamının yapılandırılmış hâli (veri uygunluk kontrolü bunu okur; S3-GATE-01, kapsamlar S3-GATE-02).
 # Değerler yukarıdaki SOURCES metinlerinin aynısıdır, YENİ HAK VERMEZ: belge yoksa "DOGRULANAMADI" kalır. Ayrı alanlar:
@@ -166,7 +210,72 @@ USE_RIGHTS: dict[str, dict] = {
                                               "670154e3538863b2 — CC0 1.0 Universal metni okundu."),
                            "sinirlar": ("CC0 doğruluk garantisi vermez ve üçüncü kişi haklarını temizlemez (madde 4); "
                                         "uygulama ham veriyi dağıtmaz.")},
+    # S5-GITHUB-01: depo lisansı (PDDL) asıl kaynağın (football-data.co.uk) haklarını kanıtlamaz; etiket değiştirmek
+    # football-data kaydının doğrulanamayan kapsamını aşmaz.
+    "football-datasets": {"erisim_kosullari": "DOGRULANAMADI", "sonuc_kullanimi": "DOGRULANAMADI",
+                          "model_egitimi": "DOGRULANAMADI", "model_kullanimi": "DOGRULANAMADI",
+                          "ticari_kullanim": "DOGRULANAMADI", "yeniden_dagitim": "IZIN_VARSAYILMAZ", "belge": "",
+                          "saglar": ("sonuc",),
+                          "belge_denetimi": ("2026-10-11 (S5-GITHUB-01): README ve premier-league/README okundu "
+                                             "(commit 436a51f15258). Depo PDDL; veri football-data.co.uk'tan; asıl "
+                                             "kaynağın koşulları okunamadı.")},
+    "statsbomb-acik": {"erisim_kosullari": "IZINLI_BELGELI", "sonuc_kullanimi": "IZINLI_BELGELI",
+                       "model_egitimi": "DOGRULANAMADI", "model_kullanimi": "DOGRULANAMADI",
+                       "ticari_kullanim": "IZIN_VARSAYILMAZ", "yeniden_dagitim": "IZIN_VARSAYILMAZ",
+                       "belge": "https://github.com/hudl/open-data/blob/master/LICENSE.pdf", "saglar": ("olay",),
+                       "belge_denetimi": ("2026-10-11 (S5-GITHUB-01): LICENSE.pdf (StatsBomb Public Data User "
+                                          "Agreement, 8 Eylül 2023) commit 4b73468fc5b0'da okundu."),
+                       "sinirlar": ("Yalnızca ticari olmayan analiz/araştırma (1.1, 1.2.2); dağıtım yok (1.2.1); "
+                                    "yayımlanan analizde StatsBomb atfı (1.4). Bahis amaçlı model eğitimi ve tahmin "
+                                    "gösterimi bu kapsama otomatik genişletilmez.")},
 }
+
+# GitHub arşivi (S5-GITHUB-01) işlemleri. Her kaynak için ayrı değerlendirilir; bir kaynağın belirsizliği diğerlerini
+# durdurmaz. Değerler: IZINLI_BELGELI / DOGRULANAMADI / IZIN_VARSAYILMAZ (uygulama yapmaz) / YASAK_BELGELI.
+#   belge_inceleme   : README/lisans/şema okuma
+#   alma_saklama     : dosyayı sabit commit'ten alıp YEREL, özel önbellekte saklama (dağıtım yok)
+#   envanter         : yapısal sayımlar (maç, MS/İY alan kapsamı, eksik/çelişkili kayıt) — sonuç oranı değil
+#   tarihsel_analiz  : geçmiş maç listesi ve gerçekleşme özetleri (betimleyici)
+#   model_egitimi, tahmin_gosterimi, ticari_kullanim, yeniden_dagitim
+ARCHIVE_OPERATIONS = ("belge_inceleme", "alma_saklama", "envanter", "tarihsel_analiz", "model_egitimi",
+                      "tahmin_gosterimi", "ticari_kullanim", "yeniden_dagitim")
+ARCHIVE_SCOPES: dict[str, dict[str, str]] = {
+    "openfootball-sonuc": {"belge_inceleme": "IZINLI_BELGELI", "alma_saklama": "IZINLI_BELGELI",
+                           "envanter": "IZINLI_BELGELI", "tarihsel_analiz": "IZINLI_BELGELI",
+                           "model_egitimi": "IZINLI_BELGELI", "tahmin_gosterimi": "IZINLI_BELGELI",
+                           "ticari_kullanim": "IZINLI_BELGELI", "yeniden_dagitim": "IZINLI_BELGELI",
+                           "not": "CC0 1.0 (LICENSE.md); doğruluk garantisi yok."},
+    "football-datasets": {"belge_inceleme": "IZINLI_BELGELI", "alma_saklama": "IZINLI_BELGELI",
+                          "envanter": "IZINLI_BELGELI", "tarihsel_analiz": "DOGRULANAMADI",
+                          "model_egitimi": "DOGRULANAMADI", "tahmin_gosterimi": "DOGRULANAMADI",
+                          "ticari_kullanim": "DOGRULANAMADI", "yeniden_dagitim": "IZIN_VARSAYILMAZ",
+                          "not": ("Depo ODC-PDDL; veri football-data.co.uk'tan. Asıl kaynağın koşulları okunamadığı için "
+                                  "betimleyici analiz ve eğitim kapalı; yalnızca yerel envanter.")},
+    "github-mirror": {"belge_inceleme": "IZINLI_BELGELI", "alma_saklama": "IZINLI_BELGELI",
+                      "envanter": "IZINLI_BELGELI", "tarihsel_analiz": "DOGRULANAMADI",
+                      "model_egitimi": "DOGRULANAMADI", "tahmin_gosterimi": "DOGRULANAMADI",
+                      "ticari_kullanim": "DOGRULANAMADI", "yeniden_dagitim": "IZIN_VARSAYILMAZ",
+                      "not": ("Depo MIT; maçlar football-data.co.uk, Elo ClubElo (2025-06-15 sonrası geçici devam "
+                              "serisi). Asıl kaynağın koşulları okunamadığı için betimleyici analiz ve eğitim kapalı.")},
+    "statsbomb-acik": {"belge_inceleme": "IZINLI_BELGELI", "alma_saklama": "IZINLI_BELGELI",
+                       "envanter": "IZINLI_BELGELI", "tarihsel_analiz": "IZINLI_BELGELI",
+                       "model_egitimi": "DOGRULANAMADI", "tahmin_gosterimi": "DOGRULANAMADI",
+                       "ticari_kullanim": "YASAK_BELGELI", "yeniden_dagitim": "YASAK_BELGELI",
+                       "not": ("StatsBomb Public Data User Agreement: ticari olmayan analiz/araştırma; dağıtım ve ticari "
+                               "kullanım yasak; yayımlanan analizde StatsBomb atfı. Seçili maçlar; tam lig değil.")},
+}
+
+
+def archive_scope(key: str) -> dict[str, str]:
+    """Arşiv işlemleri için kapsam; kayıtta olmayan kaynak hiçbir işlem hakkı kazanmaz."""
+    base = {op: "DOGRULANAMADI" for op in ARCHIVE_OPERATIONS}
+    return {**base, **ARCHIVE_SCOPES.get(key, {})}
+
+
+def archive_allowed(key: str, operation: str) -> bool:
+    if operation not in ARCHIVE_OPERATIONS:
+        raise KeyError(operation)
+    return archive_scope(key).get(operation) == "IZINLI_BELGELI"
 
 
 def allowed_sources(consent: dict[str, str] | None) -> set[str]:

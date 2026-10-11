@@ -641,6 +641,10 @@ class GoalsPage(Page):
             "Durum": ("Entegre edilmedi" if k == "the-odds-api" else
                       # S4: yalnızca ayrı pilot klasöründe; ana uygulama bu kaynaktan sonuç okumaz
                       "Yalnızca S4 pilotu (köken doğrulaması zorunlu)" if k == "openfootball-sonuc" else
+                      # S5: yalnızca ayrı GitHub arşivinde; ana uygulama bu kaynaklardan sonuç okumaz veya eğitmez
+                      "Yalnızca GitHub arşivi (envanter; analiz ve eğitim kapalı)" if k == "football-datasets" else
+                      "Yalnızca GitHub arşivi (araştırma amaçlı tarihsel inceleme; eğitim ve tahmin kapalı)"
+                      if k == "statsbomb-acik" else
                       "Onay gerekmez" if not s.requires_consent else
                       ("Kullanıcı onayladı" if k in self.ctl.settings.source_consent else "ONAY YOK")),
         } for k, s in SOURCES.items()]))

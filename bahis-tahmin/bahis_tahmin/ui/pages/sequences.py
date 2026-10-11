@@ -253,27 +253,11 @@ class SequencesPage(Page):
         src = self.ev_proxy.mapToSource(index)
         row = int(self.ev_model.frame.iloc[src.row()]["_row"])
         card = event_card(tm, row, data_meta=self.ctl.store.meta)
-        k, e = card["kimlik"], card["EVENT_OUTCOME"]
-        src_ = card["kaynak"]
-        self.card_event.setHtml(
-            f"<b>{k['takim']}</b> ({'ev' if k['ev_sahibi'] else 'deplasman'}) – {k['rakip']} · {k['tarih']} · {k['lig']} "
-            f"{k['sezon']}<br>İY (ev-dep) {e['iy_ev_dep']} · MS (ev-dep) {e['ms_ev_dep']} · ham İY/MS {e['iy_ms_ham'] or 'bilinmiyor'} · "
-            f"takım perspektifi {e['takim_iy'] or '?'}→{e['takim_ms'] or '?'}"
-            + (" · <b>hükmen olabilir (sonuç karar anında bilinmiyordu)</b>" if e["hukmen_olabilir"] else "")
-            + f"<br><br><b>Kaynak:</b> {src_['kaynak']} · veri güncelleme {src_['veri_guncelleme'] or '-'} · yayımlanma zamanı: "
-            f"{src_['yayimlanma_zamani']} · kimlik eşlemesi: {src_['esleme']}"
-            f"<br><b>Kapsam:</b> {card['kapsam']['alanlar']}. Yok: {card['kapsam']['yok']}. Tüm resmî maçlar görünümü: "
-            f"{card['kapsam']['gorunum_tum_resmi']}. Event kimliği: {k['event_id']}")
+        self.card_event.setHtml(card_html(card))
         for key, (state, model) in self.card_models.items():
-            parts, frames = [], []
-            for name, blk in card[key].items():
-                parts.append(f"{name.replace('_', ' ')}: {blk['durum']}")
-                df = pd.DataFrame(blk["maclar"])
-                if not df.empty:
-                    df.insert(0, "pencere", name.replace("_", " "))
-                    frames.append(df)
-            state.setText(" · ".join(parts))
-            model.set_frame(pd.concat(frames, ignore_index=True) if frames else pd.DataFrame())
+            text, frame = card_window(card, key)
+            state.setText(text)
+            model.set_frame(frame)
 
     # ======================================================= B: benzer diziler
     def _build_similar(self) -> QWidget:
@@ -555,3 +539,30 @@ def _anomaly_summary_text(summ: dict) -> str:
 _CARD_HEADERS = {"pencere": "Pencere", "date": "Tarih", "opponent": "Rakip", "is_home": "Ev?", "gf_ht": "İY attığı",
                  "ga_ht": "İY yediği", "gf_ft": "MS attığı", "ga_ft": "MS yediği", "ht_res": "İY", "ft_res": "MS",
                  "awarded": "Hükmen?", "lig_arasi_gun": "Lig arası gün", "has_odds": "Oran var"}
+
+
+def card_html(card: dict) -> str:
+    """Olay kartının kimlik/sonuç/kaynak/kapsam özeti (dizi sayfası ve arşiv bölümü ortak kullanır)."""
+    k, e = card["kimlik"], card["EVENT_OUTCOME"]
+    src_ = card["kaynak"]
+    return (
+        f"<b>{k['takim']}</b> ({'ev' if k['ev_sahibi'] else 'deplasman'}) – {k['rakip']} · {k['tarih']} · {k['lig']} "
+        f"{k['sezon']}<br>İY (ev-dep) {e['iy_ev_dep']} · MS (ev-dep) {e['ms_ev_dep']} · ham İY/MS {e['iy_ms_ham'] or 'bilinmiyor'} · "
+        f"takım perspektifi {e['takim_iy'] or '?'}→{e['takim_ms'] or '?'}"
+        + (" · <b>hükmen olabilir (sonuç karar anında bilinmiyordu)</b>" if e["hukmen_olabilir"] else "")
+        + f"<br><br><b>Kaynak:</b> {src_['kaynak']} · veri güncelleme {src_['veri_guncelleme'] or '-'} · yayımlanma zamanı: "
+        f"{src_['yayimlanma_zamani']} · kimlik eşlemesi: {src_['esleme']}"
+        f"<br><b>Kapsam:</b> {card['kapsam']['alanlar']}. Yok: {card['kapsam']['yok']}. Tüm resmî maçlar görünümü: "
+        f"{card['kapsam']['gorunum_tum_resmi']}. Event kimliği: {k['event_id']}")
+
+
+def card_window(card: dict, key: str) -> tuple[str, pd.DataFrame]:
+    """Kartın bir pencere bloğu (PRE_EVENT / POST_EVENT / RAKIP_PRE_EVENT): durum metni ve maç tablosu."""
+    parts, frames = [], []
+    for name, blk in card[key].items():
+        parts.append(f"{name.replace('_', ' ')}: {blk['durum']}")
+        df = pd.DataFrame(blk["maclar"])
+        if not df.empty:
+            df.insert(0, "pencere", name.replace("_", " "))
+            frames.append(df)
+    return " · ".join(parts), (pd.concat(frames, ignore_index=True) if frames else pd.DataFrame())

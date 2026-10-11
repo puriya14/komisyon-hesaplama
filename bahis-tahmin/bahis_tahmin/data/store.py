@@ -12,6 +12,7 @@ from typing import Callable
 
 import pandas as pd
 
+from .github_kaynak import GITHUB_HOSTS, PROFILE_DEFAULT, PROFILE_GITHUB, PROFILES, REPOS, STATUS_TEXT
 from .leagues import LEAGUES, openfootball_season, recent_season_starts, season_code, season_label
 from .parsers import (
     FIXTURE_COLUMNS,
@@ -49,13 +50,22 @@ class UpdateReport:
     downloaded: int = 0
     from_cache: int = 0
     blocked_sources: list[str] = field(default_factory=list)  # kullanım koşulları onaylanmamış
+    profile: str = PROFILE_DEFAULT
+    stale: int = 0  # indirme başarısız olduğu için önbellekteki ESKİ kopyası kullanılan dosya
+    github: dict = field(default_factory=dict)  # GitHub profili: depo -> commit / uç durumu / dosya durumu
 
     def summary(self) -> str:
         lines = [
             f"{self.n_matches} maç, {self.n_fixtures} yaklaşan maç yüklendi "
             f"({self.downloaded} dosya indirildi, {self.from_cache} dosya önbellekten).",
         ]
-        if self.used_mirror:
+        if self.profile == PROFILE_GITHUB:
+            lines.append("Veri profili: yalnızca GitHub (football-data adreslerine istek gönderilmedi).")
+            for repo, g in self.github.items():
+                lines.append(f"{repo}: commit {str(g.get('commit') or '-')[:12]} — {g.get('aciklama', '')}")
+        if self.stale:
+            lines.append(f"{self.stale} dosya güncellenemedi; önbellekteki ESKİ kopya kullanıldı (güncel sayılmaz).")
+        if self.used_mirror and self.profile != PROFILE_GITHUB:
             lines.append("football-data.co.uk'a ulaşılamadığı için GitHub yedek veri seti kullanıldı.")
         for key in self.blocked_sources:
             lines.append(f"{SOURCES[key].name}: kullanım koşulları onaylanmadığı için kullanılmadı.")
@@ -134,19 +144,32 @@ class DataStore:
         today: dt.date | None = None,
         downloader: Downloader | None = None,
         allowed: set[str] | None = None,
+        profile: str = PROFILE_DEFAULT,
+        github_transport=None,
     ) -> UpdateReport:
         """Verileri indirir. ``allowed``: kullanılmasına izin verilen kaynak anahtarları
-        (bkz. ``source_registry``); verilmezse yalnızca onay gerektirmeyen kaynaklar kullanılır."""
+        (bkz. ``source_registry``); verilmezse yalnızca onay gerektirmeyen kaynaklar kullanılır.
+
+        ``profile="github"`` (S5-GITHUB-01): bütün güncelleme yolları yalnızca seçili GitHub depolarını kullanır;
+        football-data adreslerine (sonuç ve fikstür) istek gönderilmez, gizli geri dönüş yoktur. Depo ucu bir kez
+        çözülür, dosyalar o commit'ten alınır ve depo + commit + yol anahtarlı, özeti doğrulanan önbellekte saklanır.
+        Uç çözülemezse son kayıtlı commit'in doğrulanmış kopyası açıkça "eski kopya" olarak kullanılır; hiç kopya
+        yoksa o kaynak atlanır."""
+        if profile not in PROFILES:
+            raise ValueError(f"Bilinmeyen veri profili: {profile}")
+        github = profile == PROFILE_GITHUB
         today = today or dt.date.today()
         progress = progress or (lambda p, m: None)
-        dl = downloader or Downloader(self.raw_dir)
-        report = UpdateReport()
+        dl = downloader or Downloader(self.raw_dir, allowed_hosts=GITHUB_HOSTS if github else None)
+        report = UpdateReport(profile=profile)
         allowed = allowed_sources(None) if allowed is None else set(allowed)
-        use_fd = "football-data" in allowed
-        use_mirror_fallback = use_mirror_fallback and "github-mirror" in allowed
+        use_fd = "football-data" in allowed and not github
+        # GitHub profilinde yedek veri seti asıl sonuç kaynağıdır (football-data kullanılmaz)
+        use_mirror_fallback = (use_mirror_fallback or github) and "github-mirror" in allowed
         for key in ("football-data", "github-mirror"):
-            if key not in allowed:
+            if key not in allowed and not (github and key == "football-data"):
                 report.blocked_sources.append(key)
+        gh = _GitHubFiles(self.raw_dir, github_transport, report) if github else None
         starts = recent_season_starts(years_back, today)
         frames: list[pd.DataFrame] = []
         need_mirror: list[str] = []
@@ -207,7 +230,10 @@ class DataStore:
         if need_mirror:
             progress(82, "Yedek veri seti (GitHub) alınıyor...")
             try:
-                data = dl.get(MIRROR_URL, "mirror/Matches.csv", MIRROR_MAX_AGE_H, force)
+                if gh is not None:
+                    data = gh.get("xgabora/Club-Football-Match-Data-2000-2025", "data/Matches.csv")
+                else:
+                    data = dl.get(MIRROR_URL, "mirror/Matches.csv", MIRROR_MAX_AGE_H, force)
                 raw = pd.read_csv(io.BytesIO(data), low_memory=False)
                 mdf = normalize_mirror(raw, need_mirror)
                 for code in need_mirror:
@@ -222,6 +248,8 @@ class DataStore:
                     report.used_mirror = True
             except DownloadError as e:
                 report.warnings.append(f"Yedek veri setine de ulaşılamadı: {e}")
+            except _GitHubUnavailable as e:
+                report.warnings.append(f"GitHub yedek veri seti alınamadı (başka kaynağa geçilmedi): {e}")
 
         progress(88, "Veriler birleştiriliyor...")
         if frames:
@@ -235,7 +263,8 @@ class DataStore:
 
         progress(92, "Yaklaşan maçlar (fikstür) alınıyor...")
         self._last_unmatched = []
-        fixtures = self._update_fixtures(dl, leagues, matches, today, fixture_days, report, force, allowed)
+        fixtures = self._update_fixtures(dl, leagues, matches, today, fixture_days, report, force,
+                                         allowed - {"football-data"} if github else allowed, gh)
 
         self.matches = matches.reset_index(drop=True)
         self.fixtures = fixtures.reset_index(drop=True)
@@ -247,11 +276,15 @@ class DataStore:
             # Takım adı eşleşmeyen fikstürler sessizce düşürülmez: ham adlarıyla saklanır; uygulama bunlar için
             # aday kimlikli, nedenli "tahmin yok" sonucu gösterir (S3-GATE-01).
             "eslesmeyen_fikstur": list(self._last_unmatched),
+            "veri_profili": profile,
+            "github_kaynak": report.github if github else {},
+            "eski_kopya_dosyalari": list(getattr(dl, "stale_files", [])) + (gh.stale if gh else []),
         })
         report.n_matches = len(self.matches)
         report.n_fixtures = len(self.fixtures)
-        report.downloaded = dl.stats["network"]
-        report.from_cache = dl.stats["cache"]
+        report.downloaded = dl.stats["network"] + (gh.network if gh else 0)
+        report.from_cache = dl.stats["cache"] + (gh.cache_hits if gh else 0)
+        report.stale = dl.stats.get("stale", 0) + (len(gh.stale) if gh else 0)
         self.save()
         progress(100, "Veriler hazır.")
         return report
@@ -268,7 +301,7 @@ class DataStore:
         m = m.drop_duplicates(subset=["league", "date", "home", "away"], keep="first")
         return m.sort_values(["date", "league", "time", "home"], kind="mergesort").reset_index(drop=True)
 
-    def _update_fixtures(self, dl, leagues, matches, today, days, report, force, allowed) -> pd.DataFrame:
+    def _update_fixtures(self, dl, leagues, matches, today, days, report, force, allowed, gh=None) -> pd.DataFrame:
         lo = pd.Timestamp(today)
         hi = pd.Timestamp(today) + pd.Timedelta(days=days)
         frames = []
@@ -295,8 +328,11 @@ class DataStore:
             season = openfootball_season(today, lg.calendar_year)
             url = f"{OPENFOOTBALL_BASE}/{season}/{lg.openfootball}.json"
             try:
-                data = dl.get(url, f"openfootball/{season}/{lg.openfootball}.json", 6.0, force)
-            except DownloadError:
+                if gh is not None:
+                    data = gh.get("openfootball/football.json", f"{season}/{lg.openfootball}.json")
+                else:
+                    data = dl.get(url, f"openfootball/{season}/{lg.openfootball}.json", 6.0, force)
+            except (DownloadError, _GitHubUnavailable):
                 continue
             of = parse_openfootball(data, code, keep_provider_id=True)
             of = of[(of["date"] >= lo) & (of["date"] <= hi)]
@@ -380,3 +416,62 @@ class DataStore:
         }).reset_index()
         order = {c: i for i, c in enumerate(LEAGUES)}
         return out.sort_values("league", key=lambda s: s.map(order)).reset_index(drop=True)
+
+
+class _GitHubUnavailable(Exception):
+    """GitHub profilinde dosya alınamadı ve doğrulanmış kopyası da yok (başka kaynağa geçilmez)."""
+
+
+class _GitHubFiles:
+    """GitHub profili için depo başına bir kez çözülen commit'ten, özeti doğrulanan önbellekle dosya alımı."""
+
+    def __init__(self, raw_dir: Path, transport, report: UpdateReport):
+        from .github_kaynak import GitHubCache, GitHubTransport
+
+        self._cache = GitHubCache(raw_dir)
+        self.transport = transport if transport is not None else GitHubTransport()
+        self.report = report
+        self.commits: dict[str, tuple[str, str, str]] = {}
+        self.network = self.cache_hits = 0
+        self.stale: list[str] = []
+
+    def get(self, repo: str, path: str) -> bytes:
+        from .github_kaynak import FETCHED, STALE_COPY, GitHubError
+
+        spec = REPOS[repo]
+        try:
+            if repo not in self.commits:
+                self.commits[repo] = self._cache.resolve(self.transport, spec)
+            commit, ref_status, note = self.commits[repo]
+        except GitHubError as e:
+            self.report.github[repo] = {"commit": None, "durum": e.kind, "aciklama": f"alınamadı: {e}"}
+            raise _GitHubUnavailable(str(e)) from e
+        try:
+            cf = self._cache.get(self.transport, repo, commit, path)
+        except GitHubError as e:
+            # Bu commit'in dosyası alınamadı: daha önce kaydedilmiş bir commit'in DOĞRULANMIŞ kopyası varsa açıkça
+            # "eski kopya" olarak kullanılır; yoksa kaynak atlanır (başka siteye geçilmez).
+            cf = None
+            for old in reversed(self._cache.ref_history().get(repo) or []):
+                if old["commit"] == commit:
+                    continue
+                try:
+                    cf = self._cache.read(repo, old["commit"], path)
+                except GitHubError:
+                    cf = None
+                if cf is not None:
+                    commit, ref_status, note = old["commit"], STALE_COPY, f"dosya alınamadı ({e.kind}); {note}"
+                    break
+            if cf is None:
+                self.report.github[repo] = {"commit": commit, "durum": e.kind, "aciklama": f"alınamadı: {e}"}
+                raise _GitHubUnavailable(str(e)) from e
+        status = STALE_COPY if ref_status == STALE_COPY else cf.status
+        if cf.status == FETCHED:
+            self.network += 1
+        else:
+            self.cache_hits += 1
+        if status == STALE_COPY:
+            self.stale.append(f"{repo}@{commit[:12]}:{path}")
+        self.report.github[repo] = {"commit": commit, "uc_durumu": ref_status, "uc_notu": note, "durum": status,
+                                    "aciklama": f"{STATUS_TEXT.get(status, status)}; {note}"}
+        return cf.data

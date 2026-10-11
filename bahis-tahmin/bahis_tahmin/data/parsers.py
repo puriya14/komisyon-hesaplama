@@ -683,3 +683,82 @@ def parse_openfootball_results(data: bytes, league: str, season: str,
     out["kaynak_ozeti"] = sha
     res.matches = out
     return res
+
+
+# ----------------------------------------------------------------------------
+# datasets/football-datasets (GitHub; asıl kaynak football-data.co.uk) — S5-GITHUB-01
+# ----------------------------------------------------------------------------
+
+FOOTBALL_DATASETS_LABEL = "football-datasets"
+FOOTBALL_DATASETS_PARSER = "football-datasets-csv-v1"
+# Depodaki schema.json ile aynı sütunlar (oran sütunu YOK: depo betiği oranları atar; boş oran üretilmez)
+FOOTBALL_DATASETS_COLUMNS = ("Date", "HomeTeam", "AwayTeam", "FTHG", "FTAG", "FTR", "HTHG", "HTAG", "HTR", "Referee",
+                             "HS", "AS", "HST", "AST", "HF", "AF", "HC", "AC", "HY", "AY", "HR", "AR")
+
+
+def football_datasets_season(file_name: str) -> str | None:
+    """"season-9394.csv" -> "1993/94", "season-0001.csv" -> "2000/01"."""
+    m = re.match(r"^season-(\d{2})(\d{2})\.csv$", str(file_name).rsplit("/", 1)[-1])
+    if not m:
+        return None
+    a, b = int(m.group(1)), int(m.group(2))
+    start = 1900 + a if a >= 90 else 2000 + a
+    if (start + 1) % 100 != b:
+        return None
+    return f"{start}/{b:02d}"
+
+
+def parse_football_datasets(data: bytes, league: str, season: str) -> tuple[pd.DataFrame, dict]:
+    """Sezon CSV'si -> (geçerli maçlar ``MATCH_COLUMNS``, kapsam raporu). Eksik alanlar dosyayı düşürmez; alan bazında
+    sayılır. Aynı maçın birebir tekrarı bir kez sayılır; farklı skorlu tekrar ikisi birden karantinaya alınır. Geçersiz
+    skor karantinadadır; eksik İY eksik kalır (0-0 yapılmaz). Satırların kaynak etiketi depo etiketidir
+    (``FOOTBALL_DATASETS_LABEL``): asıl kaynağın (football-data.co.uk) etiketi ve hakları taşınmaz."""
+    import hashlib
+
+    raw = read_csv_robust(data)
+    rep = {"ayristirici": FOOTBALL_DATASETS_PARSER, "dosya_sha256": hashlib.sha256(data).hexdigest(),
+           "satir": int(len(raw)), "sutunlar": list(raw.columns), "oran_sutunu": False, "karantina": {}}
+    if raw.empty or not {"Date", "HomeTeam", "AwayTeam"} <= set(raw.columns):
+        rep["karantina"]["BICIM_BILINMIYOR"] = int(len(raw))
+        return pd.DataFrame(columns=MATCH_COLUMNS), rep
+    rep["oran_sutunu"] = any(c.startswith(("B365", "Avg", "Max", "PS")) for c in raw.columns)
+    out = pd.DataFrame(index=raw.index)
+    out["league"], out["season"] = league, season
+    out["date"] = parse_dates(raw["Date"])
+    out["time"] = _clean_time(raw["Time"]) if "Time" in raw.columns else ""
+    out["home"], out["away"] = raw["HomeTeam"], raw["AwayTeam"]
+    out["fthg"], out["ftag"] = _num(raw, "FTHG"), _num(raw, "FTAG")
+    out["hthg"], out["htag"] = _num(raw, "HTHG"), _num(raw, "HTAG")
+    for k, c in STAT_MAP.items():
+        out[k] = _num(raw, c)
+    out["source"] = FOOTBALL_DATASETS_LABEL
+    q = pd.Series("", index=out.index, dtype=object)
+    goal = lambda s: s.notna() & (s >= 0) & (s == s.round()) & (s < 30)  # noqa: E731
+    q[out["date"].isna() | out["home"].isna() | out["away"].isna()] = "KIMLIK_EKSIK"
+    q[(q == "") & ~(goal(out["fthg"]) & goal(out["ftag"]))] = "SKOR_GECERSIZ"
+    ht_present = out["hthg"].notna() | out["htag"].notna()
+    q[(q == "") & ht_present & ~(goal(out["hthg"]) & goal(out["htag"]))] = "IY_GECERSIZ"
+    q[(q == "") & ht_present & ((out["hthg"] > out["fthg"]) | (out["htag"] > out["ftag"]))] = "IY_MS_CELISKI"
+    def txt(s: pd.Series) -> pd.Series:
+        return s.map(lambda v: "" if pd.isna(v) else str(v)).astype(object)
+
+    key = txt(out["date"]) + "|" + txt(out["home"]) + "|" + txt(out["away"])
+    content = key
+    for c in ("fthg", "ftag", "hthg", "htag"):
+        content = content + "|" + txt(out[c])
+    exact_dup = content.duplicated(keep="first")
+    rep["birebir_tekrar"] = int(exact_dup.sum())
+    keep = ~exact_dup
+    conflict = keep & key.isin(key[keep][key[keep].duplicated(keep=False)])
+    q[(q == "") & conflict] = "CELISKILI_KAYIT"
+    for reason, n in q[keep & (q != "")].value_counts().items():
+        rep["karantina"][str(reason)] = int(n)
+    good = out[keep & (q == "")].copy()
+    rep["gecerli_mac"] = int(len(good))
+    rep["ms_gecerli"] = int(len(good))
+    rep["iy_gecerli"] = int((good["hthg"].notna() & good["htag"].notna()).sum())
+    rep["alan_kapsami"] = {c: int(raw[c].notna().sum()) for c in FOOTBALL_DATASETS_COLUMNS if c in raw.columns}
+    rep["eksik_sutun"] = [c for c in FOOTBALL_DATASETS_COLUMNS if c not in raw.columns]
+    rep["ilk_tarih"] = str(good["date"].min().date()) if len(good) else None
+    rep["son_tarih"] = str(good["date"].max().date()) if len(good) else None
+    return _finish(good, MATCH_COLUMNS), rep

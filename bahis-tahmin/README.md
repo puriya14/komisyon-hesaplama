@@ -60,6 +60,12 @@ ile verilen ayrı pilot klasörüne): `pilot-hazirla`, `pilot-kapsam` (salt okun
 (varsayılan kuru çalıştırma; `--uygula` pilot defterine yazar), `pilot-tani` (M10 aşama tanılaması; ayrı çıktı
 klasörü). Ayrıntılar: [`docs/S4_PILOT.md`](docs/S4_PILOT.md).
 
+GitHub veri profili ve tarihsel arşiv (S5): `update --profil github` bütün güncellemeleri yalnızca seçili GitHub
+depolarından yapar (football-data adreslerine istek gönderilmez). `arsiv-hazirla`, `arsiv-katalog`, `arsiv-maclar`,
+`arsiv-ozet` ve `arsiv-kart` komutları openfootball, datasets, xgabora ve Hudl/StatsBomb depolarını sabit commit'ten
+ayrı bir arşiv klasörüne alır; geçmiş maçları kaynak, kapsam ve kullanım hakkıyla birlikte listeler. Arayüzde: Veri
+sayfası → "GitHub Veri ve Arşiv". Ayrıntılar: [`docs/S5_GITHUB.md`](docs/S5_GITHUB.md).
+
 ## Gol pazarları kısaca
 
 - Üç pazar tek bir ortak gol dağılımından hesaplanır; A ⊆ B ∩ C olduğundan P(A) ≤ P(B), P(A) ≤ P(C)
@@ -100,6 +106,8 @@ dokunmaz (`tests/conftest.py`: `BAHIS_TAHMIN_HOME` geçici dizine yönlendirilir
 - [`docs/ILERIYE_DONUK_OLCUM.md`](docs/ILERIYE_DONUK_OLCUM.md) — A/B/C için ileriye dönük ölçüm protokolü ve elle günlük akış
 - [`docs/VERI_UYGUNLUK.md`](docs/VERI_UYGUNLUK.md) — ortak veri uygunluk kontrolü (güncellik, kapsam, takım kimliği, zaman, işlem kapsamlı haklar; politika v2, S3-GATE-02)
 - [`docs/S4_PILOT.md`](docs/S4_PILOT.md) — tek ligde gerçek veri pilotu: komutlar, yalıtım, kaynak kökeni, katılımcı referansı
+- [`docs/S5_GITHUB.md`](docs/S5_GITHUB.md) — GitHub veri profili, sürümlü önbellek, tarihsel arşiv ve kaynak/işlem bazında kullanım kapsamı
+- `reports/s5_github_01/` — S5-GITHUB-01 toplu sonuç raporu (yalnızca sayılar; maç satırı yok)
 - `reports/s4_pilot_01/` — S4-PILOT-01 toplu sonuç raporu (yalnızca sayılar; maç satırı ve tahmin listesi yok)
 - `reports/s3_gate_02/` — S3-GATE-02 raporu ve dondurulmuş ileriye dönük ölçüm protokolü v3
 - `reports/s3_gate_01/` — S3-GATE-01 raporu ve dondurulmuş ileriye dönük ölçüm protokolü v2

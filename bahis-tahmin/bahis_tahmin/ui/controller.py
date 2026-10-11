@@ -228,8 +228,12 @@ class AppController(QObject):
 
     # ------------------------------------------------------------ actions
     def needs_consent(self) -> bool:
-        """Geçmiş maç verisi sağlayan hiçbir kaynağın kullanım koşulları onaylanmamış mı?"""
-        return not ({"football-data", "github-mirror"} & self.settings.allowed_sources())
+        """Geçmiş maç verisi sağlayan hiçbir kaynağın kullanım koşulları onaylanmamış mı? GitHub veri profilinde
+        football-data kullanılmadığı için yalnızca GitHub yedek veri setinin onayı sayılır."""
+        from ..data.github_kaynak import PROFILE_GITHUB
+
+        keys = {"github-mirror"} if self.settings.data_profile == PROFILE_GITHUB else {"football-data", "github-mirror"}
+        return not (keys & self.settings.allowed_sources())
 
     def record_consent(self, keys: list[str]) -> None:
         now = dt.datetime.now().isoformat(timespec="seconds")
@@ -242,6 +246,27 @@ class AppController(QObject):
         self.settings.source_consent.pop(key, None)
         self.settings.save()
         self.settingsChanged.emit()
+
+    # ------------------------------------------------------------ GitHub arşivi (S5-GITHUB-01)
+    def open_archive(self, on_done: Callable[[object], None], home=None) -> bool:
+        """Arşiv klasörünü SALT OKUNUR açar: ağ isteği ve yazma yoktur; köken yeniden doğrulanır."""
+        from .. import archive
+
+        return self._run(lambda progress: archive.load(home), on_done, "GitHub arşivi okunuyor...", critical=False)
+
+    def build_archive(self, on_done: Callable[[object], None], consent=(), home=None) -> bool:
+        """Yalnızca kullanıcı isteğiyle: seçili GitHub depolarını sabit commit'ten AYRI arşiv klasörüne alır. Kullanıcı
+        veri deposu, model, pilot ve defter değişmez; eğitim yapılmaz. ``consent``: bu çalıştırmaya özgü erişim onayı
+        (kaydedilmez, analiz hakkı vermez)."""
+        from .. import archive
+
+        allowed = tuple(set(consent) | set(self.settings.source_consent))
+
+        def work(progress):
+            archive.build(home, consent=allowed, progress=progress)
+            return archive.load(home)
+
+        return self._run(work, on_done, "GitHub arşivi hazırlanıyor...", critical=True)
 
     def update_and_train(self, force: bool = False, quiet: bool = False) -> bool:
         s = self.settings
@@ -263,7 +288,7 @@ class AppController(QObject):
             report = store.update(
                 s.leagues, s.years_back, progress=p1, force=force,
                 use_mirror_fallback=s.use_mirror_fallback, fixture_days=s.fixture_days,
-                allowed=allowed,
+                allowed=allowed, profile=s.data_profile,
             )
             engine = old_engine
             sig = PredictionEngine.signature(store.matches, s.margin_method)
