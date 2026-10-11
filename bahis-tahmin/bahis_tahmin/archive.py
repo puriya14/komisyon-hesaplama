@@ -1072,22 +1072,37 @@ def event_card_for(archive: Archive, mac_kimligi: str, team: str, kaynak=None, l
     ``gorunum`` (veya ``kaynak``) verilmezse birleştirilmiş görünüm. Kartın ``gorunum`` bloğu kaynak bağlamını ve
     pencerelerin seçili listenin dışına taşan maç sayısını yazar. Yeni hipotez taraması veya model eğitimi yapılmaz;
     kart yalnızca geçmiş incelemedir."""
-    from .data.parsers import MATCH_COLUMNS
-    from .sequences.timeline import build_team_matches, event_card
-
     v = gorunum if gorunum is not None else view(archive, kaynak)
     merged = v.merged
     row = merged[merged["mac_kimligi"] == mac_kimligi] if len(merged) else merged
     if row.empty:
         raise ArchiveError("Maç bu görünümde yok.")
-    lg = row["league"].iloc[0]
-    m = merged[(merged["league"] == lg) & (merged["durum"] == "TAMAM")].copy()
+    tm = team_matches(v, row["league"].iloc[0])
+    return event_card_in(archive, v, tm, mac_kimligi, team, liste_filtresi)
+
+
+def team_matches(v: ArchiveView, league: str) -> pd.DataFrame:
+    """Görünümün bir ligdeki doğrulanmış (TAMAM) maçlarından takım-maç tablosu (``sequences.timeline``); olay kartı
+    pencereleri bu tablodan alınır. Aynı görünümde birden çok kart için bir kez kurulup ``event_card_in`` ile
+    yeniden kullanılabilir."""
+    from .data.parsers import MATCH_COLUMNS
+    from .sequences.timeline import build_team_matches
+
+    merged = v.merged
+    m = merged[(merged["league"] == league) & (merged["durum"] == "TAMAM")].copy()
     m["source"] = m["kaynaklar"]
-    frame = m.reindex(columns=MATCH_COLUMNS)
-    tm = build_team_matches(frame)
+    return build_team_matches(m.reindex(columns=MATCH_COLUMNS))
+
+
+def event_card_in(archive: Archive, v: ArchiveView, tm: pd.DataFrame, mac_kimligi: str, team: str,
+                  liste_filtresi: dict | None = None, pre=(5, 10), post=(1, 3, 5)) -> dict:
+    """``event_card_for`` ile aynı kart, hazır takım-maç tablosundan (``team_matches(v, lig)``)."""
+    from .sequences.timeline import event_card
+
     hit = tm.index[(tm["event_id"] == mac_kimligi) & (tm["team_raw"] == team)]
     if not len(hit):
         raise ArchiveError("Takım bu maçta yok veya maçın skoru doğrulanmadı (çelişki/inceleme).")
-    card = event_card(tm, int(hit[0]), data_meta={"updated_at": archive.catalog.get("olusturma_utc")})
+    card = event_card(tm, int(hit[0]), pre=pre, post=post,
+                      data_meta={"updated_at": archive.catalog.get("olusturma_utc")})
     card["gorunum"] = _card_scope(card, v, liste_filtresi)
     return card

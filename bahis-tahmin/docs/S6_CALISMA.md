@@ -148,6 +148,8 @@ Bütün çıktılar JSON'dur: sonlu sayılar ve `null` kullanılır, NaN/Infinit
 - Yazma: `arastirma_olustur(tanim)`, `arastirma_revize(id, degisiklik, temel_revizyon)`, `calistir(arsiv, id)`,
   `not_ekle(id, metin, mac_kimligi, arsiv, kaynak)`, `not_guncelle(not_id, metin, durum)`.
 - Kaydetmeden önizleme: modül işlevi `compute(arsiv, tanim)`.
+- Çoklu olay öncesi/sonrası karşılaştırması (salt okunur): `olay_karsilastirma.olay_karsilastir(...)`
+  ([`S6_OLAY.md`](S6_OLAY.md)).
 
 Arşiv nesnesi `archive.load(klasor)` ile alınır. Hatalar `CalismaError` (alt sınıfları `DogrulamaHatasi`,
 `CakismaHatasi`) olarak gelir. Dönen değerler JSON'a hazır sözlüklerdir ve `to_json` ile yazılır.

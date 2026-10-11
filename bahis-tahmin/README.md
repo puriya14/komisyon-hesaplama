@@ -70,6 +70,8 @@ Kayıtlı araştırmalar (S6; betimleyici, ayrı çalışma alanı): `calisma-ol
 `calisma-karsilastir`, `calisma-not` ve salt okunur `calisma-liste`, `calisma-oku`, `calisma-calistirma-oku`,
 `calisma-dogrula`, `calisma-not-kart`. İki maç grubunun A/B/C ve İY/MS gerçekleşmelerini aynı arşiv sürümünde
 karşılaştırır; çalıştırmaları veri ve kod sürümüyle saklar. Ayrıntılar: [`docs/S6_CALISMA.md`](docs/S6_CALISMA.md).
+Salt okunur `calisma-olay-karsilastir`, aynı takımın birden çok geçmiş olayının önce/sonra pencerelerini yan yana
+gösterir. Olaylar saklı bir çalıştırma grubundan veya açık bir listeden gelir. Ayrıntılar: [`docs/S6_OLAY.md`](docs/S6_OLAY.md).
 
 ## Gol pazarları kısaca
 
@@ -113,6 +115,7 @@ dokunmaz (`tests/conftest.py`: `BAHIS_TAHMIN_HOME` geçici dizine yönlendirilir
 - [`docs/S4_PILOT.md`](docs/S4_PILOT.md) — tek ligde gerçek veri pilotu: komutlar, yalıtım, kaynak kökeni, katılımcı referansı
 - [`docs/S5_GITHUB.md`](docs/S5_GITHUB.md) — GitHub veri profili, sürümlü önbellek, tarihsel arşiv ve kaynak/işlem bazında kullanım kapsamı
 - [`docs/S6_CALISMA.md`](docs/S6_CALISMA.md) — kayıtlı araştırmalar, revizyon/çalıştırma/not sözleşmesi, iki grup karşılaştırması ve arayüz servis sözleşmesi
+- [`docs/S6_OLAY.md`](docs/S6_OLAY.md) — çoklu olay öncesi/sonrası karşılaştırması: giriş yolları, pencere ve sayma kuralları, servis imzası
 - `reports/s5_github_01/` — S5-GITHUB-01 toplu sonuç raporu (yalnızca sayılar; maç satırı yok)
 - `reports/s4_pilot_01/` — S4-PILOT-01 toplu sonuç raporu (yalnızca sayılar; maç satırı ve tahmin listesi yok)
 - `reports/s3_gate_02/` — S3-GATE-02 raporu ve dondurulmuş ileriye dönük ölçüm protokolü v3

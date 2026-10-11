@@ -1021,6 +1021,43 @@ def cmd_calisma_verify(a) -> int:
     return _calisma_run(run)
 
 
+def cmd_calisma_event_compare(a) -> int:
+    """Saklı çalıştırma grubundan veya açık olay listesinden çoklu olay öncesi/sonrası karşılaştırması (S6-OLAY-02;
+    salt okunur: çalışma alanı, arşiv veya ağ kullanılmaz/yazılmaz). Hesap ``olay_karsilastirma`` servisindedir."""
+    from . import archive as A
+    from .calisma import CalismaAlani, DogrulamaHatasi
+    from .olay_karsilastirma import olay_karsilastir
+
+    def run():
+        stored = a.calistirma is not None
+        explicit = bool(a.olay or a.olay_dosyasi)
+        if stored == explicit:
+            raise DogrulamaHatasi("--calistirma (+ --grup) veya --olay/--olay-dosyasi (+ --kaynak) verilmeli; ikisi "
+                                  "birlikte kullanılamaz.")
+        if stored and a.grup is None:
+            raise DogrulamaHatasi("--grup 1 veya 2 verilmeli")
+        if explicit and (a.grup is not None or a.calisma):
+            raise DogrulamaHatasi("--grup ve --calisma yalnızca --calistirma ile kullanılır")
+        ids = None
+        if explicit:
+            ids = list(a.olay or [])
+            if a.olay_dosyasi:
+                try:
+                    text = open(a.olay_dosyasi, encoding="utf-8").read()
+                except (OSError, UnicodeDecodeError) as e:
+                    raise DogrulamaHatasi(f"--olay-dosyasi okunamadı: {e}") from e
+                ids += [x.strip() for x in text.splitlines() if x.strip() and not x.strip().startswith("#")]
+        common = {"lig": a.lig, "once": a.once, "sonra": a.sonra, "limit": a.limit, "offset": a.offset}
+        ar = A.load(a.ev)
+        if stored:
+            with CalismaAlani.ac(a.calisma) as ws:
+                return olay_karsilastir(ar, a.takim, alan=ws, calistirma_id=a.calistirma, grup=a.grup,
+                                        kaynak=a.kaynak, **common)
+        return olay_karsilastir(ar, a.takim, kaynak=a.kaynak, olaylar=ids, **common)
+
+    return _calisma_run(run)
+
+
 def cmd_pilot_coverage(a) -> int:
     """S4 pilotu: kaynak kapsamı, köken, katılımcı referansı, model ve defter durumu (salt okunur)."""
     from .pilot import summary
@@ -1301,5 +1338,23 @@ def main(argv: list[str] | None = None) -> int:
     c11.add_argument("--ev", required=True)
     c11.add_argument("--calistirma", required=True)
     c11.set_defaults(fn=cmd_calisma_verify)
+    c12 = sub.add_parser("calisma-olay-karsilastir", help="aynı takımın birden çok geçmiş olayının önce/sonra "
+                                                          "pencereleri (betimleyici; salt okunur)")
+    c12.add_argument("--ev", required=True, help="arşiv klasörü (salt okunur kullanılır)")
+    c12.add_argument("--takim", required=True, help="görünümdeki tam takım adı (benzer ad eşlemesi yapılmaz)")
+    c12.add_argument("--calisma", help=ws_help + "; yalnızca --calistirma ile")
+    c12.add_argument("--calistirma", help="saklı çalıştırma kimliği (kendi tanımı, görünümü ve olay kümesi kullanılır)")
+    c12.add_argument("--grup", type=int, help="saklı çalıştırmanın grubu: 1 veya 2")
+    c12.add_argument("--kaynak", help="açık liste için görünüm: tek kaynak (openfootball, datasets, xgabora, hudl) "
+                                      "veya 'birlesik'")
+    c12.add_argument("--olay", action="append", help="açık liste: olay kimliği (tekrarlanabilir), ör. "
+                                                     "'E0|2024-08-17|Arsenal FC|Chelsea FC'")
+    c12.add_argument("--olay-dosyasi", help="açık liste: her satırda bir olay kimliği olan UTF-8 dosya")
+    c12.add_argument("--lig", help="olaylar birden çok ligdeyse incelenecek lig (ilk sürüm tek lig)")
+    c12.add_argument("--once", type=int, help="önceki pencere: 5 veya 10 (varsayılan 5)")
+    c12.add_argument("--sonra", type=int, help="sonraki pencere: 1, 3 veya 5 (varsayılan 3)")
+    c12.add_argument("--limit", type=int, help="bu istekte en çok kaç olay (varsayılan 20, en çok 50)")
+    c12.add_argument("--offset", type=int, help="sıralı aday listesinde başlangıç (varsayılan 0)")
+    c12.set_defaults(fn=cmd_calisma_event_compare)
     a = p.parse_args(argv)
     return a.fn(a)
