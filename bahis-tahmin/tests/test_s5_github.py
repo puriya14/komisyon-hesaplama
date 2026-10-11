@@ -704,7 +704,8 @@ def test_ui_data_page_does_not_autoload_or_download(tmp_path, monkeypatch, tmp_h
     app.processEvents()
     assert panel.archive is not None and snapshot(home) == before  # salt okunur
     cols = set(panel.match_model.frame.columns)
-    assert cols == {"mac_kimligi", "iy", "ms", "A", "B", "C", "iy_ms", "kalite", "kaynaklar", "xg"}
+    # S5-ARSIV-02: birleştirilmiş görünümde alan kökeni sütunu eklendi
+    assert cols == {"mac_kimligi", "iy", "ms", "A", "B", "C", "iy_ms", "kalite", "kaynaklar", "xg", "alan_kokeni"}
     assert A.ARCHIVE_NOTE in panel.summary.text()
     assert set(panel.cov_model.frame.loc[panel.cov_model.frame["kaynak"] == "openfootball-sonuc", "alan"]) == {
         "yok / yok / yok"}  # sahte oran/olay gösterilmez

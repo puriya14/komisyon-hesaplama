@@ -52,9 +52,20 @@ Uygulama klasörünün kendisi, alt klasörü veya onu içeren bir klasör redde
 işareti (`arsiv.json`) taşımayan bir klasöre de yazılmaz. Kullanıcı veri deposu, pilot, model ve defter
 değişmez. Eğitim yapılmaz; olasılık, tahmin veya bahis adayı üretilmez.
 
+### Üç ayrı işlem
+
+| İşlem | Komut / düğme | Ne yapar |
+|---|---|---|
+| **Arşivi açmak, incelemek** (salt okunur) | `arsiv-katalog`, `arsiv-maclar`, `arsiv-ozet`, `arsiv-kart`; arayüzde "Arşivi aç" | Ağ isteği yapmaz, hiçbir dosyaya yazmaz; arşivdeki dosyaların kökenini yeniden doğrular. |
+| **Arşivi hazırlamak, güncellemek** | `arsiv-hazirla`; arayüzde "Arşivi hazırla / güncelle" | Seçili GitHub depolarını sabit commit'ten indirir ve yalnızca arşiv klasörüne yazar (katalog ve analiz tablosu yeniden yazılır; ham dosyalar commit bazında korunur). Ana uygulamanın verisine, modeline ve ayarlarına dokunmaz. |
+| **Ana uygulamanın güncellemesi** | `update`; Veri sayfasında "Kaydet, Güncelle ve Eğit" | Arşivi kullanmak için **gerekmez** ve arşivle ilgisi yoktur. Ana uygulamanın veri deposunu ve ayarlarını değiştirir (`--profil`, `--accept-terms`, lig ve yıl seçimi ayarlara kaydedilir); "Kaydet, Güncelle ve Eğit" düğmesi modeli de eğitebilir. |
+
+"Arşivi aç" ile "Kaydet, Güncelle ve Eğit" farklı işlemlerdir: birincisi yalnızca okur, ikincisi ana uygulamanın
+verisini günceller.
+
 ### Komutlar
 
-Linux / macOS:
+Linux / macOS — arşivi hazırlamak (indirir, yalnızca arşiv klasörüne yazar):
 
 ```
 python -m bahis_tahmin arsiv-hazirla --ev <ARSIV>                              # dört kaynak (onay gerekenler hariç)
@@ -62,11 +73,17 @@ python -m bahis_tahmin arsiv-hazirla --ev <ARSIV> --erisim-onayi datasets,xgabor
 python -m bahis_tahmin arsiv-hazirla --ev <ARSIV> --kaynak openfootball,hudl
 python -m bahis_tahmin arsiv-hazirla --ev <ARSIV> --pilot <PILOT_KLASORU>     # openfootball dosyalarını pilottan kopyala
 python -m bahis_tahmin arsiv-hazirla --ev <ARSIV> --cevrimdisi                 # ağ yok; yalnızca arşivdeki kopyalar
+```
+
+Linux / macOS — arşivi incelemek (salt okunur):
+
+```
 python -m bahis_tahmin arsiv-katalog --ev <ARSIV>
-python -m bahis_tahmin arsiv-maclar  --ev <ARSIV> --kaynak openfootball --sezon 2024/25 --limit 50
-python -m bahis_tahmin arsiv-maclar  --ev <ARSIV> --takim "Arsenal FC" --yer ev --bas 2020-08-01 --son 2025-06-01
-python -m bahis_tahmin arsiv-ozet    --ev <ARSIV> --sezon 2024/25
-python -m bahis_tahmin arsiv-kart    --ev <ARSIV> --mac "E0|2024-08-17|Arsenal FC|Wolverhampton Wanderers FC" --takim "Arsenal FC"
+python -m bahis_tahmin arsiv-maclar  --ev <ARSIV> --kaynak openfootball --sezon 2024/25 --limit 50   # tek kaynak
+python -m bahis_tahmin arsiv-maclar  --ev <ARSIV> --sezon 2015/16                                   # birleştirilmiş
+python -m bahis_tahmin arsiv-maclar  --ev <ARSIV> --kaynak openfootball --takim "Arsenal FC" --yer ev --bas 2020-08-01 --son 2025-06-01
+python -m bahis_tahmin arsiv-ozet    --ev <ARSIV> --kaynak openfootball --sezon 2024/25
+python -m bahis_tahmin arsiv-kart    --ev <ARSIV> --kaynak openfootball --mac "E0|2024-08-17|Arsenal FC|Wolverhampton Wanderers FC" --takim "Arsenal FC" --sezon 2024/25
 ```
 
 Windows (kaynak koddan; `baslat.bat` sanal ortamı `.venv` klasörüne kurar):
@@ -75,24 +92,74 @@ Windows (kaynak koddan; `baslat.bat` sanal ortamı `.venv` klasörüne kurar):
 .venv\Scripts\python -m bahis_tahmin arsiv-hazirla --ev "%LOCALAPPDATA%\BahisTahmin-Arsiv" --erisim-onayi datasets,xgabora
 .venv\Scripts\python -m bahis_tahmin arsiv-katalog --ev "%LOCALAPPDATA%\BahisTahmin-Arsiv"
 .venv\Scripts\python -m bahis_tahmin arsiv-maclar  --ev "%LOCALAPPDATA%\BahisTahmin-Arsiv" --kaynak openfootball --sezon 2024/25
-.venv\Scripts\python -m bahis_tahmin arsiv-ozet    --ev "%LOCALAPPDATA%\BahisTahmin-Arsiv" --sezon 2024/25
-.venv\Scripts\python -m bahis_tahmin update --profil github --accept-terms github-mirror
+.venv\Scripts\python -m bahis_tahmin arsiv-ozet    --ev "%LOCALAPPDATA%\BahisTahmin-Arsiv" --kaynak openfootball --sezon 2024/25
 ```
 
-Arayüzde aynı işlemler Veri sayfasındaki **GitHub Veri ve Arşiv** bölümündedir. Bölüm açılınca hiçbir şey
-indirilmez veya okunmaz. "Arşivi aç" düğmesi arşivi salt okunur açar (ağ isteği yok). "Arşivi hazırla /
-güncelle" düğmesi indirir; datasets ve xgabora için erişim onayı yalnızca o çalıştırmadaki onay kutusuyla
-verilir ve kaydedilmez.
+Ana uygulamayı GitHub profiliyle güncellemek ayrı bir işlemdir (bkz. bölüm 1) ve arşiv için gerekmez:
+`.venv\Scripts\python -m bahis_tahmin update --profil github --accept-terms github-mirror` — bu komut ana
+uygulamanın veri deposunu ve ayarlarını değiştirir.
+
+### Görünümler: tek kaynak ve birleştirilmiş
+
+`--kaynak` (arayüzde "Görünüm" listesi) iki farklı görünümden birini seçer:
+
+- **Tek kaynak** (`--kaynak openfootball|datasets|xgabora|hudl` veya kayıt anahtarı; kısa ad ile kayıt anahtarı aynı
+  sonucu verir): kaynak filtresi birleştirmeden **önce** uygulanır. Kimlik eşleme, tekilleştirme ve pazar
+  etiketleri yalnızca o kaynağın kayıtlarıyla yapılır. Başka kaynaktan İY, xG, şut, saat, sağlayıcı kimliği veya
+  başka bir alan taşınmaz; eksik alan eksik kalır (sıfırla doldurulmaz). Başka kaynakla çelişen ama kendi içinde
+  tutarlı bir kayıt bu görünümde engellenmez; kaynağın kendi içindeki çelişki kuralları çalışmaya devam eder.
+  Takım adları kaynağın kendi adlarıdır (ör. StatsBomb'da "Arsenal", openfootball'da "Arsenal FC"). Tarihsel
+  analizi kapalı kaynak (datasets, xgabora) seçilirse görünüm boştur ve başka kaynaktan veri gösterilmez.
+- **Birleştirilmiş** (`--kaynak` verilmez veya `--kaynak birlesik`; arayüzde "Birleştirilmiş görünüm (tek kaynak
+  değil)"): tarihsel analizi açık bütün kaynaklar birleşir. Aynı gerçek maç bir kez sayılır ve kaynaklar satırda
+  yazılır. Bu görünüm **kaynaklar arası alan birleştirmesi içerir**: bir maçın İY'si, saati veya xG/şut değeri,
+  MS'yi veren kaynaktan farklı bir kaynaktan gelebilir. Her satırın alan kökeni (`ms_kaynaklari`,
+  `iy_kaynaklari`, `saat_kaynagi`, `xg_kaynagi`, `sut_kaynagi`) yazılır ve listede "alan kökeni" sütununda
+  gösterilir. Çelişkili skorlar çoğunluk oyuyla veya son commit seçilerek çözülmez.
+
+CLI ve arayüz her listenin başında hangi görünümün kullanıldığını yazar. Hiçbir görünüm model eğitimi veya
+tahmin gösterimi izni değildir.
+
+Olay kartı (`arsiv-kart`, arayüzde "Seçili maçın olay kartı") listeyle **aynı görünümde** açılır: tek kaynak
+listesinden açılan kart başka kaynakları birleştirmez. Önce/sonra pencereleri aynı görünümün aynı ligindeki
+doğrulanmış maçlarından alınır; seçili listenin sezon, takım ve tarih filtresiyle sınırlı değildir ve önceki
+sezona taşabilir. Kart bunu açıkça yazar: pencere maçlarının sezonları, tarih aralığı ve listenin filtresi dışında
+kalan pencere maçı sayısı. CLI'da listenin filtresi `--sezon`, `--bas`, `--son`, `--liste-takim` ile verilir.
+
+### Sayaçlar ve birimleri
+
+Listedeki maçlar, geçerli maç sayısı, A/B/C gerçekleşme sayıları ve paydaları, İY/MS dağılımı, çelişkili maçlar,
+tarih uyuşmazlıkları ve kimlik incelemesi **aynı görünüm ve aynı filtreden** (kaynak, lig, sezon, takım,
+ev/deplasman, tarih aralığı) üretilir. Başka sezonun çelişkisi seçili sezonun sayacına, başka takımın inceleme
+kaydı seçili takımın sayacına girmez.
+
+| Alan | Birim |
+|---|---|
+| `mac` | benzersiz maç (tarih uyuşmazlığındaki iki aday satır tek eşleşme sayılır) |
+| `liste_satiri` | listede görünen satır |
+| `kaynak_satiri` | kaynak kaydı (bir maçın birden çok kaynak kaydı olabilir) |
+| `blok_sayisi` | kaynak dosyası / lig-sezon bloğu |
+| `celiskili` / `celiski_kaynak_satiri` | çelişkili benzersiz maç / bu maçların kaynak kayıtları (ör. 1 maç, 2 kaynak kaydı) |
+| `incelemede` / `incelemede_liste_satiri` | tarih uyuşmazlığındaki eşleşme / liste satırı |
+| `kimlik_incelemesi_kaynak_satiri` | takım kimliği kesinleşmeyen ve filtreye uyan kaynak kaydı |
+| `kimlik_incelemesi_takima_indirgenemeyen` | takım filtresinde, ilgili tarafı çözülemediği için seçili takıma ait olup olmadığı bilinemeyen kaynak kaydı (ayrı gösterilir; takım filtresi yoksa boş) |
+
+Dosya düzeyinde tutulan sayılar takım veya tarih filtresine indirgenemez ve öyle gösterilmez:
+`kaynak_karantinasi` "seçili kaynak/lig/sezon dosyalarındaki toplam karantina" olarak, dosya düzeyi açıklamasıyla
+verilir (`kaynak_karantinasi_kapsami`). Bütün arşivin sağlık sayıları (blok sayısı, analiz satırı, kökeni
+doğrulanamayan blok) yalnızca ayrı bir **Genel arşiv durumu** bölümünde yer alır (`genel_arsiv_durumu`). Özetler
+önbelleğe alınmaz; filtre değişince yeniden hesaplanır.
+
+Arayüzdeki bölümler:
 
 - **A · Kaynak kapsamı:** lig/sezon, commit, önbellek durumu, son geçerli maç, MS/İY kapsamı, işaretli
   mantıksal İY 0-0, tam/kısmi kapsam, kullanım durumu ve olay/xG/gerçek oran alanlarının varlığı.
-- **B · Maç tarayıcı:** kaynak, lig, sezon, takım, ev/deplasman ve tarih aralığı filtreleri. Her satırda
-  maç kimliği, İY ve MS, A/B/C etiketleri, İY/MS sonucu, veri kalitesi ve kaynaklar görünür. StatsBomb
-  xG'si yalnızca maç sonrası açıklama olarak gösterilir.
+- **B · Maç tarayıcı:** görünüm, lig, sezon, takım, ev/deplasman ve tarih aralığı filtreleri. Her satırda
+  maç kimliği, İY ve MS, A/B/C etiketleri, İY/MS sonucu, veri kalitesi, kaynaklar ve (birleştirilmiş görünümde)
+  alan kökeni görünür. StatsBomb xG'si yalnızca maç sonrası açıklama olarak gösterilir.
 - **C · Toplu özet:** merkezi pazar kaydından (`goals.markets`) gelen A/B/C ve İY/MS sayıları, her biri
-  geçerli örnek sayısıyla birlikte gösterilir. Bilinmeyen, çelişkili, incelemedeki, karantinadaki ve
-  doğrulanamayan kayıtlar ayrı sayılır. Seçili maç için mevcut dizi olay kartı (önce/sonra) da buradan
-  açılır.
+  geçerli örnek sayısıyla; yukarıdaki sayaçlar ve birimleri. Seçili maç için mevcut dizi olay kartı (önce/sonra)
+  da buradan açılır.
 
 > Buradaki oranlar tarihsel gerçekleşme oranıdır. Bugünkü bir maç için olasılık, model güveni veya bahis
 > avantajı değildir. Tahmin ekranı kendi uygunluk kurallarını uygular; arşiv bu kuralları atlatmaz.
@@ -115,7 +182,7 @@ verilir ve kaydedilmez.
 
 ### Çoğaltma ve çelişki kuralları
 
-- Ham veri kaynak bazında ayrı kalır. Birleşik görünümde aynı gerçek maç bir kez sayılır. Eşleme, aynı
+- Ham veri kaynak bazında ayrı kalır. Birleştirilmiş görünümde aynı gerçek maç bir kez sayılır. Eşleme, aynı
   lig-sezon bağlamında kesin takım kimliği ve aynı tarihle yapılır (`data.teams` sözleşmesi; yaş ve
   kategori, örneğin U21 veya kadın takımı, farklı takımdır).
 - Tarih toleransı uygulanmaz. Aynı eşleşme farklı tarihlerde görünürse incelemeye ayrılır

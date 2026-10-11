@@ -613,20 +613,48 @@ def load(home=None) -> Archive:
         if reason is None:
             keep.append(b["blok"])
         else:
-            rejected.append({"kaynak": b["kaynak"], "yol": b["yol"], "neden": reason})
+            rejected.append({"kaynak": b["kaynak"], "yol": b["yol"], "neden": reason, "blok": b.get("blok"),
+                             "lig": b.get("lig"), "sezon": b.get("sezon")})
     valid = rows[rows["blok"].isin(keep)].reset_index(drop=True) if len(rows) else rows
     return Archive(home, catalog, valid, rejected)
 
 
 # ----------------------------------------------------------------------------
-# Birleşik görünüm (aynı maç bir kez; çelişki görünür)
+# Görünümler: TEK KAYNAK / BİRLEŞTİRİLMİŞ (S5-ARSIV-02)
 # ----------------------------------------------------------------------------
+#
+# Tek kaynak görünümünde kaynak filtresi BİRLEŞTİRMEDEN ÖNCE ham kaynak satırlarına uygulanır: kimlik eşleme,
+# tekilleştirme ve etiketleme yalnızca o kaynağın kayıtlarıyla yapılır; başka kaynaktan İY, xG, şut, saat veya başka
+# alan taşınmaz, eksik alan eksik kalır. Birleştirilmiş görünümde analizi açık bütün kaynaklar birleşir; aynı maç bir
+# kez sayılır ve her gösterilen alanın kaynağı satırda yazılır. Listeler, özet sayaçları ve olay kartı aynı görünümden
+# ve aynı filtreden üretilir. Hiçbir görünüm model eğitimi veya tahmin gösterimi izni değildir.
+
+MERGED_VIEW = "birlesik"
+VIEW_SINGLE, VIEW_MERGED = "TEK_KAYNAK", "BIRLESIK"
+MERGED_NOTE = ("Birleştirilmiş görünüm: tek bir kaynak değildir. Tarihsel analizi açık bütün kaynakların kayıtları "
+               "birleştirilir; aynı maç bir kez sayılır, kaynaklar satırda yazılır. Bu görünüm kaynaklar arası alan "
+               "birleştirmesi içerir (ör. İY, saat, xG/şut başka bir kaynaktan gelebilir; alan kökeni sütunlarda).")
+SINGLE_NOTE = ("Tek kaynak görünümü ({kaynak}): yalnızca bu kaynağın kayıtları; başka kaynaktan alan taşınmaz, eksik alan "
+               "eksik kalır.")
+CLOSED_NOTE = ("{kaynak}: tarihsel analiz kullanım kapsamı nedeniyle kapalı; bu görünümde maç yok ve başka kaynaktan veri "
+               "gösterilmez.")
+USE_NOTE = "Hiçbir görünüm model eğitimi veya tahmin gösterimi izni değildir."
+QUARANTINE_NOTE = ("Seçili kaynak/lig/sezon dosyalarındaki toplam karantina (dosya düzeyi kaynak kaydı); takım ve tarih "
+                   "filtresine indirgenemez.")
+CARD_SCOPE_NOTE = ("Önce/sonra pencereleri bu görünümün aynı ligdeki doğrulanmış (TAMAM) maçlarından alınır; seçili "
+                   "listenin sezon, takım ve tarih filtresiyle sınırlı değildir ve önceki/sonraki sezona taşabilir. "
+                   "Çelişkili veya incelemedeki maçlar pencerelere girmez.")
+UNITS = {"mac": "benzersiz maç (tarih uyuşmazlığındaki eşleşme bir kez sayılır)",
+         "liste_satiri": "listede görünen satır",
+         "kaynak_satiri": "kaynak kaydı (bir maçın birden çok kaynak kaydı olabilir)",
+         "blok_sayisi": "kaynak dosyası / lig-sezon bloğu"}
+FIELD_COLUMNS = ("ms_kaynaklari", "iy_kaynaklari", "saat_kaynagi", "xg_kaynagi", "sut_kaynagi", "alan_birlesimi")
+SOURCE_SHORT = {v: k for k, v in SHORT_NAMES.items()}
+
 
 def _map_names(names: list, primary: list, league: str, src: str, primary_src: str) -> dict:
     """Bir kaynağın adlarını aynı lig-sezondaki bağlam adlarına KESİN kimlikle eşler (data.teams sözleşmesi);
     belirsiz veya eşleşmeyen ad eşlenmez. Doğrulanmış takma adlar iki yönde de denenir."""
-    from collections import Counter
-
     from .data.teams import resolve_teams
 
     of = "openfootball"
@@ -646,14 +674,21 @@ def _map_names(names: list, primary: list, league: str, src: str, primary_src: s
     return {n: t for n, t in mapping.items() if hits[t] == 1}
 
 
+def _txt(v) -> str:
+    return v if isinstance(v, str) else ""
+
+
 def unified(rows: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """(birleşik maçlar, çelişkiler, inceleme). Birleşik satır: ``durum`` = TAMAM / CELISKI / TARIH_UYUSMAZ; yalnızca
-    TAMAM satırlar özetlere girer."""
+    """Verilen kaynak satırlarından (birleşik maçlar, çelişkiler, inceleme). Birleşik satır: ``durum`` = TAMAM / CELISKI
+    / TARIH_UYUSMAZ; yalnızca TAMAM satırlar özetlere girer. Yalnızca VERİLEN satırlar kullanılır: tek kaynak görünümü
+    için satırlar önceden süzülmelidir (``view``). Alan kökeni (``ms_kaynaklari``, ``iy_kaynaklari``, ``saat_kaynagi``,
+    ``xg_kaynagi``, ``sut_kaynagi``) ve ``alan_birlesimi`` (gösterilen bir alan maçın bütün kaynaklarından gelmiyor)
+    satırda yazılır. Sonuç girdi satırlarının sırasından bağımsızdır."""
     from .goals.ledger import event_id
 
     cols = ["mac_kimligi", "league", "season", "date", "time", "home", "away", "fthg", "ftag", "hthg", "htag",
             "iy_mantiksal", "kaynaklar", "asil_kaynaklar", "bagimsiz_kaynak", "saglayici_mac_id", "xg_h", "xg_a",
-            "sut_h", "sut_a", "durum"]
+            "sut_h", "sut_a", "durum", "kaynak_satiri", "bloklar", *FIELD_COLUMNS]
     if rows is None or rows.empty:
         return pd.DataFrame(columns=cols), pd.DataFrame(), pd.DataFrame()
     r = rows.copy()
@@ -672,35 +707,61 @@ def unified(rows: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFram
     review = r[unresolved].assign(neden="TAKIM_KIMLIGI_KESIN_DEGIL")
     ok = r[~unresolved].copy()
     ok["_day"] = pd.to_datetime(ok["date"]).dt.normalize()
+    # Belirli seçim: kaynak önceliği, blok ve değerlerle sıralanır (girdi satır sırası sonucu değiştirmez)
+    ok["_prio"] = ok["kaynak"].map({k: i for i, k in enumerate(PRIORITY)}).fillna(len(PRIORITY))
+    ok["_blok"] = pd.to_numeric(ok["blok"], errors="coerce").fillna(-1)
+    ok["_time"] = ok["time"].map(_txt)
+    ok["_sid"] = ok["saglayici_mac_id"].map(lambda v: "" if v is None or (isinstance(v, float) and np.isnan(v))
+                                            else str(v))
+    ok = ok.sort_values(["league", "_day", "k_home", "k_away", "_prio", "_blok", "_time", "_sid", "fthg", "ftag",
+                         "hthg", "htag", "xg_h", "xg_a", "sut_h", "sut_a"], kind="mergesort", na_position="last")
     out, conflicts = [], []
 
     def pairs(g, a, b):
         return {(x, y) for x, y in zip(g[a], g[b]) if pd.notna(x) and pd.notna(y)}
 
+    def first_pair(g, a, b):
+        """İki alanı birlikte dolu ilk satır (öncelik sırasıyla): (değer_a, değer_b, kaynak)."""
+        both = g[g[a].notna() & g[b].notna()]
+        if both.empty:
+            return np.nan, np.nan, None
+        return both[a].iloc[0], both[b].iloc[0], both["kaynak"].iloc[0]
+
     for (lg, day, h, a), g in ok.groupby(["league", "_day", "k_home", "k_away"], sort=True):
         ft, ht = pairs(g, "fthg", "ftag"), pairs(g, "hthg", "htag")
-        real_ht = pairs(g[~g["iy_mantiksal"]], "hthg", "htag")
+        real_ht = pairs(g[~g["iy_mantiksal"].astype(bool)], "hthg", "htag")
         status = "CELISKI" if (len(ft) > 1 or len(ht) > 1) else "TAMAM"
+        mid = event_id(lg, day, h, a)
         if status == "CELISKI":
             for _, x in g.iterrows():
-                conflicts.append({"mac_kimligi": event_id(lg, day, h, a), "kaynak": x["kaynak"], "blok": x["blok"],
+                conflicts.append({"mac_kimligi": mid, "kaynak": x["kaynak"], "blok": x["blok"],
                                   "asil_kaynak": x["asil_kaynak"], "ms": (x["fthg"], x["ftag"]),
                                   "iy": (x["hthg"], x["htag"])})
         f = next(iter(ft)) if len(ft) == 1 else (np.nan, np.nan)
         hh = next(iter(ht)) if len(ht) == 1 else (np.nan, np.nan)
-        sid = [str(v) for v in g["saglayici_mac_id"] if v not in (None, "") and pd.notna(v)]
-        out.append({"mac_kimligi": event_id(lg, day, h, a), "league": lg, "season": g["season"].iloc[0], "date": day,
-                    "time": next((t for t in g["time"] if isinstance(t, str) and t), ""), "home": h, "away": a,
+        srcs = sorted(set(g["kaynak"]))
+        ms_src = sorted(set(g.loc[g["fthg"].notna() & g["ftag"].notna(), "kaynak"]))
+        iy_src = sorted(set(g.loc[g["hthg"].notna() & g["htag"].notna(), "kaynak"]))
+        timed = g[g["_time"] != ""]
+        t, t_src = (timed["_time"].iloc[0], timed["kaynak"].iloc[0]) if len(timed) else ("", None)
+        xh, xa, x_src = first_pair(g, "xg_h", "xg_a")
+        sh, sa, s_src = first_pair(g, "sut_h", "sut_a")
+        shown = [set(ms_src) if status == "TAMAM" and ms_src else None,
+                 set(iy_src) if status == "TAMAM" and iy_src else None,
+                 {t_src} if t_src else None, {x_src} if x_src else None, {s_src} if s_src else None]
+        sid = sorted({v for v in g["_sid"] if v})
+        out.append({"mac_kimligi": mid, "league": lg, "season": g["season"].iloc[0], "date": day, "time": t,
+                    "home": h, "away": a,
                     "fthg": f[0] if status == "TAMAM" else np.nan, "ftag": f[1] if status == "TAMAM" else np.nan,
                     "hthg": hh[0] if status == "TAMAM" else np.nan, "htag": hh[1] if status == "TAMAM" else np.nan,
                     "iy_mantiksal": bool(status == "TAMAM" and len(ht) == 1 and not real_ht),
-                    "kaynaklar": ",".join(sorted(set(g["kaynak"]))), "asil_kaynaklar": ",".join(sorted(set(g["asil_kaynak"]))),
+                    "kaynaklar": ",".join(srcs), "asil_kaynaklar": ",".join(sorted(set(g["asil_kaynak"]))),
                     "bagimsiz_kaynak": len(set(g["asil_kaynak"])), "saglayici_mac_id": ",".join(sid) or None,
-                    "xg_h": g["xg_h"].dropna().iloc[0] if g["xg_h"].notna().any() else np.nan,
-                    "xg_a": g["xg_a"].dropna().iloc[0] if g["xg_a"].notna().any() else np.nan,
-                    "sut_h": g["sut_h"].dropna().iloc[0] if g["sut_h"].notna().any() else np.nan,
-                    "sut_a": g["sut_a"].dropna().iloc[0] if g["sut_a"].notna().any() else np.nan,
-                    "durum": status})
+                    "xg_h": xh, "xg_a": xa, "sut_h": sh, "sut_a": sa, "durum": status, "kaynak_satiri": int(len(g)),
+                    "bloklar": ",".join(str(int(b)) for b in sorted(set(g["_blok"])) if b >= 0),
+                    "ms_kaynaklari": ",".join(ms_src), "iy_kaynaklari": ",".join(iy_src), "saat_kaynagi": t_src,
+                    "xg_kaynagi": x_src, "sut_kaynagi": s_src,
+                    "alan_birlesimi": bool(len(srcs) > 1 and any(s is not None and s != set(srcs) for s in shown))})
     merged = pd.DataFrame(out, columns=cols)
     # Aynı lig-sezonda aynı ev/deplasman eşleşmesi farklı tarihlerde: toleransla bağlanmaz, incelemeye ayrılır
     if len(merged):
@@ -708,12 +769,61 @@ def unified(rows: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFram
         merged.loc[dup, "durum"] = "TARIH_UYUSMAZ"
         if dup.any():
             review = pd.concat([review, merged[dup].assign(neden="AYNI_ESLESME_FARKLI_TARIH")], ignore_index=True)
-    return merged.reset_index(drop=True), pd.DataFrame(conflicts), review.reset_index(drop=True)
+    conflicts = pd.DataFrame(conflicts)
+    if len(conflicts):
+        conflicts = conflicts.sort_values(["mac_kimligi", "kaynak", "blok"], kind="mergesort").reset_index(drop=True)
+    if len(review):
+        keys = review.reindex(columns=["neden", "league", "season", "date", "kaynak", "home", "away"]).astype(str)
+        review = review.loc[keys.sort_values(list(keys.columns), kind="mergesort").index]
+    return merged.reset_index(drop=True), conflicts, review.reset_index(drop=True)
+
+
+@dataclass
+class ArchiveView:
+    """Tek kaynak (``kaynak`` dolu) veya birleştirilmiş (``kaynak`` None) görünüm: listeler, sayaçlar ve olay kartı
+    bunu ortak bağlam olarak kullanır."""
+    kaynak: str | None
+    rows: pd.DataFrame  # görünüme giren kaynak satırları
+    merged: pd.DataFrame
+    conflicts: pd.DataFrame
+    review: pd.DataFrame
+    kapali: bool = False  # seçilen kaynağın tarihsel analizi kapalı
+
+    @property
+    def tur(self) -> str:
+        return VIEW_MERGED if self.kaynak is None else VIEW_SINGLE
+
+    def aciklama(self) -> str:
+        if self.kaynak is None:
+            return MERGED_NOTE
+        return (CLOSED_NOTE if self.kapali else SINGLE_NOTE).format(kaynak=self.kaynak)
+
+    def teams(self) -> list:
+        m = self.merged
+        return sorted(set(m["home"]) | set(m["away"])) if len(m) else []
+
+
+def view(archive: Archive, kaynak=None) -> ArchiveView:
+    """Görünüm kur. ``kaynak`` (kısa ad veya kayıt anahtarı) verilirse YALNIZCA o kaynağın satırları birleştirilir;
+    None veya ``"birlesik"`` birleştirilmiş görünümdür. Tarihsel analizi kapalı kaynak seçilirse görünüm boştur (başka
+    kaynaktan veri getirilmez)."""
+    key = resolve_source(kaynak)
+    rows = archive.rows
+    if len(rows):  # savunma: yalnızca tarihsel analizi açık kaynakların satırları
+        rows = rows[rows["kaynak"].map(lambda k: archive_allowed(str(k), "tarihsel_analiz"))]
+    closed = key is not None and not archive_allowed(key, "tarihsel_analiz")
+    if key is not None and len(rows):
+        rows = rows[rows["kaynak"] == key]
+    rows = rows.reset_index(drop=True)
+    merged, conflicts, review = unified(rows)
+    return ArchiveView(key, rows, merged, conflicts, review, closed)
 
 
 def filter_matches(merged: pd.DataFrame, kaynak=None, lig=None, sezon=None, takim=None, yer=None, bas=None,
                    son=None) -> pd.DataFrame:
-    """Kaynak, lig, sezon, takım (birleşik görünümdeki tam ad), ev/deplasman (takım verildiyse) ve tarih aralığı."""
+    """Lig, sezon, takım (görünümdeki tam ad), ev/deplasman (takım verildiyse) ve tarih aralığı. ``kaynak`` yalnızca
+    geriye uyum içindir ve birleşik satırın kaynak listesine bakar; tek kaynak görünümü için ``view`` kullanılmalıdır
+    (birleştirmeden önce süzer)."""
     m = merged
     if m.empty:
         return m
@@ -737,6 +847,59 @@ def filter_matches(merged: pd.DataFrame, kaynak=None, lig=None, sezon=None, taki
     return m
 
 
+def _in_filter(league, season, day, home, away, flt: dict) -> bool:
+    """Tek bir maç ``filter_matches`` ile aynı kurallarla filtreye giriyor mu (olay kartı pencereleri için)."""
+    if flt.get("lig") and league != flt["lig"]:
+        return False
+    if flt.get("sezon") and str(season) != flt["sezon"]:
+        return False
+    takim, yer = flt.get("takim"), flt.get("yer")
+    if takim:
+        if yer == "ev" and home != takim:
+            return False
+        if yer == "deplasman" and away != takim:
+            return False
+        if yer not in ("ev", "deplasman") and takim not in (home, away):
+            return False
+    day = pd.Timestamp(day).normalize()
+    if flt.get("bas") and day < pd.Timestamp(flt["bas"]):
+        return False
+    if flt.get("son") and day > pd.Timestamp(flt["son"]):
+        return False
+    return True
+
+
+def _identity_review(review: pd.DataFrame, lig=None, sezon=None, takim=None, yer=None, bas=None,
+                     son=None) -> tuple[pd.DataFrame, int | None]:
+    """Takım kimliği kesinleşmeyen kaynak satırları, maç listesiyle aynı filtreyle. Takım filtresinde, ilgili tarafı
+    çözülemediği için seçili takıma ait olup olmadığı BİLİNEMEYEN satırlar ayrıca sayılır (takım filtresi yoksa None)."""
+    if review is None or review.empty or "neden" not in review:
+        return pd.DataFrame(), (0 if takim else None)
+    x = review[review["neden"] == "TAKIM_KIMLIGI_KESIN_DEGIL"]
+    if lig:
+        x = x[x["league"] == lig]
+    if sezon:
+        x = x[x["season"] == sezon]
+    if bas:
+        x = x[pd.to_datetime(x["date"]).dt.normalize() >= pd.Timestamp(bas)]
+    if son:
+        x = x[pd.to_datetime(x["date"]).dt.normalize() <= pd.Timestamp(son)]
+    if not takim or x.empty:
+        return x, (0 if takim else None)
+    home_is = (x["k_home"] == takim) | (x["home"] == takim)
+    away_is = (x["k_away"] == takim) | (x["away"] == takim)
+    home_unknown = x["k_home"].isna() & (x["home"] != takim)
+    away_unknown = x["k_away"].isna() & (x["away"] != takim)
+    if yer == "ev":
+        hit, unk = home_is, ~home_is & home_unknown
+    elif yer == "deplasman":
+        hit, unk = away_is, ~away_is & away_unknown
+    else:
+        hit = home_is | away_is
+        unk = ~hit & (home_unknown | away_unknown)
+    return x[hit], int(unk.sum())
+
+
 def labelled(merged: pd.DataFrame) -> pd.DataFrame:
     """Pazar etiketleri (A/B/C) ve İY/MS — merkezi pazar kaydından; yalnızca TAMAM satırlarda, diğerleri bilinmiyor."""
     from .goals.markets import PRIMARY_YES, SHORT, frame_issues, htft_frame, label_frame
@@ -758,19 +921,35 @@ def labelled(merged: pd.DataFrame) -> pd.DataFrame:
 
 
 def summary(merged: pd.DataFrame) -> dict:
-    """Toplu tarihsel gerçekleşme özeti (geçerli örnek sayılarıyla). Olasılık veya bahis avantajı değildir."""
+    """Verilen (filtrelenmiş) birleşik satırların toplu tarihsel gerçekleşme özeti; bütün sayılar AYNI satırlardan.
+    Birimler: ``mac`` benzersiz maç (tarih uyuşmazlığındaki eşleşme bir kez), ``liste_satiri`` listede görünen satır,
+    ``kaynak_satiri`` kaynak kaydı, ``blok_sayisi`` kaynak dosyası/lig-sezon bloğu. Olasılık veya bahis avantajı
+    değildir."""
     from .goals.markets import HTFT_KEYS, MARKETS, PRIMARY_YES, SHORT
 
     m = labelled(merged)
     ok = m[m["durum"] == "TAMAM"] if len(m) else m
-    out = {"aciklama": ARCHIVE_NOTE, "mac": int(len(m)), "birlesik_gecerli": int(len(ok)),
+    tu = m[m["durum"] == "TARIH_UYUSMAZ"] if len(m) else m
+    tu_pairs = int(tu.groupby(["league", "season", "home", "away"]).ngroups) if len(tu) else 0
+    has = (lambda c: c in m.columns and len(m) > 0)
+    out = {"aciklama": ARCHIVE_NOTE, "birimler": UNITS,
+           "mac": int(m["durum"].isin(["TAMAM", "CELISKI"]).sum()) + tu_pairs if len(m) else 0,
+           "liste_satiri": int(len(m)),
+           "kaynak_satiri": int(pd.to_numeric(m["kaynak_satiri"]).sum()) if has("kaynak_satiri") else int(len(m)),
+           "blok_sayisi": (len({b for s in m["bloklar"] for b in str(s).split(",") if b}) if has("bloklar")
+                           else None),
+           "birlesik_gecerli": int(len(ok)),
            "celiskili": int((m["durum"] == "CELISKI").sum()) if len(m) else 0,
-           "incelemede": int((m["durum"] == "TARIH_UYUSMAZ").sum()) if len(m) else 0,
+           "incelemede": tu_pairs, "incelemede_liste_satiri": int(len(tu)),
+           "tarih_uyusmaz_kaynak_satiri": (int(pd.to_numeric(tu["kaynak_satiri"]).sum())
+                                           if len(tu) and "kaynak_satiri" in tu.columns else int(len(tu))),
            "karantina": int(m["veri_kalitesi"].isin(["GECERSIZ_MAC_SONU", "GECERSIZ_ILK_YARI",
                                                      "ILK_YARI_MAC_SONUNU_ASIYOR"]).sum()) if len(m) else 0,
            "ms_gecerli": int(ok["fthg"].notna().sum()) if len(ok) else 0,
            "iy_gecerli": int(ok["hthg"].notna().sum()) if len(ok) else 0,
-           "iy_mantiksal_0_0": int(ok["iy_mantiksal"].sum()) if len(ok) else 0, "pazarlar": {}, "iy_ms": {}}
+           "iy_mantiksal_0_0": int(ok["iy_mantiksal"].sum()) if len(ok) else 0,
+           "alan_birlesimi_iceren_mac": int(m["alan_birlesimi"].astype(bool).sum()) if has("alan_birlesimi") else 0,
+           "pazarlar": {}, "iy_ms": {}}
     for key in PRIMARY_YES:
         col = ok[SHORT[key]] if len(ok) else pd.Series(dtype=float)
         n = int(col.notna().sum())
@@ -784,8 +963,9 @@ def summary(merged: pd.DataFrame) -> dict:
 
 
 def resolve_source(name):
-    """CLI/arayüz kısa adı (openfootball, datasets, xgabora, hudl) veya kayıt anahtarı -> kayıt anahtarı."""
-    if name in (None, ""):
+    """CLI/arayüz kısa adı (openfootball, datasets, xgabora, hudl) veya kayıt anahtarı -> kayıt anahtarı; boş veya
+    ``"birlesik"`` -> None (birleştirilmiş görünüm)."""
+    if name in (None, "", MERGED_VIEW):
         return None
     key = SHORT_NAMES.get(name, name)
     if key not in SOURCE_KEYS:
@@ -793,47 +973,113 @@ def resolve_source(name):
     return key
 
 
-def explore(archive: Archive, **filters) -> tuple[pd.DataFrame, dict]:
-    """Filtrelenmiş birleşik maç listesi (pazar etiketli) ve aynı filtreyle toplu özet. Özet ayrıca kimlik incelemesine
-    ayrılan satırları ve kaynak dosyalarında karantinaya alınan kayıtları (filtreye uyan bloklardan) sayar."""
-    if filters.get("kaynak"):
-        filters["kaynak"] = resolve_source(filters["kaynak"])
-    merged, conflicts, review = unified(archive.rows)
-    sel = filter_matches(merged, **filters)
+def field_origin(row) -> str:
+    """Birleştirilmiş görünüm satırında gösterilen alanların kaynakları (kısa adlarla); alan birleştirmesi yoksa ''."""
+    if not bool(row.get("alan_birlesimi")):
+        return ""
+
+    def short(s):
+        return "+".join(SOURCE_SHORT.get(x, x) for x in str(s).split(",") if x) if isinstance(s, str) and s else ""
+
+    parts = []
+    for label, col in (("MS", "ms_kaynaklari"), ("İY", "iy_kaynaklari"), ("saat", "saat_kaynagi"),
+                       ("xG", "xg_kaynagi"), ("şut", "sut_kaynagi")):
+        if short(row.get(col)):
+            parts.append(f"{label}: {short(row.get(col))}")
+    return " · ".join(parts)
+
+
+def explore_view(archive: Archive, v: ArchiveView, lig=None, sezon=None, takim=None, yer=None, bas=None,
+                 son=None) -> tuple[pd.DataFrame, dict]:
+    """Görünüm + filtre -> (pazar etiketli maç listesi, özet). Liste, pazar paydaları, İY/MS, çelişki ve inceleme
+    sayaçları AYNI filtrelenmiş seçimden gelir. Takım/tarihe indirgenemeyen dosya düzeyi sayılar ayrı alanlarda ve
+    açıklamalı; bütün arşiv sayıları yalnızca ``genel_arsiv_durumu`` altındadır."""
+    flt = {"lig": lig, "sezon": sezon, "takim": takim, "yer": yer, "bas": bas, "son": son}
+    sel = filter_matches(v.merged, **flt)
     out = summary(sel)
-    rv = review
-    for col, key in (("league", "lig"), ("season", "sezon")):
-        if filters.get(key) and len(rv):
-            rv = rv[rv[col] == filters[key]]
-    if filters.get("kaynak") and len(rv) and "kaynak" in rv:
-        rv = rv[rv["kaynak"].fillna("").astype(str).str.contains(filters["kaynak"], regex=False)
-                | rv.get("kaynaklar", pd.Series("", index=rv.index)).fillna("").astype(str).str.contains(
-                    filters["kaynak"], regex=False)]
-    out["kimlik_veya_tarih_incelemesi"] = int(len(rv))
+    out["gorunum"] = {"tur": v.tur, "kaynak": v.kaynak, "aciklama": v.aciklama(), "kullanim": USE_NOTE,
+                      "tarihsel_analiz_kapali": v.kapali}
+    out["filtre"] = {"kaynak": v.kaynak or MERGED_VIEW, **{k: x for k, x in flt.items() if x}}
+    ids = set(sel.loc[sel["durum"] == "CELISKI", "mac_kimligi"]) if len(sel) else set()
+    out["celiskili_mac"] = out["celiskili"]
+    out["celiski_kaynak_satiri"] = int(v.conflicts["mac_kimligi"].isin(ids).sum()) if len(v.conflicts) else 0
+    out["celiski_kaydi"] = out["celiski_kaynak_satiri"]  # geriye uyum: artık seçili filtrenin kaynak satırları
+    kim, unknown = _identity_review(v.review, **flt)
+    out["kimlik_incelemesi_kaynak_satiri"] = int(len(kim))
+    out["kimlik_incelemesi_takima_indirgenemeyen"] = unknown
+    out["kimlik_veya_tarih_incelemesi"] = int(len(kim))  # geriye uyum; tarih uyuşmazlığı ``incelemede`` altında
+    if takim and takim not in v.teams():
+        out["takim_gorunumde_yok"] = ("Bu görünümde bu adla takım yok; tek kaynak görünümünde takım adları kaynağın "
+                                      "kendi adlarıdır.")
+    in_view = (lambda k: (k == v.kaynak) if v.kaynak is not None else archive_allowed(str(k), "tarihsel_analiz"))
     blocks = [b for b in archive.blocks() if b.get("tarihsel_analiz") and b.get("tur") != "mac_listesi"
-              and (not filters.get("lig") or b.get("lig") == filters["lig"])
-              and (not filters.get("sezon") or b.get("sezon") == filters["sezon"])
-              and (not filters.get("kaynak") or b.get("kaynak") == filters["kaynak"])]
+              and in_view(b.get("kaynak")) and (not lig or b.get("lig") == lig)
+              and (not sezon or b.get("sezon") == sezon)]
     kar: dict = {}
     for b in blocks:
-        for k, v in (b.get("karantina") or {}).items():
-            kar[k] = kar.get(k, 0) + int(v)
+        for k, n in (b.get("karantina") or {}).items():
+            kar[k] = kar.get(k, 0) + int(n)
     out["kaynak_karantinasi"] = kar
-    out["dogrulanamayan_blok"] = len(archive.rejected)
-    out["celiski_kaydi"] = int(len(conflicts))
-    return labelled(sel), out
+    out["kaynak_karantinasi_kapsami"] = {
+        "birim": "kaynak kaydı (dosya düzeyi)", "kaynak": v.kaynak or "tarihsel analizi açık bütün kaynaklar",
+        "lig": lig, "sezon": sezon, "blok_sayisi": len(blocks), "toplam": int(sum(kar.values())),
+        "takim_tarih_filtresine_indirgenebilir": False, "takim_tarih_filtresi_var": bool(takim or yer or bas or son),
+        "not": QUARANTINE_NOTE}
+    rej = [x for x in archive.rejected if in_view(x.get("kaynak")) and (not lig or x.get("lig") in (lig, None))
+           and (not sezon or x.get("sezon") in (sezon, None))]
+    out["dogrulanamayan_blok"] = len(rej)  # seçili kaynak/lig/sezon (dosya düzeyi; takım/tarihe indirgenemez)
+    out["genel_arsiv_durumu"] = {"aciklama": "Filtreden bağımsız, bütün arşiv.",
+                                 "dogrulanamayan_blok": len(archive.rejected),
+                                 "analiz_kaynak_satiri": int(len(archive.rows)), "blok": len(archive.blocks())}
+    lab = labelled(sel)
+    if len(lab):
+        lab["alan_kokeni"] = [field_origin(r) for _, r in lab.iterrows()]
+    else:
+        lab["alan_kokeni"] = pd.Series(dtype=object)
+    return lab, out
 
 
-def event_card_for(archive: Archive, mac_kimligi: str, team: str) -> dict:
-    """Seçilen geçmiş maç için mevcut dizi olay kartı (``sequences.timeline.event_card``). Yeni hipotez taraması veya
-    model eğitimi yapılmaz; kart yalnızca geçmiş incelemedir."""
+def explore(archive: Archive, **filters) -> tuple[pd.DataFrame, dict]:
+    """Filtrelenmiş maç listesi (pazar etiketli) ve aynı seçimden özet. ``kaynak`` verilirse tek kaynak görünümü
+    (birleştirmeden ÖNCE süzülür); verilmezse veya ``"birlesik"`` ise birleştirilmiş görünüm."""
+    filters = dict(filters)
+    v = view(archive, filters.pop("kaynak", None))
+    return explore_view(archive, v, **filters)
+
+
+def _card_scope(card: dict, v: ArchiveView, liste_filtresi: dict | None) -> dict:
+    by_id: dict = {}
+    for block in ("PRE_EVENT", "POST_EVENT", "RAKIP_PRE_EVENT"):
+        for w in card.get(block, {}).values():
+            for rec in w.get("maclar", []):
+                by_id[rec["event_id"]] = rec
+    flt = {k: x for k, x in (liste_filtresi or {}).items() if x and k != "kaynak"}
+    outside = 0
+    for eid, rec in by_id.items():
+        lg, day, home, away = str(eid).split("|", 3)
+        if not _in_filter(lg, rec.get("season"), day, home, away, flt):
+            outside += 1
+    days = sorted(pd.Timestamp(rec["date"]).normalize() for rec in by_id.values())
+    return {"tur": v.tur, "kaynak": v.kaynak, "aciklama": v.aciklama(), "pencere_kapsami": CARD_SCOPE_NOTE,
+            "pencere_maci": len(by_id), "pencere_sezonlari": sorted({str(rec.get("season")) for rec in by_id.values()}),
+            "pencere_tarih_araligi": [str(days[0].date()), str(days[-1].date())] if days else None,
+            "liste_filtresi": flt, "liste_disi_pencere_maci": outside if flt else None}
+
+
+def event_card_for(archive: Archive, mac_kimligi: str, team: str, kaynak=None, liste_filtresi: dict | None = None,
+                   gorunum: ArchiveView | None = None) -> dict:
+    """Seçilen geçmiş maç için mevcut dizi olay kartı (``sequences.timeline.event_card``), listeyle AYNI görünümde:
+    ``gorunum`` (veya ``kaynak``) verilmezse birleştirilmiş görünüm. Kartın ``gorunum`` bloğu kaynak bağlamını ve
+    pencerelerin seçili listenin dışına taşan maç sayısını yazar. Yeni hipotez taraması veya model eğitimi yapılmaz;
+    kart yalnızca geçmiş incelemedir."""
     from .data.parsers import MATCH_COLUMNS
     from .sequences.timeline import build_team_matches, event_card
 
-    merged, _, _ = unified(archive.rows)
-    row = merged[merged["mac_kimligi"] == mac_kimligi]
+    v = gorunum if gorunum is not None else view(archive, kaynak)
+    merged = v.merged
+    row = merged[merged["mac_kimligi"] == mac_kimligi] if len(merged) else merged
     if row.empty:
-        raise ArchiveError("Maç arşivde yok.")
+        raise ArchiveError("Maç bu görünümde yok.")
     lg = row["league"].iloc[0]
     m = merged[(merged["league"] == lg) & (merged["durum"] == "TAMAM")].copy()
     m["source"] = m["kaynaklar"]
@@ -842,4 +1088,6 @@ def event_card_for(archive: Archive, mac_kimligi: str, team: str) -> dict:
     hit = tm.index[(tm["event_id"] == mac_kimligi) & (tm["team_raw"] == team)]
     if not len(hit):
         raise ArchiveError("Takım bu maçta yok veya maçın skoru doğrulanmadı (çelişki/inceleme).")
-    return event_card(tm, int(hit[0]), data_meta={"updated_at": archive.catalog.get("olusturma_utc")})
+    card = event_card(tm, int(hit[0]), data_meta={"updated_at": archive.catalog.get("olusturma_utc")})
+    card["gorunum"] = _card_scope(card, v, liste_filtresi)
+    return card

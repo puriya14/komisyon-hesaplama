@@ -691,8 +691,39 @@ def cmd_archive_catalog(a) -> int:
 _ABC_TEXT = {1.0: "evet", 0.0: "hayır"}
 
 
+def _archive_view_line(out: dict) -> str:
+    g = out["gorunum"]
+    head = "BİRLEŞTİRİLMİŞ (tek kaynak değil)" if g["kaynak"] is None else f"TEK KAYNAK ({g['kaynak']})"
+    return f"Görünüm: {head} — {g['aciklama']} {g['kullanim']}"
+
+
+def _archive_counter_lines(out: dict) -> list[str]:
+    kar = out["kaynak_karantinasi_kapsami"]
+    unk = out.get("kimlik_incelemesi_takima_indirgenemeyen")
+    lines = [f"benzersiz maç {out['mac']} (liste satırı {out['liste_satiri']}, kaynak satırı {out['kaynak_satiri']}, "
+             f"blok {out['blok_sayisi']}) | geçerli {out['birlesik_gecerli']} | MS geçerli {out['ms_gecerli']} | "
+             f"İY geçerli {out['iy_gecerli']} (mantıksal 0-0: {out['iy_mantiksal_0_0']})",
+             f"çelişkili maç {out['celiskili']} ({out['celiski_kaynak_satiri']} kaynak satırı) | tarih uyuşmazlığı "
+             f"{out['incelemede']} eşleşme ({out['incelemede_liste_satiri']} liste satırı) | kimlik incelemesi "
+             f"{out['kimlik_incelemesi_kaynak_satiri']} kaynak satırı"
+             + (f" (+{unk} satır takıma indirgenemiyor)" if unk else "")]
+    if out["gorunum"]["kaynak"] is None and out.get("alan_birlesimi_iceren_mac"):
+        lines.append(f"kaynaklar arası alan birleştirmesi içeren maç: {out['alan_birlesimi_iceren_mac']} "
+                     "(alan_kokeni sütunu)")
+    if out.get("takim_gorunumde_yok"):
+        lines.append(out["takim_gorunumde_yok"])
+    lines.append(f"Seçili kaynak/lig/sezon dosyalarındaki toplam karantina: {kar['toplam']} kaynak kaydı "
+                 f"({kar['blok_sayisi']} blok) — dosya düzeyi; takım/tarih filtresine indirgenemez. Kökeni doğrulanamayan "
+                 f"blok (aynı kapsam): {out['dogrulanamayan_blok']}")
+    gen = out["genel_arsiv_durumu"]
+    lines.append(f"Genel arşiv durumu (filtreden bağımsız): {gen['blok']} blok, {gen['analiz_kaynak_satiri']} analiz "
+                 f"kaynak satırı, kökeni doğrulanamayan {gen['dogrulanamayan_blok']} blok")
+    return lines
+
+
 def cmd_archive_matches(a) -> int:
-    """Birleşik geçmiş maç listesi (aynı maç bir kez; çelişki/inceleme ayrı) ve pazar etiketleri (salt okunur)."""
+    """Geçmiş maç listesi (tek kaynak veya birleştirilmiş görünüm; aynı maç bir kez; çelişki/inceleme ayrı) ve pazar
+    etiketleri; liste ve sayaçlar aynı seçimden (salt okunur)."""
     from . import archive as A
 
     def run():
@@ -702,6 +733,8 @@ def cmd_archive_matches(a) -> int:
             return "-" if pd.isna(h) or pd.isna(w) else f"{int(h)}-{int(w)}"
 
         lab, out = A.explore(A.load(a.ev), **_archive_filters(a))
+        merged_view = out["gorunum"]["kaynak"] is None
+        print(_archive_view_line(out))
         if lab.empty:
             print("Filtreye uyan maç yok.")
         else:
@@ -712,13 +745,14 @@ def cmd_archive_matches(a) -> int:
                              "ms": sc(r["fthg"], r["ftag"]),
                              **{k: _ABC_TEXT.get(r[k], "bilinmiyor") for k in ("A", "B", "C")},
                              "iy_ms": r["iy_ms"] or "bilinmiyor", "kalite": r["veri_kalitesi"],
-                             "kaynaklar": r["kaynaklar"]})
+                             "kaynaklar": r["kaynaklar"], **({"alan_kokeni": r["alan_kokeni"] or "-"}
+                                                             if merged_view else {})})
             print(pd.DataFrame(rows).to_string(index=False))
             if len(lab) > len(view):
-                print(f"... {len(lab) - len(view)} maç daha (--limit)")
-        print(f"\nmaç {out['mac']} | birleşik geçerli {out['birlesik_gecerli']} | MS geçerli {out['ms_gecerli']} | "
-              f"İY geçerli {out['iy_gecerli']} (mantıksal 0-0: {out['iy_mantiksal_0_0']}) | çelişkili "
-              f"{out['celiskili']} | inceleme {out['incelemede'] + out['kimlik_veya_tarih_incelemesi']}")
+                print(f"... {len(lab) - len(view)} liste satırı daha (--limit)")
+        print()
+        for line in _archive_counter_lines(out):
+            print(line)
         print(A.ARCHIVE_NOTE)
         return None
 
@@ -733,10 +767,15 @@ def cmd_archive_summary(a) -> int:
 
 
 def cmd_archive_card(a) -> int:
-    """Seçili geçmiş maç için mevcut dizi olay kartı (önce/sonra; geçmiş inceleme)."""
+    """Seçili geçmiş maç için mevcut dizi olay kartı (önce/sonra; geçmiş inceleme), listeyle aynı görünümde
+    (``--kaynak``) ve verilen liste filtresine göre pencere kapsamı notuyla."""
     from . import archive as A
 
-    return _archive_run(lambda: A.event_card_for(A.load(a.ev), a.mac, a.takim))
+    def run():
+        flt = {"lig": a.lig, "sezon": a.sezon, "takim": a.liste_takim, "yer": a.yer, "bas": a.bas, "son": a.son}
+        return A.event_card_for(A.load(a.ev), a.mac, a.takim, kaynak=a.kaynak, liste_filtresi=flt)
+
+    return _archive_run(run)
 
 
 def cmd_pilot_coverage(a) -> int:
@@ -905,24 +944,30 @@ def main(argv: list[str] | None = None) -> int:
     ak = sub.add_parser("arsiv-katalog", help="arşiv kataloğu: kaynak/commit/kapsam/haklar (salt okunur)")
     ak.add_argument("--ev", required=True)
     ak.set_defaults(fn=cmd_archive_catalog)
-    for name, fn, hlp in (("arsiv-maclar", cmd_archive_matches, "birleşik geçmiş maç listesi ve A/B/C etiketleri"),
-                          ("arsiv-ozet", cmd_archive_summary, "toplu tarihsel gerçekleşme özeti (JSON)")):
+    for name, fn, hlp in (("arsiv-maclar", cmd_archive_matches, "geçmiş maç listesi ve A/B/C etiketleri (tek kaynak "
+                                                                 "veya birleştirilmiş görünüm)"),
+                          ("arsiv-ozet", cmd_archive_summary, "toplu tarihsel gerçekleşme özeti (JSON)"),
+                          ("arsiv-kart", cmd_archive_card, "geçmiş maç için dizi olay kartı (listeyle aynı görünümde; "
+                                                           "geçmiş inceleme)")):
         ap = sub.add_parser(name, help=hlp)
         ap.add_argument("--ev", required=True)
-        ap.add_argument("--kaynak", help="openfootball, datasets, xgabora, hudl")
+        ap.add_argument("--kaynak", help="tek kaynak: openfootball, datasets, xgabora, hudl (veya kayıt anahtarı); "
+                                         "verilmezse ya da 'birlesik' ise birleştirilmiş görünüm")
+        if name == "arsiv-kart":
+            ap.add_argument("--mac", required=True,
+                            help="maç kimliği, ör. 'E0|2024-08-17|Arsenal FC|Wolverhampton Wanderers FC'")
+            ap.add_argument("--takim", required=True, help="kartın takımı (görünümdeki ad)")
+            ap.add_argument("--liste-takim", help="kartın açıldığı listenin takım filtresi (pencere kapsamı notu için)")
         ap.add_argument("--lig")
         ap.add_argument("--sezon", help="ör. 2024/25")
-        ap.add_argument("--takim", help="birleşik görünümdeki tam takım adı, ör. \"Arsenal FC\"")
+        if name != "arsiv-kart":
+            ap.add_argument("--takim", help="görünümdeki tam takım adı (tek kaynakta kaynağın kendi adı), ör. "
+                                            "\"Arsenal FC\"")
         ap.add_argument("--yer", choices=["ev", "deplasman"])
         ap.add_argument("--bas", help="başlangıç tarihi YYYY-AA-GG")
         ap.add_argument("--son", help="bitiş tarihi YYYY-AA-GG")
         if name == "arsiv-maclar":
             ap.add_argument("--limit", type=int, default=50)
         ap.set_defaults(fn=fn)
-    ac = sub.add_parser("arsiv-kart", help="geçmiş maç için dizi olay kartı (geçmiş inceleme)")
-    ac.add_argument("--ev", required=True)
-    ac.add_argument("--mac", required=True, help="maç kimliği, ör. 'E0|2024-08-17|Arsenal FC|Wolverhampton Wanderers FC'")
-    ac.add_argument("--takim", required=True)
-    ac.set_defaults(fn=cmd_archive_card)
     a = p.parse_args(argv)
     return a.fn(a)
