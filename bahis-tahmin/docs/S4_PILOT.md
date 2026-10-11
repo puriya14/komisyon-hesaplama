@@ -116,6 +116,16 @@ Adlar pilot deposundaki adlarla **kesin** eşleşmelidir. Eşleşmeyen veya beli
 `pilot-kapsam` çıktısında `eslesmeyen_adlar` yalnızca yazımı düzeltmek için öneri gösterir (öneri kimlik kanıtı
 değildir). Dosyanın kopyası ve özeti pilot klasörüne kaydedilir; kopya değişirse referans kullanılmaz.
 
+Erişilebilirlik anı (S4-KAYNAK-03):
+- `alinma_utc` zaman dilimli bir ISO 8601 tarih olmalıdır. Eksik, bozuk veya zaman dilimsiz değer reddedilir; pilota
+  daha önce kopyalanmış böyle bir referans kullanılmaz (`GECERSIZ_REFERANS`).
+- Referans, `alinma_utc` ile pilot kopyasının bu sistemdeki değiştirilme zamanının **geç olanından** itibaren
+  kanıttır (`erisilebilir_utc`). Dosyadaki tarih tek başına daha erken erişilebilirlik kanıtı değildir.
+- Değerlendirme anı bundan önceyse takvim o an için kısmi sayılır (`KAYNAK_KAPSAMI_KISMI`). Aynı an kullanılabilir;
+  bu, kaynak dosyasının `alınma <= değerlendirme anı` kuralıyla aynıdır.
+- Referansın içeriğinin ait olduğu sezon (`sezonlar`) ile dosyanın ne zaman erişilebilir olduğu ayrı bilgilerdir.
+  Kural Python API'si (`forecast(now=...)`, `build_context`), kayıtlı kopya ve uygunluk önbelleği için aynıdır.
+
 ## Tahmin kaydı
 
 `pilot-tahmin`, kaynaktaki gerçek yaklaşan fikstürler için her maçta üç pazar (A, B, C) kaydı hazırlar. Gerçek sistem

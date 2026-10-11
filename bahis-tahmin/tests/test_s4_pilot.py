@@ -11,6 +11,7 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import json
+import os
 import shutil
 from pathlib import Path
 
@@ -373,10 +374,12 @@ def _files(unscored: set | None = None, missing: tuple = ()) -> dict:
     return {f: d for f, d in out.items() if f not in missing}
 
 
-def _participants(tmp_path, seasons) -> Path:
+def _participants(tmp_path, seasons, alinma: str | None = None) -> Path:
+    """Sentetik bağımsız katılımcı referansı. Varsayılan alınma anı değerlendirme anından (AS_OF) ÖNCE: değerlendirme
+    anında henüz erişilebilir olmayan referans kapsam kanıtı değildir (S4-KAYNAK-03)."""
     p = tmp_path / f"katilimci_{len(seasons)}.json"
     p.write_text(json.dumps({"lig": "E0", "kaynak": "https://example.invalid/sentetik-katilimcilar",
-                             "alinma_utc": "2030-01-01T00:00:00+00:00",
+                             "alinma_utc": alinma or (AS_OF - dt.timedelta(days=60)).isoformat(),
                              "sezonlar": {_label(y): TEAMS for y in seasons}}), encoding="utf-8")
     return p
 
@@ -564,6 +567,37 @@ def test_without_independent_participants_coverage_is_not_proven(trained_pilot, 
     out = PL.forecast(home, apply=False, now=AS_OF)
     assert out["tahmin"] == 0 and _gated(out) > 0
     assert out["tum_nedenler"].get("KAYNAK_KAPSAMI_KISMI", 0) == _gated(out)
+
+
+def test_saved_reference_is_not_evidence_before_the_pilot_obtained_it(trained_pilot, tmp_path):
+    """Kayıtlı kopya yolu (``_saved_participants`` → ``forecast``) zaman kontrolünü atlayamaz; pilot dosyaları değişmez."""
+    home = _copy(trained_pilot, tmp_path)
+    copy = home / PL.PARTICIPANTS_COPY
+    late = (AS_OF + dt.timedelta(hours=1)).timestamp()
+    os.utime(copy, (late, late))  # pilot referansı değerlendirme anından SONRA almış
+    before = _snapshot(home)
+    out = PL.forecast(home, apply=False, now=AS_OF)
+    assert out["tahmin"] == 0 and _gated(out) > 0
+    assert out["tum_nedenler"].get("KAYNAK_KAPSAMI_KISMI", 0) == _gated(out)
+    assert PL.summary(home)["katilimci_referansi"]["erisilebilir_utc"] == dt.datetime.fromtimestamp(late, UTC).isoformat()
+    later = PL.forecast(home, apply=False, now=AS_OF + dt.timedelta(hours=2))  # referans alındıktan sonra kullanılır
+    assert "KAYNAK_KAPSAMI_KISMI" not in later["tum_nedenler"]
+    assert _snapshot(home) == before and not (home / PL.LEDGER_FILE).exists()  # pilot/model/defter değişmedi
+
+
+def test_saved_reference_with_invalid_retrieval_time_is_not_used(trained_pilot, tmp_path):
+    home = _copy(trained_pilot, tmp_path)
+    copy = home / PL.PARTICIPANTS_COPY
+    obj = json.loads(copy.read_text(encoding="utf-8"))
+    obj["alinma_utc"] = "2026-10-01T00:00:00"  # zaman dilimsiz (eski kayıt)
+    copy.write_text(json.dumps(obj), encoding="utf-8")
+    st = DataStore(home)
+    st.load()
+    st.meta["katilimci_referansi"]["dosya_sha256"] = hashlib.sha256(copy.read_bytes()).hexdigest()
+    st.save()
+    assert PL.summary(home)["katilimci_referansi"]["durum"] == "GECERSIZ_REFERANS"
+    out = PL.forecast(home, apply=False, now=AS_OF)
+    assert out["tahmin"] == 0 and out["tum_nedenler"].get("KAYNAK_KAPSAMI_KISMI", 0) == _gated(out) > 0
 
 
 def test_previous_season_without_reference_does_not_cover_window(trained_pilot, tmp_path):

@@ -171,11 +171,30 @@ def _fetch_files(home: Path, ref: str, folders: list[str], downloader, previous:
 # Bağımsız katılımcı referansı (kullanıcının resmî kaynaktan hazırladığı dosya)
 # ----------------------------------------------------------------------------
 
+def _aware_utc(value) -> dt.datetime:
+    """Zaman dilimli ISO 8601 tarih -> UTC. Eksik, bozuk veya zaman dilimsiz değer kabul edilmez (tahmin edilmez)."""
+    if not isinstance(value, str) or not value.strip():
+        raise PilotError("Katılımcı referansında kaynak adresi ve alınma anı zorunlu.")
+    try:
+        t = dt.datetime.fromisoformat(value.strip())
+    except ValueError as e:
+        raise PilotError(f"Katılımcı referansındaki alınma anı geçerli bir ISO 8601 tarih değil: {value!r}") from e
+    if t.tzinfo is None or t.utcoffset() is None:
+        raise PilotError("Katılımcı referansındaki alınma anı zaman dilimi içermeli (ör. 2026-10-11T10:47:34+00:00).")
+    return t.astimezone(dt.timezone.utc)
+
+
 def load_participants(path, store_teams) -> tuple[dict, dict]:
     """Bağımsız katılımcı referansı: ``{"lig": "E0", "kaynak": URL, "alinma_utc": ISO, "sezonlar": {"2025/26":
     [adlar]}}``. Adlar pilot deposundaki adlara KESİN kimlikle eşlenmeli; eşlenemeyen veya belirsiz ad o sezonu
-    geçersiz kılar (tahmin edilmez). Döner: ((lig, sezon) -> ad kümesi, rapor)."""
+    geçersiz kılar (tahmin edilmez). Döner: ((lig, sezon) -> ``ParticipantSet``, rapor).
+
+    Erişilebilirlik (S4-KAYNAK-03): ``alinma_utc`` zaman dilimli olmalı. Referans, ``alinma_utc`` ile dosyanın bu
+    sistemdeki değiştirilme zamanının GEÇ olanından itibaren kanıttır (``available_since``); dosyadaki tarih tek
+    başına daha erken erişilebilirlik kanıtı değildir. Daha önceki bir değerlendirme anında takvim kısmi sayılır
+    (``eligibility.EligibilityContext.coverages_at``)."""
     from .data.teams import resolve_teams
+    from .eligibility import ParticipantSet
 
     raw = Path(path).read_bytes()
     try:
@@ -186,8 +205,12 @@ def load_participants(path, store_teams) -> tuple[dict, dict]:
         raise PilotError("Katılımcı referansı biçimi: {\"lig\": \"E0\", \"kaynak\", \"alinma_utc\", \"sezonlar\": {...}}")
     if not str(obj.get("kaynak") or "").startswith("http") or not obj.get("alinma_utc"):
         raise PilotError("Katılımcı referansında kaynak adresi ve alınma anı zorunlu.")
+    claimed = _aware_utc(obj["alinma_utc"])
+    on_disk = dt.datetime.fromtimestamp(Path(path).stat().st_mtime, tz=dt.timezone.utc)
+    since = max(claimed, on_disk)
     teams = sorted(set(store_teams))
     parts, report = {}, {"kaynak": obj["kaynak"], "alinma_utc": obj["alinma_utc"],
+                         "dosya_zamani_utc": on_disk.isoformat(), "erisilebilir_utc": since.isoformat(),
                          "dosya_sha256": hashlib.sha256(raw).hexdigest(), "sezonlar": {}}
     for season, names in obj["sezonlar"].items():
         if not isinstance(names, list) or not all(isinstance(n, str) and n.strip() for n in names):
@@ -203,11 +226,13 @@ def load_participants(path, store_teams) -> tuple[dict, dict]:
                                       "eslesmeyen_adlar": {n: list(res[n].candidates or res[n].suggestions)[:3]
                                                            for n in bad}}
         if ok:
-            parts[(PILOT_LEAGUE, str(season))] = frozenset(mapped)
+            parts[(PILOT_LEAGUE, str(season))] = ParticipantSet(mapped, available_since=since)
     return parts, report
 
 
 def _saved_participants(home: Path, st) -> tuple[dict | None, dict | None]:
+    """Pilot klasörüne kopyalanmış referans (özeti kayıtla aynı olmalı). Erişilebilirlik anı kopyanın kendi
+    değiştirilme zamanından hesaplanır (pilotun referansı aldığı an); geçersiz alınma anı referansı kullanılmaz."""
     ref = (st.meta or {}).get("katilimci_referansi")
     path = home / PARTICIPANTS_COPY
     if not ref or not path.is_file():
@@ -215,7 +240,10 @@ def _saved_participants(home: Path, st) -> tuple[dict | None, dict | None]:
     if hashlib.sha256(path.read_bytes()).hexdigest() != ref.get("dosya_sha256"):
         return None, {"durum": "KOPYA_DEGISMIS"}
     teams = set(st.matches["home"]) | set(st.matches["away"])
-    return load_participants(path, teams)
+    try:
+        return load_participants(path, teams)
+    except PilotError as e:  # ör. eski kopyada zaman dilimsiz alınma anı: kanıt sayılmaz, işlem çökmez
+        return None, {"durum": "GECERSIZ_REFERANS", "neden": str(e)}
 
 
 # ----------------------------------------------------------------------------
@@ -292,10 +320,11 @@ def prepare(home, ref: str | None = None, completed: int = 10, fixture_days: int
         "bilgi_kesimi": str(today), "fikstur_uyarilari": rep.warnings, "guncel_sezon_dosyasi": cur_rel})
     if participants_file is not None:
         teams = set(st.matches["home"]) | set(st.matches["away"])
-        _, preport = load_participants(participants_file, teams)
+        load_participants(participants_file, teams)  # geçersiz referans kopyalanmadan reddedilir
         dest = home / PARTICIPANTS_COPY
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(Path(participants_file).read_bytes())
+        _, preport = load_participants(dest, teams)  # erişilebilirlik: pilotun referansı aldığı an (kopya)
         st.meta["katilimci_referansi"] = preport
     elif old.meta.get("katilimci_referansi") and (home / PARTICIPANTS_COPY).is_file():
         st.meta["katilimci_referansi"] = old.meta["katilimci_referansi"]

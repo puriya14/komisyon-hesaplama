@@ -50,6 +50,8 @@ Zaman kuralı (muhafazakâr, maç bitiş/yayın saati bilinmediği için): değe
 ise yalnızca tarihi ``D``'den ÖNCE olan maç sonuçları erişilebilir sayılır; aynı günün sonuçları beklenmez. Kaynak
 takviminde bir maçın "tamamlandı" görünmesi yalnızca değerlendirme anından ÖNCE alınmış kaynak dosyası için kanıttır
 (``KAYNAK_KARAR_ANINDAN_SONRA``); geçmiş bir an, bugünkü tam sezon dosyasıyla "o gün veri tamdı" diye doğrulanamaz.
+Aynı kural tamlığın dayandığı bağımsız katılımcı referansı için de geçerlidir (``ParticipantSet.available_since``,
+S4-KAYNAK-03): referans değerlendirme anında henüz erişilebilir değilse takvim o an için kısmi sayılır.
 Model durumu ``D`` veya sonrasına tarihli maç içeriyorsa ve durumun değerlendirme anından önce var olduğu
 bilinmiyorsa ``DURUM_KARAR_ANINDAN_SONRA``. Depoya sonradan eklenen sonuçlar geçmiş bir değerlendirmenin sonucunu
 değiştirmez (bütün karşılaştırmalar bilgi kesimiyle sınırlıdır).
@@ -76,7 +78,7 @@ import math
 import re
 import unicodedata
 from collections import Counter
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 
 import numpy as np
 import pandas as pd
@@ -342,6 +344,9 @@ class SourceCoverage:
     reaches_end: bool | None = None
     matching_version: str = ""
     participants: int | None = None
+    # A/B kanıtının dayandığı bağımsız katılımcı referansının erişilebilir olduğu en erken an (None: depo kaynaklı
+    # liste veya liste yok). Değerlendirme anı bundan önceyse aynı takvim kısmi sayılır (``coverages_at``).
+    participants_since: dt.datetime | None = None
 
     @property
     def window(self) -> tuple[int, int] | None:
@@ -359,6 +364,17 @@ class SourceCoverage:
     @property
     def season_end_verified(self) -> bool:
         return bool(self.complete if self.reaches_end is None else self.reaches_end)
+
+
+class ParticipantSet(frozenset):
+    """Bağımsız katılımcı referansından gelen küme ve referansın bu sistemde erişilebilir olduğu en erken an
+    (``available_since``, zaman dilimli). Kümenin hangi sezona ait olduğu ile dosyanın ne zaman erişilebilir olduğu ayrı
+    bilgilerdir; zaman bilgisi olmayan referans kümesi kapsam kanıtı olarak kullanılmaz."""
+
+    def __new__(cls, teams=(), available_since: dt.datetime | None = None):
+        obj = super().__new__(cls, teams)
+        obj.available_since = available_since
+        return obj
 
 
 def expected_per_team(league: str, n_teams: int) -> int:
@@ -504,9 +520,13 @@ def coverage_from_openfootball(data: bytes, league: str, season: str, retrieved_
 
     raw_bytes = data if isinstance(data, bytes) else str(data).encode("utf-8")
     sha = hashlib.sha256(raw_bytes).hexdigest()
+    since = getattr(participants, "available_since", None)
+    if isinstance(participants, ParticipantSet) and since is None:
+        participants = None  # erişilebilirlik anı bilinmeyen referans kanıt değildir
     base = dict(league=league, source="openfootball", season=season, retrieved_at=retrieved_at, sha256=sha,
                 matching_version=MATCHING_VERSION, windows=(), reaches_end=False,
-                participants=len(set(participants)) if participants else None)
+                participants=len(set(participants)) if participants else None,
+                participants_since=since if participants else None)
     try:
         obj = json.loads(raw_bytes.decode("utf-8-sig"))
         raw = obj.get("matches", []) if isinstance(obj, dict) else []
@@ -934,6 +954,8 @@ class EligibilityContext:
             for c in self.coverages[lg]:
                 h.update(f"{lg}|{c.season}|{c.sha256}|{c.retrieved_at.isoformat()}|{c.matching_version}|"
                          f"{c.verified_windows}|{c.season_end_verified}|{c.participants}".encode())
+                if c.participants_since is not None:
+                    h.update(f"|katilimci:{c.participants_since.isoformat()}".encode())
         h.update(_digest({k: asdict(v) for k, v in self.rights.by_label.items()}).encode())
         h.update(f"{POLICY_VERSION}|{MATCHING_VERSION}".encode())
         self.fingerprint = h.hexdigest()
@@ -942,6 +964,21 @@ class EligibilityContext:
 
     def league_matches(self, league: str) -> pd.DataFrame:
         return self._by_league.get(league, self.matches.iloc[0:0])
+
+    def coverages_at(self, league: str, as_of: dt.datetime) -> list[SourceCoverage]:
+        """``as_of`` anında kanıt olarak kullanılabilen kapsamlar. Kaynak dosyası o andan önce (veya o anda) alınmış
+        olmalı; takvim aralıkları bağımsız katılımcı referansına dayanıyorsa referans da o anda erişilebilir olmalı —
+        değilse aynı takvim yalnızca kısmi takvim sayılır (A/B tamlık kanıtı yok; bilinen eksik yine görünür)."""
+        out = []
+        for c in self.coverages.get(league, ()):
+            if c.retrieved_at > as_of:
+                continue
+            if c.participants_since is not None and c.participants_since > as_of:
+                c = replace(c, windows=(), complete=False, reaches_end=False, participants=None,
+                            detail=c.detail + "; bağımsız katılımcı referansı bu andan sonra erişilebilir: tamlık "
+                                              "kanıtı yok")
+            out.append(c)
+        return out
 
     def _rows(self, league: str, last_day: int) -> tuple[int, str]:
         """Depoda modelin işleyeceği, ``last_day``e kadarki lig satırlarının kimliği (önbellekli)."""
@@ -974,7 +1011,9 @@ class EligibilityContext:
         cut = info_cutoff(as_of)
         pcodes = None if prediction_codes is None else tuple(sorted(prediction_codes))
         live = self._live(as_of)
-        usable = tuple(sorted(c.sha256 for c in self.coverages.get(league, ()) if c.retrieved_at <= as_of))
+        # O anda kullanılabilen kapsamlar ve katılımcı referansının erişilebilirliği anahtara girer: daha sonraki bir
+        # anın "doğrulandı" sonucu daha önceki bir an için önbellekten kullanılmaz
+        usable = tuple(sorted((c.sha256, bool(c.verified_windows)) for c in self.coverages_at(league, as_of)))
         key = (self.fingerprint, MATCHING_VERSION, league, str(pd.Timestamp(date).date()), home, away, bool(mapped),
                raw_home, raw_away, source, pcodes, markets, cut, live, usable, event_id)
         hit = self._cache.get(key)
@@ -1096,7 +1135,7 @@ class EligibilityContext:
                 detail.setdefault("takim_mac_365", {})[t] = n
         # 2) Depo ↔ kaynak takvimi ve kapsam
         covs = self.coverages.get(league, ())
-        usable = [c for c in covs if c.retrieved_at <= as_of]
+        usable = self.coverages_at(league, as_of)
         evidence = [c for c in usable if c.verified_windows]  # (B) kanıtla tam olduğu bilinen aralığı olan takvimler
         evidence_checked = bool(evidence)
         if not covs:
@@ -1111,6 +1150,7 @@ class EligibilityContext:
                 "tam": c.complete,  # (A) tam sezon takvimi; geriye uyumlu anahtar
                 "gecmis_aralik_kaniti": [[str(day_to_date(s)), str(day_to_date(e))] for s, e in c.verified_windows],
                 "bagimsiz_katilimci": c.participants, "eslesme_surumu": c.matching_version or None,
+                "katilimci_erisilebilir": c.participants_since.isoformat() if c.participants_since else None,
                 "depo_ayni_kaynak_zinciri": bool(set(labels) & COVERAGE_CHAIN_LABELS.get(c.source, frozenset())),
                 "aciklama": c.detail, "ozet": c.sha256[:16]})
         near = g_all[g_all["day"] < cut_day + PAIR_DAY_TOLERANCE]  # aynı maçın yerel tarih farkı (sınırda da)
