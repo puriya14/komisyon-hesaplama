@@ -778,6 +778,249 @@ def cmd_archive_card(a) -> int:
     return _archive_run(run)
 
 
+def _calisma_run(fn) -> int:
+    """Çalışma alanı komutlarının ortak çıktısı (S6-CALISMA-01): JSON (sonlu sayılar, null); çıkış kodları 0 tamam,
+    2 doğrulama hatası, 3 çalışma alanı/arşiv hatası, 4 eşzamanlı değişiklik çakışması."""
+    from .archive import ArchiveError
+    from .calisma import CakismaHatasi, CalismaError, DogrulamaHatasi, to_json
+
+    try:
+        out = fn()
+    except CakismaHatasi as e:
+        print(f"Çakışma: {e}", file=sys.stderr)
+        return 4
+    except DogrulamaHatasi as e:
+        print(f"Doğrulama hatası: {e}", file=sys.stderr)
+        return 2
+    except (CalismaError, ArchiveError) as e:
+        print(f"Çalışma alanı: {e}", file=sys.stderr)
+        return 3
+    if out is not None:
+        print(to_json(out))
+    return 0
+
+
+def _calisma_group(a, prefix: str) -> dict | None:
+    """``--g1-*`` / ``--g2-*`` bayraklarından grup filtresi; hiçbiri verilmemişse None."""
+    from .calisma import DogrulamaHatasi
+    from .goals.markets import parse_htft
+
+    g = {}
+    get = (lambda k: getattr(a, f"{prefix}_{k}", None))
+    if get("lig"):
+        g["lig"] = get("lig")
+    if get("sezon"):
+        g["sezonlar"] = [x.strip() for v in get("sezon") for x in v.split(",") if x.strip()]
+    for k in ("takim", "yer", "bas", "son"):
+        if get(k):
+            g[k] = get(k)
+    sonuc = {}
+    for item in get("sonuc") or []:
+        if "=" not in item:
+            raise DogrulamaHatasi(f"--{prefix}-sonuc: PAZAR=DEĞER biçiminde olmalı (ör. B=gerceklesti), '{item}'")
+        k, v = (x.strip() for x in item.split("=", 1))
+        sonuc[k] = v
+    codes = []
+    for item in get("iyms") or []:
+        code = parse_htft(item)
+        if code is None:
+            raise DogrulamaHatasi(f"--{prefix}-iyms: tanınmayan İY/MS kodu '{item}' (ör. 2/1 veya HTFT_2_1)")
+        codes.append(code)
+    if codes:
+        sonuc["iy_ms"] = codes
+    if sonuc:
+        g["sonuc"] = sonuc
+    if getattr(a, f"{prefix}_tum", False):
+        if g:
+            raise DogrulamaHatasi(f"--{prefix}-tum diğer --{prefix}-* filtreleriyle birlikte kullanılamaz")
+        return {}
+    return g or None
+
+
+def _calisma_definition(a, require_all: bool) -> dict:
+    """Komut satırından araştırma tanımı (veya değişiklik kümesi); ``--tanim`` JSON dosyası da kabul edilir."""
+    import json as _json
+
+    from .calisma import DogrulamaHatasi
+
+    fields = {}
+    if a.baslik is not None:
+        fields["baslik"] = a.baslik
+    if a.aciklama is not None:
+        fields["aciklama"] = a.aciklama
+    if a.kaynak is not None:
+        fields["kaynak"] = a.kaynak
+    if a.pazarlar is not None:
+        fields["pazarlar"] = [x.strip() for x in a.pazarlar.split(",") if x.strip()]
+    if a.etiket:
+        fields["etiketler"] = list(a.etiket)
+    g1, g2 = _calisma_group(a, "g1"), _calisma_group(a, "g2")
+    if g1 is not None:
+        fields["grup_1"] = g1
+    if g2 is not None:
+        fields["grup_2"] = g2
+    if getattr(a, "grup2_kaldir", False):
+        if g2 is not None:
+            raise DogrulamaHatasi("--grup2-kaldir --g2-* filtreleriyle birlikte kullanılamaz")
+        fields["grup_2"] = None
+    if a.tanim:
+        if fields:
+            raise DogrulamaHatasi("--tanim dosyası diğer tanım bayraklarıyla birlikte kullanılamaz")
+        try:
+            data = _json.loads(open(a.tanim, encoding="utf-8").read())
+        except (OSError, UnicodeDecodeError, ValueError) as e:
+            raise DogrulamaHatasi(f"--tanim okunamadı: {e}") from e
+        if not isinstance(data, dict):
+            raise DogrulamaHatasi("--tanim: JSON nesnesi olmalı")
+        return data
+    if require_all and "grup_1" not in fields:
+        fields["grup_1"] = {}  # Grup 1 filtresi verilmezse görünümün bütün maçları
+    return fields
+
+
+def cmd_calisma_create(a) -> int:
+    """Yeni araştırma (revizyon 1). Yazan işlem: çalışma alanı yoksa oluşturulur."""
+    from .calisma import CalismaAlani
+
+    def run():
+        tanim = _calisma_definition(a, require_all=True)
+        with CalismaAlani.olustur_veya_ac(a.calisma) as ws:
+            return ws.arastirma_olustur(tanim)
+
+    return _calisma_run(run)
+
+
+def cmd_calisma_revise(a) -> int:
+    """Araştırmanın yeni revizyonu (eski revizyon ve çalıştırmaları değişmez). Yazan işlem."""
+    from .calisma import CalismaAlani
+
+    def run():
+        changes = _calisma_definition(a, require_all=False)
+        with CalismaAlani.yazmak_icin_ac(a.calisma) as ws:
+            return ws.arastirma_revize(a.arastirma, changes, temel_revizyon=a.temel_revizyon)
+
+    return _calisma_run(run)
+
+
+def cmd_calisma_list(a) -> int:
+    """Araştırma listesi (salt okunur)."""
+    from .calisma import CalismaAlani
+
+    def run():
+        with CalismaAlani.ac(a.calisma) as ws:
+            return {"arastirmalar": ws.arastirmalar()}
+
+    return _calisma_run(run)
+
+
+def cmd_calisma_read(a) -> int:
+    """Araştırma revizyonu, revizyon geçmişi, çalıştırmalar ve notlar (salt okunur)."""
+    from .calisma import CalismaAlani
+
+    def run():
+        with CalismaAlani.ac(a.calisma) as ws:
+            return ws.arastirma(a.arastirma, a.revizyon)
+
+    return _calisma_run(run)
+
+
+def cmd_calisma_run(a) -> int:
+    """Araştırmayı arşiv üzerinde hesaplar ve çalıştırma kaydını ekler. Yazan işlem (yalnızca çalışma alanına)."""
+    from . import archive as A
+    from .calisma import CalismaAlani
+
+    def run():
+        ar = A.load(a.ev)
+        with CalismaAlani.yazmak_icin_ac(a.calisma, ayri=[a.ev]) as ws:
+            return ws.calistir(ar, a.arastirma, a.revizyon)
+
+    return _calisma_run(run)
+
+
+def cmd_calisma_compare(a) -> int:
+    """İki grubun kaydedilmeyen betimleyici karşılaştırması (salt okunur; çalışma alanı gerekmez)."""
+    from . import archive as A
+    from .calisma import DogrulamaHatasi, compute
+
+    def run():
+        tanim = _calisma_definition(a, require_all=True)
+        if tanim.get("grup_2") is None:
+            raise DogrulamaHatasi("Grup 2 tanımlanmadı: --g2-* filtreleri veya bütün görünüm için --g2-tum verin")
+        tanim.setdefault("baslik", "Kaydedilmeyen karşılaştırma")
+        res = compute(A.load(a.ev), tanim)
+        events = res.pop("_olaylar")
+        res["olay_kumeleri"] = {str(k): {"olay_sayisi": len(v)} for k, v in events.items()}
+        res["kaydedildi"] = False
+        return res
+
+    return _calisma_run(run)
+
+
+def cmd_calisma_note(a) -> int:
+    """Araştırmaya not ekler (isteğe bağlı olarak arşivdeki bir maça bağlı). Yazan işlem."""
+    from . import archive as A
+    from .calisma import CalismaAlani, CalismaError
+
+    def run():
+        ar = None
+        if a.mac:
+            if not a.ev:
+                raise CalismaError("Maça bağlı not için --ev (arşiv klasörü) gerekli.")
+            ar = A.load(a.ev)
+        with CalismaAlani.yazmak_icin_ac(a.calisma, ayri=[a.ev] if a.ev else ()) as ws:
+            return ws.not_ekle(a.arastirma, a.metin, mac_kimligi=a.mac, archive=ar, kaynak=a.kaynak)
+
+    return _calisma_run(run)
+
+
+def cmd_calisma_note_update(a) -> int:
+    """Notun yeni sürümü (metin veya arşivleme); önceki sürüm korunur. Yazan işlem."""
+    from .calisma import CalismaAlani
+
+    def run():
+        with CalismaAlani.yazmak_icin_ac(a.calisma) as ws:
+            return ws.not_guncelle(a.not_id, metin=a.metin, durum="arsivlendi" if a.arsivle else None)
+
+    return _calisma_run(run)
+
+
+def cmd_calisma_note_card(a) -> int:
+    """Maça bağlı notun olay kartı (mevcut arşiv olay kartı; salt okunur)."""
+    from . import archive as A
+    from .calisma import CalismaAlani
+
+    def run():
+        ar = A.load(a.ev)
+        with CalismaAlani.ac(a.calisma) as ws:
+            return ws.not_karti(ar, a.not_id, a.takim)
+
+    return _calisma_run(run)
+
+
+def cmd_calisma_run_read(a) -> int:
+    """Saklı çalıştırma (güncel kullanım kapsamı uygulanır; salt okunur)."""
+    from .calisma import CalismaAlani
+
+    def run():
+        with CalismaAlani.ac(a.calisma) as ws:
+            return ws.calistirma(a.calistirma, olaylar=a.olaylar)
+
+    return _calisma_run(run)
+
+
+def cmd_calisma_verify(a) -> int:
+    """Saklı çalıştırmayı mevcut arşivle yeniden hesaplayıp karşılaştırır (salt okunur)."""
+    from . import archive as A
+    from .calisma import CalismaAlani
+
+    def run():
+        ar = A.load(a.ev)
+        with CalismaAlani.ac(a.calisma) as ws:
+            return ws.dogrula(ar, a.calistirma)
+
+    return _calisma_run(run)
+
+
 def cmd_pilot_coverage(a) -> int:
     """S4 pilotu: kaynak kapsamı, köken, katılımcı referansı, model ve defter durumu (salt okunur)."""
     from .pilot import summary
@@ -969,5 +1212,94 @@ def main(argv: list[str] | None = None) -> int:
         if name == "arsiv-maclar":
             ap.add_argument("--limit", type=int, default=50)
         ap.set_defaults(fn=fn)
+    # S6-CALISMA-01: kayıtlı araştırmalar (betimleyici); yazmalar yalnızca --calisma çalışma alanına
+    ws_help = "çalışma alanı klasörü (varsayılan: uygulama klasörünün yanında BahisTahmin-Calisma)"
+
+    def group_args(sp, prefix: str, label: str) -> None:
+        sp.add_argument(f"--{prefix}-lig", help=f"{label}: lig kodu, ör. E0")
+        sp.add_argument(f"--{prefix}-sezon", action="append", help=f"{label}: sezon (tekrarlanabilir veya virgülle), ör. "
+                                                                   "2024/25")
+        sp.add_argument(f"--{prefix}-takim", help=f"{label}: görünümdeki tam takım adı")
+        sp.add_argument(f"--{prefix}-yer", choices=["ev", "deplasman"], help=f"{label}: ev/deplasman (takımla)")
+        sp.add_argument(f"--{prefix}-bas", help=f"{label}: başlangıç tarihi YYYY-AA-GG")
+        sp.add_argument(f"--{prefix}-son", help=f"{label}: bitiş tarihi YYYY-AA-GG")
+        sp.add_argument(f"--{prefix}-sonuc", action="append", help=f"{label}: geçmiş sonuca göre inceleme filtresi "
+                                                                   "PAZAR=DEĞER (A/B/C = tumu, gerceklesti, "
+                                                                   "gerceklesmedi, bilinmiyor)")
+        sp.add_argument(f"--{prefix}-iyms", action="append", help=f"{label}: geçmiş İY/MS sonucu filtresi, ör. 2/1")
+        sp.add_argument(f"--{prefix}-tum", action="store_true", help=f"{label}: görünümün bütün maçları")
+
+    def def_args(sp, groups: bool = True) -> None:
+        sp.add_argument("--baslik", help="araştırma başlığı (en çok 200 karakter)")
+        sp.add_argument("--aciklama", help="açıklama (en çok 4000 karakter)")
+        sp.add_argument("--kaynak", help="görünüm: tek kaynak (openfootball, datasets, xgabora, hudl) veya 'birlesik'")
+        sp.add_argument("--pazarlar", help="raporlanacak pazarlar, ör. A,B,C,IYMS (varsayılan hepsi)")
+        sp.add_argument("--etiket", action="append", help="etiket (tekrarlanabilir)")
+        sp.add_argument("--tanim", help="tam tanımı içeren UTF-8 JSON dosyası (bayraklar yerine)")
+        if groups:
+            group_args(sp, "g1", "Grup 1")
+            group_args(sp, "g2", "Grup 2")
+
+    c1 = sub.add_parser("calisma-olustur", help="kayıtlı araştırma oluştur (betimleyici; çalışma alanına yazar)")
+    c1.add_argument("--calisma", help=ws_help)
+    def_args(c1)
+    c1.set_defaults(fn=cmd_calisma_create)
+    c2 = sub.add_parser("calisma-revize", help="araştırmanın yeni revizyonu (eski revizyon ve çalıştırmalar değişmez)")
+    c2.add_argument("--calisma", help=ws_help)
+    c2.add_argument("--arastirma", required=True, help="araştırma kimliği")
+    c2.add_argument("--temel-revizyon", type=int, help="beklenen en son revizyon (eşzamanlı değişiklik denetimi)")
+    c2.add_argument("--grup2-kaldir", action="store_true", help="Grup 2'yi kaldır")
+    def_args(c2)
+    c2.set_defaults(fn=cmd_calisma_revise)
+    c3 = sub.add_parser("calisma-liste", help="kayıtlı araştırmalar (salt okunur)")
+    c3.add_argument("--calisma", help=ws_help)
+    c3.set_defaults(fn=cmd_calisma_list)
+    c4 = sub.add_parser("calisma-oku", help="araştırma, revizyonlar, çalıştırmalar ve notlar (salt okunur)")
+    c4.add_argument("--calisma", help=ws_help)
+    c4.add_argument("--arastirma", required=True)
+    c4.add_argument("--revizyon", type=int)
+    c4.set_defaults(fn=cmd_calisma_read)
+    c5 = sub.add_parser("calisma-calistir", help="araştırmayı arşiv üzerinde çalıştır ve sonucu kaydet")
+    c5.add_argument("--calisma", help=ws_help)
+    c5.add_argument("--ev", required=True, help="arşiv klasörü (salt okunur kullanılır)")
+    c5.add_argument("--arastirma", required=True)
+    c5.add_argument("--revizyon", type=int, help="verilmezse en son revizyon")
+    c5.set_defaults(fn=cmd_calisma_run)
+    c6 = sub.add_parser("calisma-karsilastir", help="iki grubun kaydedilmeyen betimleyici karşılaştırması (salt "
+                                                    "okunur)")
+    c6.add_argument("--ev", required=True, help="arşiv klasörü (salt okunur kullanılır)")
+    def_args(c6)
+    c6.set_defaults(fn=cmd_calisma_compare)
+    c7 = sub.add_parser("calisma-not", help="araştırmaya not ekle (isteğe bağlı maç bağlantısıyla)")
+    c7.add_argument("--calisma", help=ws_help)
+    c7.add_argument("--arastirma", required=True)
+    c7.add_argument("--metin", required=True, help="not metni (en çok 4000 karakter)")
+    c7.add_argument("--mac", help="bağlanacak maç kimliği (arşivdeki olay kimliği)")
+    c7.add_argument("--ev", help="maç bağlantısı için arşiv klasörü")
+    c7.add_argument("--kaynak", help="bağlantı görünümü (verilmezse araştırmanın görünümü)")
+    c7.set_defaults(fn=cmd_calisma_note)
+    c8 = sub.add_parser("calisma-not-guncelle", help="notun yeni sürümü veya arşivleme (önceki sürüm korunur)")
+    c8.add_argument("--calisma", help=ws_help)
+    c8.add_argument("--not", dest="not_id", required=True, help="not kimliği")
+    c8.add_argument("--metin")
+    c8.add_argument("--arsivle", action="store_true")
+    c8.set_defaults(fn=cmd_calisma_note_update)
+    c9 = sub.add_parser("calisma-not-kart", help="maça bağlı notun olay kartı (salt okunur)")
+    c9.add_argument("--calisma", help=ws_help)
+    c9.add_argument("--ev", required=True)
+    c9.add_argument("--not", dest="not_id", required=True)
+    c9.add_argument("--takim", required=True, help="kartın takımı (görünümdeki ad)")
+    c9.set_defaults(fn=cmd_calisma_note_card)
+    c10 = sub.add_parser("calisma-calistirma-oku", help="saklı çalıştırma (salt okunur)")
+    c10.add_argument("--calisma", help=ws_help)
+    c10.add_argument("--calistirma", required=True)
+    c10.add_argument("--olaylar", action="store_true", help="grup olay kimliklerini de yazdır")
+    c10.set_defaults(fn=cmd_calisma_run_read)
+    c11 = sub.add_parser("calisma-dogrula", help="saklı çalıştırmayı mevcut arşivle yeniden hesaplayıp karşılaştır "
+                                                 "(salt okunur)")
+    c11.add_argument("--calisma", help=ws_help)
+    c11.add_argument("--ev", required=True)
+    c11.add_argument("--calistirma", required=True)
+    c11.set_defaults(fn=cmd_calisma_verify)
     a = p.parse_args(argv)
     return a.fn(a)

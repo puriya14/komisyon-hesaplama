@@ -66,6 +66,11 @@ depolarından yapar (football-data adreslerine istek gönderilmez). `arsiv-hazir
 ayrı bir arşiv klasörüne alır; geçmiş maçları kaynak, kapsam ve kullanım hakkıyla birlikte listeler. Arayüzde: Veri
 sayfası → "GitHub Veri ve Arşiv". Ayrıntılar: [`docs/S5_GITHUB.md`](docs/S5_GITHUB.md).
 
+Kayıtlı araştırmalar (S6; betimleyici, ayrı çalışma alanı): `calisma-olustur`, `calisma-revize`, `calisma-calistir`,
+`calisma-karsilastir`, `calisma-not` ve salt okunur `calisma-liste`, `calisma-oku`, `calisma-calistirma-oku`,
+`calisma-dogrula`, `calisma-not-kart`. İki maç grubunun A/B/C ve İY/MS gerçekleşmelerini aynı arşiv sürümünde
+karşılaştırır; çalıştırmaları veri ve kod sürümüyle saklar. Ayrıntılar: [`docs/S6_CALISMA.md`](docs/S6_CALISMA.md).
+
 ## Gol pazarları kısaca
 
 - Üç pazar tek bir ortak gol dağılımından hesaplanır; A ⊆ B ∩ C olduğundan P(A) ≤ P(B), P(A) ≤ P(C)
@@ -107,6 +112,7 @@ dokunmaz (`tests/conftest.py`: `BAHIS_TAHMIN_HOME` geçici dizine yönlendirilir
 - [`docs/VERI_UYGUNLUK.md`](docs/VERI_UYGUNLUK.md) — ortak veri uygunluk kontrolü (güncellik, kapsam, takım kimliği, zaman, işlem kapsamlı haklar; politika v2, S3-GATE-02)
 - [`docs/S4_PILOT.md`](docs/S4_PILOT.md) — tek ligde gerçek veri pilotu: komutlar, yalıtım, kaynak kökeni, katılımcı referansı
 - [`docs/S5_GITHUB.md`](docs/S5_GITHUB.md) — GitHub veri profili, sürümlü önbellek, tarihsel arşiv ve kaynak/işlem bazında kullanım kapsamı
+- [`docs/S6_CALISMA.md`](docs/S6_CALISMA.md) — kayıtlı araştırmalar, revizyon/çalıştırma/not sözleşmesi, iki grup karşılaştırması ve arayüz servis sözleşmesi
 - `reports/s5_github_01/` — S5-GITHUB-01 toplu sonuç raporu (yalnızca sayılar; maç satırı yok)
 - `reports/s4_pilot_01/` — S4-PILOT-01 toplu sonuç raporu (yalnızca sayılar; maç satırı ve tahmin listesi yok)
 - `reports/s3_gate_02/` — S3-GATE-02 raporu ve dondurulmuş ileriye dönük ölçüm protokolü v3
