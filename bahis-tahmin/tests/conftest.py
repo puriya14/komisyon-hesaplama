@@ -22,6 +22,32 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(skip)
 
 
+def pytest_sessionfinish(session, exitstatus):
+    """Testlerde açılan Qt pencerelerini, uygulama nesnesi hâlâ ayaktayken belirli bir sırayla siler.
+
+    Pencereler testlerde kapatılır ama silinmez; yorumlayıcı kapanırken sarmalayıcıların silinme sırası belirsiz
+    olduğundan aynı Qt nesnesi iki kez silinebiliyor ("QObject: shared QObject was deleted directly" ve ardından
+    malloc hatasıyla çökme). Test sonuçlarını değiştirmez; yalnızca kapanışı belirlenimci yapar."""
+    qw = sys.modules.get("PySide6.QtWidgets")
+    app = qw.QApplication.instance() if qw is not None else None
+    if app is None:
+        return
+    import gc
+
+    import shiboken6
+    from PySide6.QtCore import QCoreApplication, QEvent, QThread
+
+    for t in [o for o in gc.get_objects() if isinstance(o, QThread)]:
+        if shiboken6.isValid(t) and t.isRunning():
+            t.wait(10_000)
+    for w in qw.QApplication.topLevelWidgets():
+        w.close()
+        w.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    app.processEvents()
+    gc.collect()
+
+
 @pytest.fixture(autouse=True)
 def tmp_home(tmp_path, monkeypatch):
     home = tmp_path / "home"
