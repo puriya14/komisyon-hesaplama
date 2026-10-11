@@ -416,7 +416,13 @@ def parse_openfootball(data: bytes, league: str, keep_provider_id: bool = False)
 # ----------------------------------------------------------------------------
 
 OPENFOOTBALL_RESULT_LABEL = "openfootball-sonuc"  # sonuç satırlarının kaynak etiketi (fikstür etiketi "openfootball")
-OPENFOOTBALL_RESULT_PARSER = "openfootball-sonuc-v1"
+# v1: İY alanı yoksa İY bilinmiyor. v2 (S4-MODEL-01): kaynak MS 0-0 maçlarda İY alanını HİÇ yazmaz; MS 0-0 ise her iki
+# takımın İY golü 0 ≤ İY ≤ MS = 0 olduğundan İY zorunlu olarak 0-0'dır (tahmin değil, mantıksal sonuç). v2 bu maçlarda
+# İY'yi 0-0 kaydeder ve ``iy_mantiksal`` ile işaretler; MS 0-0 olmayan maçta eksik İY eksik kalır. v1 kayıtları v1 ile
+# doğrulanabilir kalır (eski pilot verisi ve modeli korunur).
+OPENFOOTBALL_RESULT_PARSER_V1 = "openfootball-sonuc-v1"
+OPENFOOTBALL_RESULT_PARSER = "openfootball-sonuc-v2"
+OPENFOOTBALL_RESULT_PARSERS = (OPENFOOTBALL_RESULT_PARSER_V1, OPENFOOTBALL_RESULT_PARSER)
 _OF_SCORE_KEYS = frozenset({"ht", "ft", "et", "p"})
 _OF_NOT_PLAYED = frozenset({"postponed", "cancelled", "canceled", "abandoned", "suspended"})
 
@@ -461,11 +467,14 @@ class ResultParse:
     son_tamamlanan: str | None = None
     tamamlanmamis_tarihler: list = field(default_factory=list)  # oynanmamış maçların tarihleri (bayatlık ölçümü)
     ad_eslemesi: dict = field(default_factory=dict)  # kaynak adı -> sağlayıcı kaydındaki kanonik ad (uygulananlar)
+    iy_mantiksal: int = 0  # v2: MS 0-0 olduğu için İY'si mantıksal olarak 0-0 kaydedilen maç (``ht`` sayısına dahil)
+    ayristirici: str = OPENFOOTBALL_RESULT_PARSER
 
     def ozet(self) -> dict:
         from collections import Counter
 
-        return {"toplam": self.toplam, "oynanmis_gecerli": self.oynanmis, "ilk_yari_gecerli": self.ht,
+        return {"ayristirici": self.ayristirici, "toplam": self.toplam, "oynanmis_gecerli": self.oynanmis,
+                "ilk_yari_gecerli": self.ht, "ilk_yari_mantiksal_0_0": self.iy_mantiksal,
                 "yalniz_mac_sonu": self.yalniz_ft, "oynanmamis": self.oynanmamis,
                 "oynanmamis_durumlu": self.oynanmamis_durumlu, "yinelenen": self.yinelenen,
                 "karantina": dict(Counter(k["neden"] for k in self.karantina)), "takim": self.takim, "tur": self.tur,
@@ -516,27 +525,31 @@ def _of_score(m: dict) -> tuple[str, tuple | None, tuple | None, str | None]:
     return "OYNANDI", ft, ht, None
 
 
-def parse_openfootball_results(data: bytes, league: str, season: str) -> ResultParse:
+def parse_openfootball_results(data: bytes, league: str, season: str,
+                               parser: str = OPENFOOTBALL_RESULT_PARSER) -> ResultParse:
     """openfootball sezon dosyasındaki tamamlanmış maç sonuçları (normal süre). Belirsiz/çelişkili kayıt karantinaya
     alınır; birebir tekrar sayılmaz; aynı anahtarla farklı içerik ikisi birden karantinaya alınır. Eksik ilk yarı
-    eksik kalır (0-0 yapılmaz); 0-0 gerçek sonuçtur. Takım adları yalnızca sağlayıcının kulüp kaydındaki doğrulanmış
+    eksik kalır (0-0 yapılmaz); tek istisna ``parser`` v2'de MS 0-0 maçtır: İY mantıksal olarak 0-0'dır ve
+    ``iy_mantiksal`` ile işaretlenir (v1: bilinmiyor). 0-0 gerçek sonuçtur. Takım adları yalnızca sağlayıcının kulüp kaydındaki doğrulanmış
     alternatif adlarla (``OPENFOOTBALL_CLUB_ALIASES``) kanonik ada çevrilir; tekrar/çakışma/aynı gün denetimleri
     kanonik adla yapılır. Deterministik (aynı dosya → aynı satırlar)."""
     import hashlib
     from collections import Counter
 
+    if parser not in OPENFOOTBALL_RESULT_PARSERS:
+        raise ValueError(f"Bilinmeyen ayrıştırıcı sürümü: {parser}")
     aliases = OPENFOOTBALL_CLUB_ALIASES.get(league, {})
     sha = hashlib.sha256(data).hexdigest()
     try:
         obj = json.loads(decode_bytes(data))
     except ValueError:
-        return ResultParse(pd.DataFrame(columns=MATCH_COLUMNS + ["kaynak_ozeti"]), sha,
-                           karantina=[{"neden": "DOSYA_OKUNAMADI", "tarih": None, "tur": None}])
+        return ResultParse(pd.DataFrame(columns=MATCH_COLUMNS + ["kaynak_ozeti", "iy_mantiksal"]), sha,
+                           karantina=[{"neden": "DOSYA_OKUNAMADI", "tarih": None, "tur": None}], ayristirici=parser)
     raw = obj.get("matches") if isinstance(obj, dict) else None
     if not isinstance(raw, list):
-        return ResultParse(pd.DataFrame(columns=MATCH_COLUMNS + ["kaynak_ozeti"]), sha,
-                           karantina=[{"neden": "BICIM_BILINMIYOR", "tarih": None, "tur": None}])
-    res = ResultParse(pd.DataFrame(), sha, toplam=len(raw))
+        return ResultParse(pd.DataFrame(columns=MATCH_COLUMNS + ["kaynak_ozeti", "iy_mantiksal"]), sha,
+                           karantina=[{"neden": "BICIM_BILINMIYOR", "tarih": None, "tur": None}], ayristirici=parser)
+    res = ResultParse(pd.DataFrame(), sha, toplam=len(raw), ayristirici=parser)
     # Sezon penceresi: 1. turun ilk günü .. +400 gün. Dışındaki tarih (ör. yılı yanlış yazılmış kayıt) karantinaya
     # alınır; yıl tahmin edilip düzeltilmez.
     from ..eligibility import round_number
@@ -602,9 +615,12 @@ def parse_openfootball_results(data: bytes, league: str, season: str) -> ResultP
             res.oynanmamis += 1
             open_dates.append(day)
             continue
+        derived = False
+        if parser != OPENFOOTBALL_RESULT_PARSER_V1 and ht is None and ft == (0, 0):
+            ht, derived = (0, 0), True  # MS 0-0 ⇒ İY 0-0 (0 ≤ İY ≤ MS); kaynak bu maçlarda İY yazmaz
         pid = m.get("id")
         key = (("id", str(pid)) if isinstance(pid, (str, int)) and not isinstance(pid, bool) else ("mac", day, t1, t2))
-        content = {"date": day, "home": t1, "away": t2, "round": rnd, "ft": ft, "ht": ht,
+        content = {"date": day, "home": t1, "away": t2, "round": rnd, "ft": ft, "ht": ht, "iy_mantiksal": derived,
                    "time": str(m.get("time") or "")[:5]}
         alt = ("mac", day, t1, t2)  # farklı tur etiketiyle aynı maç da aynı olaydır
         prev = kept.get(key) or kept.get(alt)
@@ -641,6 +657,7 @@ def parse_openfootball_results(data: bytes, league: str, season: str) -> ResultP
         rows = keep
     res.oynanmis = len(rows)
     res.ht = sum(1 for c in rows if c["ht"] is not None)
+    res.iy_mantiksal = sum(1 for c in rows if c["iy_mantiksal"])
     res.yalniz_ft = res.oynanmis - res.ht
     res.takim, res.tur = len(teams), len(rounds)
     res.ilk_tarih = str(min(dates)) if dates else None
@@ -648,7 +665,7 @@ def parse_openfootball_results(data: bytes, league: str, season: str) -> ResultP
     res.son_tamamlanan = str(max(c["date"] for c in rows)) if rows else None
     res.tamamlanmamis_tarihler = sorted(str(x) for x in open_dates)
     if not rows:
-        res.matches = pd.DataFrame(columns=MATCH_COLUMNS + ["kaynak_ozeti"])
+        res.matches = pd.DataFrame(columns=MATCH_COLUMNS + ["kaynak_ozeti", "iy_mantiksal"])
         return res
     out = pd.DataFrame({
         "league": league, "season": season, "date": pd.to_datetime([str(c["date"]) for c in rows]),
@@ -659,8 +676,10 @@ def parse_openfootball_results(data: bytes, league: str, season: str) -> ResultP
     })
     out["time"] = _clean_time(out["time"])
     out["source"] = OPENFOOTBALL_RESULT_LABEL
-    out = _finish(out, MATCH_COLUMNS)
+    out["iy_mantiksal"] = [bool(c["iy_mantiksal"]) for c in rows]
+    out = _finish(out, MATCH_COLUMNS + ["iy_mantiksal"])
     out = out.sort_values(["date", "home", "away"], kind="mergesort").reset_index(drop=True)
+    out["iy_mantiksal"] = out["iy_mantiksal"].astype(bool)
     out["kaynak_ozeti"] = sha
     res.matches = out
     return res

@@ -105,14 +105,20 @@ def calibration_slope(y, p) -> tuple[float, float]:
     nan = (float("nan"), float("nan"))
     if len(y) == 0 or len(y) != len(p) or not (np.isfinite(p).all() and np.isin(y, (0.0, 1.0)).all()):
         return nan
+    if (p < 0).any() or (p > 1).any():  # olasılık dışı değer kırpılarak sayıya çevrilmez
+        return nan
     lp = np.log(np.clip(p, 1e-9, 1 - 1e-9) / (1 - np.clip(p, 1e-9, 1 - 1e-9)))
     if len(np.unique(y)) < 2 or np.ptp(lp) < 1e-9:
         return nan
     x1, x0 = lp[y == 1], lp[y == 0]
     if x1.min() >= x0.max() or x1.max() <= x0.min():
         return nan
-    m = LogisticRegression(C=1e6, max_iter=1000).fit(lp[:, None], y)
-    return float(m.coef_[0, 0]), float(m.intercept_[0])
+    # Merkezlenmiş ve ölçeklenmiş tasarım + sıkı tolerans: kötü koşullu (dar aralıklı) girdide çözücü erken durup
+    # veriden bağımsız bir eğim döndürmesin (S4-MODEL-01); sonuç ölçeksiz en çok olabilirlik kestirimidir.
+    mu, sd = float(lp.mean()), float(lp.std())
+    m = LogisticRegression(C=1e6, tol=1e-10, max_iter=10000).fit(((lp - mu) / sd)[:, None], y)
+    b = float(m.coef_[0, 0]) / sd
+    return b, float(m.intercept_[0]) - b * mu
 
 
 def block_bootstrap_diff(loss_a, loss_b, blocks, reps: int = 1000, seed: int = 7) -> tuple[float, float, float]:

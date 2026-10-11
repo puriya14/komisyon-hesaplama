@@ -107,7 +107,9 @@ def calibration_fit(y, p, max_iter: int = 100, tol: float = 1e-10) -> dict:
     x1, x0 = x[y == 1], x[y == 0]
     if x1.min() >= x0.max() or x1.max() <= x0.min():
         return {"egim": nan, "kesisim": nan, "durum": KAL_AYRISMA, "iter": 0}
-    X = np.column_stack([np.ones_like(x), x])
+    # Merkezlenmiş/ölçeklenmiş tasarımda Newton (dar aralıkta tekil matris olmasın); sonuç özgün ölçeğe döndürülür
+    xm, xs = float(x.mean()), float(x.std())
+    X = np.column_stack([np.ones_like(x), (x - xm) / xs])
     beta = np.array([np.log(y.mean() / (1 - y.mean())), 0.0])
     for it in range(1, max_iter + 1):
         eta = X @ beta
@@ -115,10 +117,16 @@ def calibration_fit(y, p, max_iter: int = 100, tol: float = 1e-10) -> dict:
         w = mu * (1 - mu)
         g = X.T @ (y - mu)
         H = X.T @ (X * w[:, None])
-        step = np.linalg.solve(H, g)
+        try:
+            step = np.linalg.solve(H, g)
+        except np.linalg.LinAlgError:
+            break
         beta = beta + step
+        if not np.all(np.isfinite(beta)):
+            break
         if np.max(np.abs(step)) < tol:
-            return {"egim": float(beta[1]), "kesisim": float(beta[0]), "durum": KAL_TAMAM, "iter": it}
+            b = float(beta[1]) / xs
+            return {"egim": b, "kesisim": float(beta[0]) - b * xm, "durum": KAL_TAMAM, "iter": it}
     return {"egim": nan, "kesisim": nan, "durum": KAL_YAKINSAMADI, "iter": max_iter}
 
 

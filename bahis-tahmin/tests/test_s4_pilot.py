@@ -74,13 +74,26 @@ def test_ft_only_list_is_not_counted_as_half_time():
 
 
 def test_real_nil_nil_is_distinct_from_missing_score():
-    res = _parse([_m("2030-08-10", "A", "B", {"ht": [0, 0], "ft": [0, 0]}),
-                  _m("2030-08-10", "C", "D"),  # skor yok: oynanmamış, sonuç satırı DEĞİL
-                  _m("2030-08-10", "E", "F", {"ft": [0, 0]})])  # İY eksik: 0-0 yapılmaz
+    from bahis_tahmin.data.parsers import OPENFOOTBALL_RESULT_PARSER_V1
+
+    matches = [_m("2030-08-10", "A", "B", {"ht": [0, 0], "ft": [0, 0]}),
+               _m("2030-08-10", "C", "D"),  # skor yok: oynanmamış, sonuç satırı DEĞİL
+               _m("2030-08-10", "E", "F", {"ft": [0, 0]}),  # MS 0-0, İY alanı yok
+               _m("2030-08-10", "G", "H", {"ft": [2, 1]})]  # MS 0-0 değil, İY alanı yok: gerçekten eksik
+    res = _parse(matches)
     m = res.matches.set_index("home")
     assert (m.loc["A", "fthg"], m.loc["A", "ftag"], m.loc["A", "hthg"], m.loc["A", "htag"]) == (0, 0, 0.0, 0.0)
     assert "C" not in m.index and res.oynanmamis == 1 and res.tamamlanmamis_tarihler == ["2030-08-10"]
-    assert (m.loc["E", "fthg"], m.loc["E", "ftag"]) == (0, 0) and np.isnan(m.loc["E", "hthg"])
+    # S4-MODEL-01 (v2): MS 0-0 ise İY mantıksal olarak 0-0 (0 ≤ İY ≤ MS) ve açıkça işaretli; bu bir tahmin değildir
+    assert (m.loc["E", "fthg"], m.loc["E", "ftag"], m.loc["E", "hthg"], m.loc["E", "htag"]) == (0, 0, 0.0, 0.0)
+    assert m.loc["E", "iy_mantiksal"] and not m.loc["A", "iy_mantiksal"] and res.iy_mantiksal == 1
+    # gerçekten eksik İY eksik kalır (0-0 yapılmaz, MS'den tahmin edilmez)
+    assert (m.loc["G", "fthg"], m.loc["G", "ftag"]) == (2, 1) and np.isnan(m.loc["G", "hthg"])
+    assert not m.loc["G", "iy_mantiksal"]
+    # v1 (S4-PILOT-01 kuralı) hâlâ okunabilir: İY alanı yoksa bilinmiyor
+    v1 = parse_openfootball_results(_of(matches), "E0", "2030/31", OPENFOOTBALL_RESULT_PARSER_V1).matches
+    v1 = v1.set_index("home")
+    assert np.isnan(v1.loc["E", "hthg"]) and np.isnan(v1.loc["G", "hthg"]) and not v1["iy_mantiksal"].any()
 
 
 @pytest.mark.parametrize("score, reason", [

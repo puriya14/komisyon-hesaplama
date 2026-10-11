@@ -633,7 +633,7 @@ def cmd_pilot_diagnose(a) -> int:
     """S4 pilotu: M10 aşama tanılaması (iç doğrulamanın tek yeniden üretimi; ayrı çıktı klasörü, pilot değişmez)."""
     from .pilot import diagnose
 
-    return _pilot_run(lambda: diagnose(a.ev, a.cikti, progress=_progress))
+    return _pilot_run(lambda: diagnose(a.ev, a.cikti, progress=_progress, parser=a.ayristirici))
 
 
 def cmd_self_test(a) -> int:
@@ -744,6 +744,10 @@ def main(argv: list[str] | None = None) -> int:
     pd_.add_argument("--ev", required=True, help="pilot klasörü (eğitilmiş pilot modeli olmalı)")
     pd_.add_argument("--cikti", required=True, help="tanılama çıktı klasörü (pilot ve uygulama veri klasöründen ayrı; "
                                                     "maç satırları yalnızca burada kalır)")
+    pd_.add_argument("--ayristirici", choices=["openfootball-sonuc-v1", "openfootball-sonuc-v2"],
+                     help="karşılaştırmalı tekrar: kayıtlı kaynak dosyalarını bu ayrıştırıcı sürümüyle yeniden ayrıştırıp "
+                          "aynı bölmeyle bir walk-forward çalıştırır (pilot verisi/modeli değişmez; verilmezse kayıtlı "
+                          "doğrulamanın birebir yeniden üretimi)")
     pd_.set_defaults(fn=cmd_pilot_diagnose)
     a = p.parse_args(argv)
     return a.fn(a)

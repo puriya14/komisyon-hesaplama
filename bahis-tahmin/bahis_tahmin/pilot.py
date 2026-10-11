@@ -18,6 +18,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from .config import app_home_path
@@ -25,6 +26,7 @@ from .data.leagues import LEAGUES, openfootball_season, season_label, season_sta
 from .data.parsers import (
     OPENFOOTBALL_RESULT_LABEL,
     OPENFOOTBALL_RESULT_PARSER,
+    OPENFOOTBALL_RESULT_PARSERS,
     parse_openfootball_results,
 )
 from .data.provenance import OPENFOOTBALL_REPO, SourceFile, rows_sha256, verified_labels, verify_results
@@ -516,10 +518,38 @@ def _verified_engine(home: Path, st):
     return eng, man, sha
 
 
-def diagnose(home, out_dir, progress=None) -> dict:
+def _reparse(st, parser: str) -> tuple[pd.DataFrame, dict]:
+    """Kayıtlı kaynak dosyalarını (özetleri doğrulanarak) verilen ayrıştırıcı sürümüyle yeniden ayrıştırır; maç kümesi
+    depodakiyle aynı olmalıdır (yalnızca ayrıştırma kuralının etkisi ölçülür). Depo ve kaynak dosyaları değişmez."""
+    frames = []
+    for rec in (st.meta or {}).get("kaynak_kokeni") or []:
+        data = (Path(st.raw_dir) / rec["cache_rel"]).read_bytes()
+        if hashlib.sha256(data).hexdigest() != rec["sha256"]:
+            raise PilotError(f"{rec['season']}: kaynak dosyası özeti kayıtla uyuşmuyor; yeniden ayrıştırılmadı.")
+        frames.append(parse_openfootball_results(data, rec["league"], rec["season"], parser).matches)
+    new = pd.concat(frames, ignore_index=True).sort_values(["date", "home"], kind="mergesort").reset_index(drop=True)
+    old = st.matches
+    key = lambda df: (df["league"] + "|" + df["date"].dt.strftime("%Y-%m-%d") + "|" + df["home"] + "|"  # noqa: E731
+                      + df["away"]).to_numpy()
+    if len(new) != len(old) or not np.array_equal(key(new), key(old)):
+        raise PilotError("Yeniden ayrıştırma farklı bir maç kümesi üretti; karşılaştırmalı tekrar aynı veride değil.")
+    same_ft = np.array_equal(new[["fthg", "ftag"]].to_numpy(dtype=float), old[["fthg", "ftag"]].to_numpy(dtype=float))
+    h_old, h_new = old[["hthg", "htag"]].to_numpy(dtype=float), new[["hthg", "htag"]].to_numpy(dtype=float)
+    changed = ~((h_old == h_new) | (np.isnan(h_old) & np.isnan(h_new))).all(axis=1)
+    return new, {"ayristirici": parser, "mac": int(len(new)), "ms_ayni": bool(same_ft),
+                 "iy_degisen_mac": int(changed.sum()),
+                 "iy_degisen_ms_0_0": int((changed & (new["fthg"] == 0).to_numpy() & (new["ftag"] == 0).to_numpy()).sum()),
+                 "iy_mantiksal": int(new["iy_mantiksal"].sum()) if "iy_mantiksal" in new else 0}
+
+
+def diagnose(home, out_dir, progress=None, parser: str | None = None) -> dict:
     """Pilot modelinin iç zaman sıralı doğrulamasını aynı veri ve aynı bölmeyle BİR KEZ yeniden üretir, aynı M10'un
     aşama çıktılarını ve bağımsız ölçütleri ayrı çıktı klasörüne yazar. Pilot dosyaları değişmez; kayıtlı doğrulamayla
-    birebir uyuşmazsa sonuç "aynı deney" sayılmaz (``ayni_deney = False``)."""
+    birebir uyuşmazsa sonuç "aynı deney" sayılmaz (``ayni_deney = False``).
+
+    ``parser`` depodaki kayıtların ayrıştırıcı sürümünden farklıysa KARŞILAŞTIRMALI TEKRAR yapılır: aynı kaynak dosyaları
+    o sürümle yeniden ayrıştırılır (aynı maç kümesi), aynı bölme ve aynı model ayarlarıyla bir walk-forward çalışır.
+    Sonuç kayıtlı doğrulamanın tekrarı değildir; pilot modeli ve verisi değişmez, yeni model dosyası yazılmaz."""
     from .goals import diagnostics as G
     from .goals.engine import HOLDOUT_SEASONS
     from .goals.features import build_goal_features
@@ -528,12 +558,19 @@ def diagnose(home, out_dir, progress=None) -> dict:
     home = check_pilot_dir(home)
     st = _store(home)
     eng, man, sha = _verified_engine(home, st)
+    store_parsers = sorted({r.get("parser") for r in (st.meta or {}).get("kaynak_kokeni") or []})
+    if parser is not None and parser not in OPENFOOTBALL_RESULT_PARSERS:
+        raise PilotError(f"Bilinmeyen ayrıştırıcı sürümü: {parser}")
+    compare = parser is not None and store_parsers != [parser]
+    matches, change = (_reparse(st, parser) if compare else (st.matches, None))
     out = check_output_dir(out_dir, home)
     plan = {"tani_surumu": G.DIAG_VERSION, "kayit_utc": _now().isoformat(timespec="seconds"),
+            "mod": "karsilastirmali_tekrar" if compare else "yeniden_uretim",
+            "ayristirici": parser if compare else store_parsers,
             "bootstrap": {"tekrar": G.BOOT_REPS, "tohum": G.BOOT_SEED, "blok": "ISO hafta"}, "bolme": G.N_BINS,
             "asamalar": list(G.STAGES), "veri_sha256": sha, "model_sha256": man.get("sha256")}
     (out / "on_kayit.json").write_text(json.dumps(plan, ensure_ascii=False, indent=1), encoding="utf-8")
-    feat, _ = build_goal_features(st.matches)
+    feat, _ = build_goal_features(matches)
     years = season_year(feat["date"])
     last = int(years.max())
     val_years = [y for y in range(last - HOLDOUT_SEASONS, last + 1) if (years == y).any()]
@@ -542,8 +579,12 @@ def diagnose(home, out_dir, progress=None) -> dict:
     rows, folds = G.stage_walk_forward(feat, val_years)
     if rows.empty:
         raise PilotError("Doğrulama katı üretilemedi (eğitim satırı yetersiz); ölçüt üretilmedi.")
-    new_eval = evaluate(G.as_validation_pred(rows), [eng.variant])
-    same = G.compare_validation(new_eval, eng.validation)
+    if compare:
+        same = {"birebir": False, "max_mutlak_fark": None,
+                "farklar": ["karşılaştırmalı tekrar: kaynak dosyaları farklı ayrıştırıcı sürümüyle yeniden ayrıştırıldı; "
+                            "kayıtlı doğrulamanın tekrarı değildir"]}
+    else:
+        same = G.compare_validation(evaluate(G.as_validation_pred(rows), [eng.variant]), eng.validation)
     report = G.stage_report(rows)
     checks = G.structural_checks(rows)
     lg = LEAGUES[PILOT_LEAGUE]
@@ -553,15 +594,17 @@ def diagnose(home, out_dir, progress=None) -> dict:
         prof = G.quarantine_profile(p.read_bytes(), rec["league"], rec["season"])
         if prof["karantina"]:
             qprof[rec["season"]] = prof
-    summary = {"tani_surumu": G.DIAG_VERSION, "lig": PILOT_LEAGUE, "lig_adi": lg.name, "veri_sha256": sha,
+    summary = {"tani_surumu": G.DIAG_VERSION, "mod": plan["mod"], "ayristirici": plan["ayristirici"],
+               "karsilastirma_verisi": change, "lig": PILOT_LEAGUE, "lig_adi": lg.name, "veri_sha256": sha,
                "model_sha256": man.get("sha256"), "kaynak_commit": (st.meta or {}).get("kaynak_commit"),
                "dogrulama_sezonlari": val_years, "ayni_deney": same["birebir"], "kayitli_dogrulama_karsilastirma": same,
                "katlar": folds, "asama_iliskileri": checks, "olcutler": report,
-               "ilk_yari_eksik": G.ht_missing_profile(st.matches), "karantina": qprof,
+               "ilk_yari_eksik": G.ht_missing_profile(matches), "karantina": qprof,
                "uretim_utc": _now().isoformat(timespec="seconds")}
     (out / DIAG_SUMMARY).write_text(json.dumps(summary, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
     rows.to_csv(out / DIAG_ROWS, index=False)
-    brief = {"ayni_deney": same["birebir"], "max_mutlak_fark": same["max_mutlak_fark"], "cikti": str(out)}
+    brief = {"mod": plan["mod"], "ayni_deney": same["birebir"], "max_mutlak_fark": same["max_mutlak_fark"],
+             "karsilastirma_verisi": change, "cikti": str(out)}
     for s, mk in report.items():
         if s == "uyari":
             brief["uyari"] = mk

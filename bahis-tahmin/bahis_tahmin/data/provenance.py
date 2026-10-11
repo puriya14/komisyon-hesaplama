@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from .parsers import OPENFOOTBALL_RESULT_LABEL, OPENFOOTBALL_RESULT_PARSER, parse_openfootball_results
+from .parsers import OPENFOOTBALL_RESULT_LABEL, OPENFOOTBALL_RESULT_PARSERS, parse_openfootball_results
 
 OPENFOOTBALL_REPO = "openfootball/football.json"
 _SHA40 = re.compile(r"^[0-9a-f]{40}$")
@@ -89,7 +89,7 @@ def verify_results(matches: pd.DataFrame | None, records, raw_dir) -> tuple[bool
         if rec is None:
             problems.append("geçersiz köken kaydı")
             continue
-        if rec.repo != OPENFOOTBALL_REPO or rec.parser != OPENFOOTBALL_RESULT_PARSER:
+        if rec.repo != OPENFOOTBALL_REPO or rec.parser not in OPENFOOTBALL_RESULT_PARSERS:
             problems.append(f"{rec.season}: kaynak deposu veya ayrıştırıcı sürümü farklı")
             continue
         recs[(rec.league, rec.season)] = rec
@@ -106,7 +106,7 @@ def verify_results(matches: pd.DataFrame | None, records, raw_dir) -> tuple[bool
         if hashlib.sha256(data).hexdigest() != rec.sha256:
             problems.append(f"{lg} {season}: dosya özeti kayıtla uyuşmuyor")
             continue
-        parsed = parse_openfootball_results(data, lg, season).matches
+        parsed = parse_openfootball_results(data, lg, season, rec.parser).matches  # kaydın kendi sürümüyle
         digest = rows_sha256(g)
         if digest != rows_sha256(parsed) or digest != rec.rows_sha256 or len(g) != rec.rows:
             problems.append(f"{lg} {season}: depodaki satırlar kaynak dosyasından üretilenlerle aynı değil")

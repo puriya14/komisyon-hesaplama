@@ -66,7 +66,8 @@ Bağımsız katılımcı referansı eklemek için `pilot-hazirla ... --katilimci
 
 Her sezon dosyası için veri deposunun `data_meta.json → kaynak_kokeni` kaydında depo (`openfootball/football.json`),
 dosya yolu, sabit commit, alınma anı (dosyanın alındığı gerçek an; içindeki skorların güncelliği **değil**), dosya
-SHA-256, ayrıştırıcı sürümü (`openfootball-sonuc-v1`) ve satır özeti tutulur. Eğitim ve tahmin öncesinde önbellekteki
+SHA-256, ayrıştırıcı sürümü (`openfootball-sonuc-v2`; eski pilotlar `-v1`) ve satır özeti tutulur. Doğrulama her
+kaydı kendi sürümüyle yeniden üretir; sürümler birbirinin yerine geçmez. Eğitim ve tahmin öncesinde önbellekteki
 dosya yeniden ayrıştırılır; depodaki satırlar birebir aynı değilse `KAYNAK_KOKENI_DOGRULANAMADI` (eğitim ve tahmin
 engeli). Etiketi `openfootball-sonuc` yapılmış başka kaynak satırları bu kontrolü geçemez.
 
@@ -74,7 +75,12 @@ engeli). Etiketi `openfootball-sonuc` yapılmış başka kaynak satırları bu k
 
 `data/parsers.parse_openfootball_results`:
 
-- `score: {"ft": [a, b], "ht": [c, d]}` → maç sonu ve ilk yarı; `ht` yoksa ilk yarı **eksik** kalır (0-0 yapılmaz).
+- `score: {"ft": [a, b], "ht": [c, d]}` → maç sonu ve ilk yarı. `ht` yoksa ilk yarı **eksik** kalır; 0-0 yapılmaz,
+  MS'den tahmin edilmez.
+- Tek istisna MS 0-0 maçlardır: kaynak bu maçlarda `ht` alanını hiç yazmaz. 0 ≤ İY ≤ MS = 0 olduğundan İY zorunlu olarak
+  0-0'dır; bu bir tahmin değil, mantıksal sonuçtur. v2 bu maçlarda İY'yi 0-0 kaydeder ve `iy_mantiksal` ile işaretler.
+  v1 (S4-PILOT-01) bu maçları "İY bilinmiyor" sayıyordu: bütün MS 0-0 maçlar A/C etiketlerinden, ilk yarı güç
+  izleyicilerinden, bA/bC taban oranlarından ve M5 eğitiminden dışlanıyordu (rastgele olmayan seçim; S4-MODEL-01).
 - `score: [a, b]` → yalnızca maç sonu (ilk yarı sayılmaz). Skorsuz maç oynanmamıştır.
 - Karantina (kayda alınmaz, nedenle sayılır): negatif/kesirli/boolean/30'dan büyük skor (`SKOR_GECERSIZ`), bilinmeyen
   alan veya biçim (`BICIM_BILINMIYOR`), uzatma/penaltı alanı (`UZATMA_ALANI`), İY > MS (`IY_MS_CELISKI`), skorlu
@@ -140,8 +146,17 @@ python -m bahis_tahmin pilot-tani --ev <PILOT_KLASORU> --cikti <TANI_KLASORU>
   - log-kayıp doğrudan formülle;
   - kalibrasyon eğimi cezasız Newton-IRLS ile; sabit tahmin, tek sınıf ve ayrışmada eğim tanımsız döner;
   - AUC sıra formülüyle.
-- Güven aralıkları ISO hafta blok bootstrap ile hesaplanır (1000 tekrar, tohum 20261011, önceden sabit).
+- Güven aralıkları ISO hafta blok bootstrap ile hesaplanır (1000 tekrar, tohum 20261011, önceden sabit). Lojistik katman
+  kat başına bir kez eğitildiği için hatası bir sezonun bütün haftalarına ortak bir kayma olarak yansır; hafta blokları
+  bu bağımlılığı yakalamaz, aralıklar iyimser olabilir. Sezon sayısı az olduğundan sezon kümeli bir aralık da güçsüzdür.
 - `asamalar.csv` gerçek maç satırları içerir ve yalnızca yerel çıktı klasöründe kalır.
+- `--ayristirici openfootball-sonuc-v2` karşılaştırmalı tekrar yapar: aynı kaynak dosyaları o sürümle yeniden ayrıştırılır
+  (aynı maç kümesi) ve aynı bölmeyle bir walk-forward çalışır. Sonuç kayıtlı doğrulamanın tekrarı değildir
+  (`ayni_deney: false`). Pilot verisi ve modeli değişmez, yeni model dosyası yazılmaz.
+
+```bash
+python -m bahis_tahmin pilot-tani --ev <PILOT_KLASORU> --cikti <TANI_KLASORU_2> --ayristirici openfootball-sonuc-v2
+```
 
 ## Saklama
 

@@ -332,7 +332,9 @@ def diag_pilot(tmp_path_factory):
                 mm = T._m(str(day), h, a, rnd=f"Matchday {r + 1}")
                 if played_before is None or day < played_before:
                     hg, ag = int(rng.poisson(1.5)), int(rng.poisson(1.2))
-                    mm["score"] = {"ht": [int(rng.integers(0, hg + 1)), int(rng.integers(0, ag + 1))], "ft": [hg, ag]}
+                    # kaynağın kuralı: MS 0-0 maçta İY alanı yazılmaz
+                    mm["score"] = [0, 0] if hg == ag == 0 else {
+                        "ht": [int(rng.integers(0, hg + 1)), int(rng.integers(0, ag + 1))], "ft": [hg, ag]}
                 ms.append(mm)
         return T._of(ms)
 
@@ -443,3 +445,124 @@ def test_profiles_describe_missing_halftime_and_quarantine():
     q = G.quarantine_profile(data, "E0", "2030/31")
     assert q["karantina"]["TARIH_SEZON_DISI"]["sayi"] == 1 and q["karantina"]["TARIH_SEZON_DISI"]["yillar"] == ["2030"]
     assert q["gecerli_ilk"] == "2030-08-10"
+
+
+# =============================================================== 6) kanıtlanmış kusurların düzeltmeleri (S4-MODEL-01)
+def _mle_slope(y, p):
+    from scipy.optimize import minimize
+
+    x = _logit(p)
+    xc = x - x.mean()
+    sd = xc.std()
+    z = xc / sd
+    nll = lambda t: float(np.sum(np.logaddexp(0, t[0] + t[1] * z) - y * (t[0] + t[1] * z)))  # noqa: E731
+    return minimize(nll, np.zeros(2), method="BFGS", options={"gtol": 1e-12}).x[1] / sd
+
+
+def test_near_constant_predictions_give_the_mle_not_a_solver_artifact():
+    """Önceki çözüm (ölçeksiz tasarım + varsayılan tolerans) dar aralıkta veriden bağımsız ~0,93 eğim veriyordu."""
+    rng = np.random.default_rng(4)
+    y = rng.binomial(1, 0.068, 1131).astype(float)
+    p = 0.068 + rng.uniform(0, 1e-3, 1131)
+    b, _ = calibration_slope(y, p)
+    assert b == pytest.approx(_mle_slope(y, p), rel=1e-4)
+    f = G.calibration_fit(y, p)
+    assert f["durum"] == G.KAL_TAMAM and f["egim"] == pytest.approx(b, rel=1e-4)
+    near = np.zeros(20)
+    near[[0, 8]] = 1
+    f = G.calibration_fit(near, 0.1 + np.arange(20) * 1e-9)  # önce LinAlgError fırlatıyordu
+    assert f["durum"] in (G.KAL_TAMAM, G.KAL_YAKINSAMADI, G.KAL_SABIT)
+
+
+def test_out_of_range_probabilities_are_rejected_not_clipped():
+    y = np.array([0, 1, 0, 1, 1, 0, 0, 1.0])
+    p = np.array([0.2, 0.3, 0.5, 0.6, 1.5, 0.4, 0.7, 0.45])
+    assert calibration_slope(y, p)[0] != calibration_slope(y, p)[0]
+    assert calibration_slope(y, np.r_[p[:4], -0.1, p[5:]])[0] != calibration_slope(y, np.r_[p[:4], -0.1, p[5:]])[0]
+    assert G.calibration_fit(y, p)["durum"] == G.KAL_GECERSIZ
+
+
+def test_existing_valid_slopes_are_unchanged_by_the_fix():
+    y, p = _calibrated(n=3000, seed=12)
+    from sklearn.linear_model import LogisticRegression
+
+    ref = LogisticRegression(C=np.inf, tol=1e-12, max_iter=10000).fit(_logit(p)[:, None], y)
+    b, a = calibration_slope(y, p)
+    assert b == pytest.approx(ref.coef_[0, 0], abs=1e-6) and a == pytest.approx(ref.intercept_[0], abs=1e-6)
+
+
+def test_logical_half_time_for_nil_nil_reaches_labels_and_halftime_features():
+    """v2: MS 0-0 maçın İY'si 0-0 kaydedilir → A ve C etiketleri 0 (bilinmiyor değil) ve İY güç izleyicileri bu maçı
+    görür; v1'de bu maçlar İY'ye bağlı her bileşenden dışlanıyordu (rastgele olmayan seçim)."""
+    from bahis_tahmin.data.parsers import OPENFOOTBALL_RESULT_PARSER, OPENFOOTBALL_RESULT_PARSER_V1, parse_openfootball_results
+    from bahis_tahmin.goals.features import build_goal_features
+
+    rng = np.random.default_rng(13)
+    teams = [f"T{i}" for i in range(8)]
+    ms = []
+    start = dt.date(2030, 8, 3)
+    for r in range(28):
+        for i in range(0, 8, 2):
+            h, a = teams[(i + r) % 8], teams[(i + 1 + 2 * r) % 8]
+            if h == a:
+                continue
+            hg, ag = int(rng.poisson(1.2)), int(rng.poisson(1.0))
+            score = [0, 0] if hg == ag == 0 else {"ht": [min(hg, 1), 0], "ft": [hg, ag]}
+            ms.append({"round": f"Matchday {r + 1}", "date": str(start + dt.timedelta(days=7 * r)), "team1": h,
+                       "team2": a, "score": score})
+    data = json.dumps({"matches": ms}).encode()
+    v1 = parse_openfootball_results(data, "E0", "2030/31", OPENFOOTBALL_RESULT_PARSER_V1).matches
+    v2 = parse_openfootball_results(data, "E0", "2030/31", OPENFOOTBALL_RESULT_PARSER).matches
+    nil = (v2["fthg"] == 0) & (v2["ftag"] == 0)
+    assert nil.sum() > 0 and v2.loc[nil, "iy_mantiksal"].all() and (v2.loc[nil, ["hthg", "htag"]] == 0).all().all()
+    l1, l2 = label_frame(v1, PRIMARY_YES), label_frame(v2, PRIMARY_YES)
+    assert l1.loc[nil, "BTTS_BOTH_HALVES_YES"].isna().all() and l1.loc[nil, "FH_OVER_1_5"].isna().all()
+    assert (l2.loc[nil, "BTTS_BOTH_HALVES_YES"] == 0).all() and (l2.loc[nil, "FH_OVER_1_5"] == 0).all()
+    assert l1["FT_OVER_3_5"].equals(l2["FT_OVER_3_5"])  # MS'ye bağlı etiket değişmez
+    f1, _ = build_goal_features(v1)
+    f2, _ = build_goal_features(v2)
+    later = f2["date"] > v2.loc[nil, "date"].min()
+    assert not np.allclose(f1.loc[later, "bC"].to_numpy(), f2.loc[later, "bC"].to_numpy())  # 0-0'lar taban orana girer
+    assert np.allclose(f1["bB"].to_numpy(), f2["bB"].to_numpy())
+
+
+def test_provenance_verifies_records_of_both_parser_versions(tmp_path):
+    from bahis_tahmin.data.parsers import OPENFOOTBALL_RESULT_PARSER, OPENFOOTBALL_RESULT_PARSER_V1, parse_openfootball_results
+    from bahis_tahmin.data.provenance import OPENFOOTBALL_REPO, SourceFile, rows_sha256, verify_results
+
+    data = json.dumps({"matches": [
+        {"round": "Matchday 1", "date": "2030-08-10", "team1": "A", "team2": "B", "score": [0, 0]},
+        {"round": "Matchday 1", "date": "2030-08-10", "team1": "C", "team2": "D",
+         "score": {"ht": [1, 0], "ft": [2, 1]}}]}).encode()
+    rel = "openfootball/2030-31/en.1.json"
+    (tmp_path / rel).parent.mkdir(parents=True)
+    (tmp_path / rel).write_bytes(data)
+    for ver in (OPENFOOTBALL_RESULT_PARSER_V1, OPENFOOTBALL_RESULT_PARSER):
+        res = parse_openfootball_results(data, "E0", "2030/31", ver)
+        rec = SourceFile(OPENFOOTBALL_REPO, "2030-31/en.1.json", "a" * 40, "u", "t", res.sha256, "E0", "2030/31", ver,
+                         len(res.matches), rows_sha256(res.matches), rel).to_dict()
+        assert verify_results(res.matches, [rec], tmp_path) == (True, [])
+        other = OPENFOOTBALL_RESULT_PARSER if ver == OPENFOOTBALL_RESULT_PARSER_V1 else OPENFOOTBALL_RESULT_PARSER_V1
+        assert verify_results(res.matches, [dict(rec, parser=other)], tmp_path)[0] is False  # sürüm karıştırılamaz
+    with pytest.raises(ValueError):
+        parse_openfootball_results(data, "E0", "2030/31", "baska-v9")
+
+
+def test_diagnose_comparative_rerun_with_other_parser(diag_pilot, tmp_path, monkeypatch):
+    from bahis_tahmin import pilot as PL
+    from bahis_tahmin.data.parsers import OPENFOOTBALL_RESULT_PARSER, OPENFOOTBALL_RESULT_PARSER_V1
+
+    monkeypatch.setenv("BAHIS_TAHMIN_HOME", str(diag_pilot["base"] / "kullanici"))
+    home = diag_pilot["home"]
+    before = _snapshot(home)
+    same = PL.diagnose(home, tmp_path / "ayni", parser=OPENFOOTBALL_RESULT_PARSER)  # depo zaten v2: yeniden üretim
+    assert same["mod"] == "yeniden_uretim" and same["ayni_deney"] is True
+    out = PL.diagnose(home, tmp_path / "v1", parser=OPENFOOTBALL_RESULT_PARSER_V1)
+    assert _snapshot(home) == before  # pilot verisi ve modeli değişmez; yeni model yazılmaz
+    assert out["mod"] == "karsilastirmali_tekrar" and out["ayni_deney"] is False
+    ch = out["karsilastirma_verisi"]
+    assert ch["ms_ayni"] and ch["iy_degisen_mac"] > 0 and ch["iy_degisen_mac"] == ch["iy_degisen_ms_0_0"]
+    summ = json.loads((tmp_path / "v1" / PL.DIAG_SUMMARY).read_text("utf-8"))
+    assert summ["ayristirici"] == OPENFOOTBALL_RESULT_PARSER_V1 and summ["ilk_yari_eksik"]["toplam"] == ch["iy_degisen_mac"]
+    with pytest.raises(PL.PilotError):
+        PL.diagnose(home, tmp_path / "x", parser="baska-v9")
