@@ -106,7 +106,7 @@ Bozuk veya uyumsuz dosyanın üzerine yazılmaz. Sayfa nedeni ve yolu gösterir.
 
 ## Testler ve kabul
 
-`tests/test_s7_ui.py` 22 zorunlu senaryoyu ve en küçük pencere boyutu denetimini kapsar. Testler şunlarla çalışır:
+`tests/test_s7_ui.py` 22 zorunlu senaryoyu ve en küçük pencere boyutu denetimini kapsar. Boyut denetimi uzun ve boşluksuz klasör yollarını da içerir: uzun yol sayfayı yatay taşırmaz; kırpılırsa tam metin ipucunda görünür. Testler şunlarla çalışır:
 
 - gerçek servisler;
 - geçici klasörde sahte HTTP ile hazırlanmış sentetik arşiv;

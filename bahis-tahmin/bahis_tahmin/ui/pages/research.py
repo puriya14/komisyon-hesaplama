@@ -185,12 +185,15 @@ def definition_text(t: dict) -> str:
             f"Etiketler: {', '.join(t.get('etiketler') or []) or '-'}")
 
 
-def plain_label(text: str = "", kind: str | None = None) -> QLabel:
-    """Düz metin etiketi (HTML yorumlanmaz)."""
+def plain_label(text: str = "", kind: str | None = None, fill: bool = True) -> QLabel:
+    """Düz metin etiketi (HTML yorumlanmaz). ``fill``: satırın genişliğini alır; boşluksuz uzun metin (ör. Windows
+    klasör yolu) en küçük genişliği belirleyip sayfayı yatay taşırmaz."""
     lbl = QLabel(text)
     lbl.setTextFormat(Qt.PlainText)
     lbl.setWordWrap(True)
     lbl.setTextInteractionFlags(Qt.TextSelectableByMouse)
+    if fill:
+        lbl.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
     if kind:
         lbl.setObjectName(kind)
     return lbl
@@ -1342,7 +1345,7 @@ class ResearchPage(Page):
         self.ed_search = QLineEdit()
         self.ed_search.setPlaceholderText("Listede ara (yalnızca görüntüyü süzer; seçim korunur)")
         self.ed_search.setAccessibleName("Maç listesinde ara")
-        self.lbl_picked = plain_label("Seçili olay: 0", "muted")
+        self.lbl_picked = plain_label("Seçili olay: 0", "muted", fill=False)
         self.btn_clear_pick = QPushButton("Seçimi temizle")
         self.btn_clear_pick.clicked.connect(self.clear_selection)
         er2.addWidget(self.ed_search, 1)
@@ -1397,7 +1400,7 @@ class ResearchPage(Page):
         self.btn_prev.clicked.connect(lambda: self._page(-1))
         self.btn_next = QPushButton("Sonraki sayfa ▶")
         self.btn_next.clicked.connect(lambda: self._page(1))
-        self.lbl_page = plain_label("", "muted")
+        self.lbl_page = plain_label("", "muted", fill=False)
         nav.addWidget(self.btn_compare)
         nav.addWidget(self.btn_prev)
         nav.addWidget(self.btn_next)
@@ -1634,9 +1637,16 @@ class ResearchPage(Page):
                     win.nav.setCurrentRow(i)
                     return
 
+    @staticmethod
+    def _ptext(lbl: QLabel, text: str) -> None:
+        """Yol içerebilen etiket: metin ve aynı tam metin ipucu (dar pencerede kırpılan uzun yol okunabilir kalır)."""
+        lbl.setText(text)
+        lbl.setToolTip(text)
+
     def say(self, text: str, kind: str = "muted") -> None:
         """Sayfa içi ileti (düz metin): hata metni ve yollar HTML olarak yorumlanmaz."""
         self.msg.setText(text)
+        self.msg.setToolTip(text)
         _set_kind(self.msg, kind)
         self.msg.setVisible(bool(text))
 
@@ -1693,7 +1703,7 @@ class ResearchPage(Page):
     def _archive_done(self, req, res) -> None:
         if not res["ok"]:
             self.btn_goto_data.show()
-            self.lbl_archive.setText(f"Arşiv açılamadı: {res['error']}\nYol: {req['ctx']}\nArşiv bu sayfada indirilmez veya "
+            self._ptext(self.lbl_archive, f"Arşiv açılamadı: {res['error']}\nYol: {req['ctx']}\nArşiv bu sayfada indirilmez veya "
                                      "hazırlanmaz; 'Veri' sayfasındaki 'GitHub Veri ve Arşiv' bölümünü kullanın.")
             _set_kind(self.lbl_archive, "warn")
             self.say(f"Arşiv açılamadı ({req['ctx']}): {res['error']}", "warn")
@@ -1704,7 +1714,7 @@ class ResearchPage(Page):
         self.archive_path, self.archive_meta = res["path"], res["katalog"]
         self.archive_gen += 1
         m = self.archive_meta
-        self.lbl_archive.setText(f"Arşiv açık (salt okunur): {res['path']} · sürüm {m.get('arsiv') or '-'} · oluşturma "
+        self._ptext(self.lbl_archive, f"Arşiv açık (salt okunur): {res['path']} · sürüm {m.get('arsiv') or '-'} · oluşturma "
                                  f"{m.get('olusturma_utc') or '-'} · bilgi kesimi {m.get('bilgi_kesimi') or '-'} · "
                                  f"{res['satir']} analiz kaynak satırı · kökeni doğrulanamayan {res['dogrulanamayan']} "
                                  "blok (kullanılmadı)")
@@ -1831,7 +1841,7 @@ class ResearchPage(Page):
         path, created = req["ctx"]["path"], req["ctx"]["olustur"]
         if not res["ok"]:
             what = "oluşturulamadı" if created else "açılamadı"
-            self.lbl_ws.setText(f"Çalışma alanı {what}: {res['error']}\nYol: {path}"
+            self._ptext(self.lbl_ws, f"Çalışma alanı {what}: {res['error']}\nYol: {path}"
                                 + (f"\nAçık çalışma alanı değişmedi: {self.ws_path}" if self.ws_path else ""))
             _set_kind(self.lbl_ws, "warn")
             self.say(f"Çalışma alanı {what} ({path}): {res['error']} Hiçbir dosyanın üzerine yazılmadı.", "warn")
@@ -1856,7 +1866,7 @@ class ResearchPage(Page):
         self.list_model.set_frame(_frame(rows, ["baslik", "son_revizyon", "gorunum", "calistirma", "not", "olusturma_utc",
                                                 "arastirma_id"]))
         if self.ws_path is not None:
-            self.lbl_ws.setText(f"Çalışma alanı açık: {self.ws_path} · {len(rows)} araştırma"
+            self._ptext(self.lbl_ws, f"Çalışma alanı açık: {self.ws_path} · {len(rows)} araştırma"
                                 + (" · bu oturumda oluşturuldu" if self._ws_created else ""))
             _set_kind(self.lbl_ws, "muted")
         if self.ws_path is None:

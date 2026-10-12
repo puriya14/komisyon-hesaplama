@@ -1046,18 +1046,30 @@ def test_existing_pages_and_archive_panel_remain(app, ui):
 
 
 def test_min_size_has_no_horizontal_page_overflow(app, ui, paths, archive_dir):
+    """En küçük pencerede sayfa yatay taşmaz; uzun ve boşluksuz yollar (ör. Windows geçici klasörü) ve uzun hata
+    metinleri de taşırmaz (matris kendi içinde kaydırılabilir)."""
+    import shutil
+
     from PySide6.QtWidgets import QScrollArea
 
     win, page = ui
     win.resize(1024, 680)
     win.show()
-    open_archive(app, page, archive_dir)
+    deep = paths / ("cok_uzun_klasor_adi_" * 4) / ("ikinci_uzun_klasor_adi_" * 3)
+    shutil.copytree(archive_dir, deep / "arsiv")
+    open_archive(app, page, deep / "arsiv")
+    create_ws(app, page, deep / "calisma_alani_uzun_adli_klasor")
+    page.ed_ws.setText(str(deep / "olmayan_calisma_alani_klasoru_bu_da_uzun"))
+    page.btn_open_ws.click()  # uzun yol içeren hata metni
+    settle(app, win.ctl)
+    assert "Çalışma alanı yok" in page.lbl_ws.text()
     scroll = page.findChild(QScrollArea)
     for i in range(page.tabs.count()):
         page.tabs.setCurrentIndex(i)
         for _ in range(3):
             app.processEvents()
         assert scroll.horizontalScrollBar().maximum() == 0, page.tabs.tabText(i)
+        assert page.width() <= win.width()
 
 
 # ============================================================================ 22
