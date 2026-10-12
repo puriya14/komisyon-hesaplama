@@ -757,6 +757,8 @@ def test_paged_summary_is_labelled_as_page_only(app, ui, paths, archive_dir):
     settle(app, win.ctl)
     r = page.olay_shown["sonuc"]
     assert r["sayfalama"]["toplam_aday"] == 3 and r["toplu"]["olay_sayisi"] == 2 and page.matrix.rowCount() == 2
+    im = page.interval_model  # ilk olayın önceki seçili olayı yok: "nan" değil "—"
+    assert im.data(im.index(0, im._cols.index("onceki_secili_olay"))) == "—"
     assert "Bu sayfadaki olayların özeti (2 olay; toplam aday 3)" in page.lbl_summary.text()
     assert "bütün adayların özeti değildir" in page.lbl_summary.text()
     assert "Olay 1–2 / toplam aday 3" in page.lbl_page.text()
@@ -1064,12 +1066,47 @@ def test_min_size_has_no_horizontal_page_overflow(app, ui, paths, archive_dir):
     settle(app, win.ctl)
     assert "Çalışma alanı yok" in page.lbl_ws.text()
     scroll = page.findChild(QScrollArea)
-    for i in range(page.tabs.count()):
-        page.tabs.setCurrentIndex(i)
-        for _ in range(3):
-            app.processEvents()
-        assert scroll.horizontalScrollBar().maximum() == 0, page.tabs.tabText(i)
-        assert page.width() <= win.width()
+    from bahis_tahmin.ui import theme
+
+    try:
+        # Varsayılan yazı ve 1,5 kat büyük yazı (ör. Windows "metni büyüt"): düğme satırları alt satıra geçer
+        for pt in (10, 15):
+            app.setStyleSheet(theme.STYLE.replace("font-size: 10pt", f"font-size: {pt}pt"))
+            for i in range(page.tabs.count()):
+                page.tabs.setCurrentIndex(i)
+                for _ in range(3):
+                    app.processEvents()
+                assert scroll.horizontalScrollBar().maximum() == 0, overflow_report(page, scroll, f"{pt}pt, sekme {i}")
+                assert page.width() <= win.width()
+    finally:
+        app.setStyleSheet(theme.STYLE)
+
+
+def overflow_report(page, scroll, where: str) -> str:
+    """Taşma olursa nedenini gösteren ölçüm: yazı tipi, DPI, en geniş öğeler ve yerleşimler (platform farkı için)."""
+    from PySide6.QtGui import QFontInfo
+    from PySide6.QtWidgets import QAbstractButton, QComboBox, QGroupBox, QLayout, QLineEdit, QSpinBox, QTabBar, QWidget
+
+    fi, scr = QFontInfo(page.font()), page.screen()
+    lines = [f"{where}: yatay taşma {scroll.horizontalScrollBar().maximum()} px; görünür alan {scroll.viewport().width()};"
+             f" içerik en küçük {scroll.widget().minimumSizeHint().width()}",
+             f"yazı {fi.family()} {fi.pointSizeF()}pt {fi.pixelSize()}px; mantıksal DPI {scr.logicalDotsPerInch()}; "
+             f"fiziksel DPI {scr.physicalDotsPerInch()}; DPR {page.devicePixelRatioF()}; ekran {scr.geometry().getRect()}"]
+    leaves = []
+    for w in page.findChildren(QWidget):
+        if w.isVisibleTo(page) and isinstance(w, (QLabel, QAbstractButton, QComboBox, QLineEdit, QSpinBox, QGroupBox,
+                                                  QTabBar)):
+            text = (w.title() if isinstance(w, QGroupBox) else w.currentText() if isinstance(w, QComboBox)
+                    else getattr(w, "text", lambda: "")() if not isinstance(w, QTabBar) else "sekmeler")
+            leaves.append((w.minimumSizeHint().width(), w.sizeHint().width(), type(w).__name__, str(text)[:40]))
+    lines += [f"  öğe min {a} ipucu {b} {c} '{d}'" for a, b, c, d in sorted(leaves, reverse=True)[:10]]
+    lays = []
+    for w in page.findChildren(QWidget):
+        for lay in w.findChildren(QLayout):
+            if lay.parentWidget() is not None and lay.parentWidget().isVisibleTo(page):
+                lays.append((lay.minimumSize().width(), type(lay).__name__, type(lay.parentWidget()).__name__))
+    lines += [f"  yerleşim min {a} {b} ({c})" for a, b, c in sorted(set(lays), reverse=True)[:8]]
+    return "\n".join(lines)
 
 
 # ============================================================================ 22

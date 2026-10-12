@@ -30,7 +30,7 @@ from pathlib import Path
 
 import pandas as pd
 import shiboken6
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt, Signal
+from PySide6.QtCore import QAbstractTableModel, QModelIndex, QPoint, QRect, QSize, Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -44,6 +44,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLayout,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
@@ -197,6 +198,81 @@ def plain_label(text: str = "", kind: str | None = None, fill: bool = True) -> Q
     if kind:
         lbl.setObjectName(kind)
     return lbl
+
+
+class FlowLayout(QLayout):
+    """Düğme satırı: satıra sığmayan öğe alt satıra geçer (dar pencerede veya büyük yazıda sayfa yatay taşmaz)."""
+
+    def __init__(self, parent=None, spacing: int = 8):
+        super().__init__(parent)
+        self._items: list = []
+        self.setSpacing(spacing)
+        self.setContentsMargins(0, 0, 0, 0)
+
+    def addItem(self, item) -> None:
+        self._items.append(item)
+
+    def count(self) -> int:
+        return len(self._items)
+
+    def itemAt(self, i):
+        return self._items[i] if 0 <= i < len(self._items) else None
+
+    def takeAt(self, i):
+        return self._items.pop(i) if 0 <= i < len(self._items) else None
+
+    def expandingDirections(self):
+        return Qt.Orientation(0)
+
+    def hasHeightForWidth(self) -> bool:
+        return True
+
+    def heightForWidth(self, width: int) -> int:
+        return self._arrange(QRect(0, 0, width, 0), apply=False)
+
+    def setGeometry(self, rect) -> None:
+        super().setGeometry(rect)
+        self._arrange(rect, apply=True)
+
+    def sizeHint(self):
+        return self.minimumSize()
+
+    def minimumSize(self):
+        size = QSize()
+        for it in self._items:
+            size = size.expandedTo(it.minimumSize())
+        m = self.contentsMargins()
+        return size + QSize(m.left() + m.right(), m.top() + m.bottom())
+
+    def _arrange(self, rect, apply: bool) -> int:
+        m = self.contentsMargins()
+        r = rect.adjusted(m.left(), m.top(), -m.right(), -m.bottom())
+        x, y, line, sp = r.x(), r.y(), 0, self.spacing()
+        for it in self._items:
+            if it.widget() is not None and it.widget().isHidden():
+                continue
+            hint = it.sizeHint()
+            if x > r.x() and x + hint.width() > r.right() + 1:  # alt satır
+                x, y, line = r.x(), y + line + sp, 0
+            if apply:
+                it.setGeometry(QRect(QPoint(x, y), hint))
+            x += hint.width() + sp
+            line = max(line, hint.height())
+        return y + line - rect.y() + m.bottom()
+
+
+def flow(*widgets) -> FlowLayout:
+    lay = FlowLayout()
+    for w in widgets:
+        lay.addWidget(w)
+    return lay
+
+
+def _short_combo(cb: QComboBox, chars: int) -> QComboBox:
+    """Uzun öğeli açılır liste en uzun öğe kadar genişlik istemez (öğe ipucunda/açılır listede tam görünür)."""
+    cb.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+    cb.setMinimumContentsLength(chars)
+    return cb
 
 
 def _compact(tab: QWidget, keep=()) -> None:
@@ -790,8 +866,10 @@ class GroupForm(QWidget):
         self.ed_to.setPlaceholderText("YYYY-AA-GG")
         self.ed_to.setAccessibleName(f"{name} bitiş tarihi")
         self.cb_out = {}
-        out_box = QGroupBox("Geçmiş sonuç filtresi (isteğe bağlı; seçilen grup sonuca göre işaretlenir)")
+        out_box = QGroupBox("Geçmiş sonuç filtresi (isteğe bağlı)")
         ol = QGridLayout(out_box)
+        ol.addWidget(plain_label("Bu filtreyle seçilen grup 'sonuca göre seçildi' olarak işaretlenir.", "muted"),
+                     0, 0, 1, 2)
         for i, k in enumerate(("A", "B", "C")):
             cb = QComboBox()
             cb.setAccessibleName(f"{name} {k} sonuç filtresi")
@@ -802,17 +880,18 @@ class GroupForm(QWidget):
             lbl = QLabel(f"{k}:")
             lbl.setBuddy(cb)
             lbl.setToolTip(MARKET_NAMES[k])
-            ol.addWidget(lbl, 0, 2 * i)
-            ol.addWidget(cb, 0, 2 * i + 1)
-        ol.addWidget(plain_label("İY/MS ham kod (ev sahibi bakışı; takımın geri dönüşü değildir):", "muted"), 1, 0, 1, 6)
+            ol.addWidget(lbl, 1 + i, 0)
+            ol.addWidget(cb, 1 + i, 1)
+        ol.addWidget(plain_label("İY/MS ham kod (ev sahibi bakışı; takımın geri dönüşü değildir):", "muted"), 4, 0, 1, 2)
         self.chk_htft = {}
         hl = QGridLayout()
         for i, c in enumerate(HTFT_KEYS):
             chk = QCheckBox(htft(c))
             chk.setAccessibleName(f"{name} İY/MS {htft(c)}")
             self.chk_htft[c] = chk
-            hl.addWidget(chk, i // 5, i % 5)
-        ol.addLayout(hl, 2, 0, 1, 6)
+            hl.addWidget(chk, i // 3, i % 3)
+        ol.addLayout(hl, 5, 0, 1, 2)
+        ol.setColumnStretch(1, 1)
         self.team_note = plain_label("", "muted")
         r = 0
         for text, w in (("Lig:", self.cb_league), ("Takım:", self.cb_team), ("Ev / deplasman:", self.cb_side),
@@ -1038,15 +1117,13 @@ class ResearchPage(Page):
         lbl.setBuddy(self.ed_archive)
         g.addWidget(lbl, 0, 0)
         g.addWidget(self.ed_archive, 0, 1)
-        g.addWidget(btn_arch_browse, 0, 2)
-        g.addWidget(self.btn_open_archive, 0, 3)
         self.lbl_archive = plain_label("Arşiv açılmadı.", "muted")
-        g.addWidget(self.lbl_archive, 1, 0, 1, 4)
         self.btn_goto_data = QPushButton("Veri sayfasına git")
         self.btn_goto_data.setToolTip("Arşiv 'Veri' sayfasındaki 'GitHub Veri ve Arşiv' bölümünden hazırlanır.")
         self.btn_goto_data.clicked.connect(self._goto_data)
         self.btn_goto_data.hide()
-        g.addWidget(self.btn_goto_data, 2, 3)
+        g.addLayout(flow(btn_arch_browse, self.btn_open_archive, self.btn_goto_data), 1, 1)  # düğmeler alanın altında
+        g.addWidget(self.lbl_archive, 2, 0, 1, 2)
         self.ed_ws = QLineEdit(self._default_ws())
         self.ed_ws.setAccessibleName("Çalışma alanı klasörü")
         btn_ws_browse = QPushButton("Gözat…")
@@ -1056,18 +1133,16 @@ class ResearchPage(Page):
         lbl.setBuddy(self.ed_ws)
         g.addWidget(lbl, 3, 0)
         g.addWidget(self.ed_ws, 3, 1)
-        g.addWidget(btn_ws_browse, 3, 2)
         self.btn_open_ws = QPushButton("Çalışma alanını aç")
         self.btn_open_ws.setToolTip("Yalnızca var olan çalışma alanını salt okunur açar; yoksa oluşturmaz.")
         self.btn_open_ws.clicked.connect(self.open_workspace)
-        g.addWidget(self.btn_open_ws, 3, 3)
         self.btn_create_ws = QPushButton("Yeni çalışma alanı oluştur")
         self.btn_create_ws.setToolTip("Yazan işlem: boş veya henüz olmayan klasörde yeni çalışma alanı dosyası oluşturur.")
         self.btn_create_ws.clicked.connect(self.create_workspace)
-        g.addWidget(self.btn_create_ws, 4, 3)
+        g.addLayout(flow(btn_ws_browse, self.btn_open_ws, self.btn_create_ws), 4, 1)
         self.lbl_ws = plain_label("Çalışma alanı açılmadı.", "muted")
-        g.addWidget(self.lbl_ws, 4, 0, 1, 3)
-        self.cb_source = QComboBox()
+        g.addWidget(self.lbl_ws, 5, 0, 1, 2)
+        self.cb_source = _short_combo(QComboBox(), 20)
         self.cb_source.setAccessibleName("Kaynak görünümü")
         self.cb_source.setToolTip("Araştırma tanımının görünümü: birleştirilmiş görünüm tek kaynak değildir; tek kaynak "
                                   "seçilirse yalnızca o kaynağın kayıtları kullanılır.")
@@ -1078,10 +1153,10 @@ class ResearchPage(Page):
         self.cb_source.currentIndexChanged.connect(self._source_changed)
         lbl = QLabel("Kaynak görünümü:")
         lbl.setBuddy(self.cb_source)
-        g.addWidget(lbl, 5, 0)
-        g.addWidget(self.cb_source, 5, 1, 1, 3)
+        g.addWidget(lbl, 6, 0)
+        g.addWidget(self.cb_source, 6, 1)
         self.lbl_data = plain_label("Veri sürümü: arşiv açılmadı.", "muted")
-        g.addWidget(self.lbl_data, 6, 0, 1, 4)
+        g.addWidget(self.lbl_data, 7, 0, 1, 2)
         g.setColumnStretch(1, 1)
         b.addWidget(ctx)
         self.msg = plain_label("", "muted")
@@ -1118,11 +1193,7 @@ class ResearchPage(Page):
         self.btn_new.clicked.connect(self.new_research)
         self.btn_open_research = QPushButton("Seçili araştırmayı aç")
         self.btn_open_research.clicked.connect(self.open_selected_research)
-        row = QHBoxLayout()
-        row.addWidget(self.btn_new)
-        row.addWidget(self.btn_open_research)
-        row.addStretch(1)
-        lay.addLayout(row)
+        lay.addLayout(flow(self.btn_new, self.btn_open_research))
 
         lay.addWidget(section("Tanım (calisma-tanim-v1)"))
         self.lbl_draft = plain_label("", "muted")
@@ -1184,11 +1255,7 @@ class ResearchPage(Page):
         self.btn_run = QPushButton("Çalıştır ve sonucu sakla")
         self.btn_run.setToolTip("Kayıtlı revizyonu çalıştırır ve çalıştırma kaydı ekler (yazan işlem).")
         self.btn_run.clicked.connect(self.run_saved)
-        row = QHBoxLayout()
-        for x in (self.btn_save, self.btn_discard, self.btn_preview, self.btn_run):
-            row.addWidget(x)
-        row.addStretch(1)
-        lay.addLayout(row)
+        lay.addLayout(flow(self.btn_save, self.btn_discard, self.btn_preview, self.btn_run))
         for sig in (self.ed_title.textChanged, self.ed_desc.textChanged, self.ed_tags.textChanged, self.g1.changed,
                     self.g2.changed):
             sig.connect(self._form_changed)
@@ -1200,7 +1267,7 @@ class ResearchPage(Page):
         row = QHBoxLayout()
         self.cb_run_b = QComboBox()
         self.cb_run_b.setAccessibleName("Saklı çalıştırma (grup karşılaştırması)")
-        self.cb_run_b.setMinimumWidth(240)
+        _short_combo(self.cb_run_b, 16)
         self.btn_open_run = QPushButton("Saklı sonucu aç")
         self.btn_open_run.setToolTip("Saklı sonucu okur; yeniden hesaplamaz.")
         self.btn_open_run.clicked.connect(lambda: self.open_run(self.cb_run_b.currentData()))
@@ -1211,9 +1278,8 @@ class ResearchPage(Page):
         lbl.setBuddy(self.cb_run_b)
         row.addWidget(lbl)
         row.addWidget(self.cb_run_b, 1)
-        row.addWidget(self.btn_open_run)
-        row.addWidget(self.btn_verify)
         lay.addLayout(row)
+        lay.addLayout(flow(self.btn_open_run, self.btn_verify))
         self.lbl_group_state = plain_label("Henüz sonuç yok: 'Önizle (kaydetmez)' veya 'Saklı sonucu aç'.", "muted")
         lay.addWidget(self.lbl_group_state)
         self.lbl_group_head = plain_label("", None)
@@ -1274,7 +1340,7 @@ class ResearchPage(Page):
     def _build_tab_events(self) -> QWidget:
         w = QWidget()
         lay = QVBoxLayout(w)
-        mode = QHBoxLayout()
+        mode = QVBoxLayout()
         self.rb_stored = QRadioButton("A · Saklı çalıştırmanın grubundan")
         self.rb_explicit = QRadioButton("B · Mevcut görünümün maç tablosundan açık seçim")
         self.rb_stored.setChecked(True)
@@ -1284,12 +1350,11 @@ class ResearchPage(Page):
         self.rb_stored.toggled.connect(self._mode_changed)
         mode.addWidget(self.rb_stored)
         mode.addWidget(self.rb_explicit)
-        mode.addStretch(1)
         lay.addLayout(mode)
         # A: saklı çalıştırma
         self.box_stored = QGroupBox("Saklı çalıştırma → grup → takım")
         sg = QGridLayout(self.box_stored)
-        self.cb_run_c = QComboBox()
+        self.cb_run_c = _short_combo(QComboBox(), 16)
         self.cb_run_c.setAccessibleName("Saklı çalıştırma (olay karşılaştırması)")
         self.cb_group_c = QComboBox()
         self.cb_group_c.setAccessibleName("Grup")
@@ -1301,22 +1366,23 @@ class ResearchPage(Page):
         self.cb_team_stored.setAccessibleName("Takım (saklı grup)")
         self.cb_team_stored.setMinimumWidth(180)
         self.lbl_stored_info = plain_label("Önce bir araştırma açın ve saklı çalıştırma seçin.", "muted")
-        for r, (text, wid) in enumerate((("Çalıştırma:", self.cb_run_c), ("Grup:", self.cb_group_c),
-                                          ("Takım:", self.cb_team_stored))):
+        for r, (text, wid) in ((0, ("Çalıştırma:", self.cb_run_c)), (1, ("Grup:", self.cb_group_c)),
+                               (3, ("Takım:", self.cb_team_stored))):
             lbl = QLabel(text)
             lbl.setBuddy(wid)
             sg.addWidget(lbl, r, 0)
             sg.addWidget(wid, r, 1)
-        sg.addWidget(self.btn_stored_teams, 1, 2)
-        sg.addWidget(self.lbl_stored_info, 3, 0, 1, 3)
+        sg.addLayout(flow(self.btn_stored_teams), 2, 1)  # önce grubun takımları yüklenir, sonra takım seçilir
+        sg.addWidget(self.lbl_stored_info, 4, 0, 1, 2)
         sg.setColumnStretch(1, 1)
         lay.addWidget(self.box_stored)
         self.cb_run_c.currentIndexChanged.connect(self._stored_sel_changed)
         self.cb_group_c.currentIndexChanged.connect(self._stored_sel_changed)
         self.cb_team_stored.currentIndexChanged.connect(self._olay_context_changed)
         # B: açık seçim
-        self.box_explicit = QGroupBox("Açık olay listesi (mevcut görünüm; kimlik yazılmaz, tablodan seçilir)")
+        self.box_explicit = QGroupBox("Açık olay listesi (mevcut görünüm)")
         eg = QVBoxLayout(self.box_explicit)
+        eg.addWidget(plain_label("Olay kimliği yazılmaz; olaylar tablodan seçilir.", "muted"))
         er = QHBoxLayout()
         self.cb_team_explicit = QComboBox()
         self.cb_team_explicit.setEditable(True)
@@ -1335,20 +1401,19 @@ class ResearchPage(Page):
         lbl.setBuddy(self.cb_team_explicit)
         er.addWidget(lbl)
         er.addWidget(self.cb_team_explicit, 1)
+        eg.addLayout(er)
         lbl = QLabel("Sezon:")
         lbl.setBuddy(self.cb_season_explicit)
-        er.addWidget(lbl)
-        er.addWidget(self.cb_season_explicit)
-        er.addWidget(self.btn_list)
-        eg.addLayout(er)
-        er2 = QHBoxLayout()
+        eg.addLayout(flow(lbl, self.cb_season_explicit, self.btn_list))
+        er2 = FlowLayout()
         self.ed_search = QLineEdit()
         self.ed_search.setPlaceholderText("Listede ara (yalnızca görüntüyü süzer; seçim korunur)")
         self.ed_search.setAccessibleName("Maç listesinde ara")
         self.lbl_picked = plain_label("Seçili olay: 0", "muted", fill=False)
         self.btn_clear_pick = QPushButton("Seçimi temizle")
         self.btn_clear_pick.clicked.connect(self.clear_selection)
-        er2.addWidget(self.ed_search, 1)
+        self.ed_search.setMinimumWidth(240)
+        er2.addWidget(self.ed_search)
         er2.addWidget(self.lbl_picked)
         er2.addWidget(self.btn_clear_pick)
         eg.addLayout(er2)
@@ -1366,7 +1431,7 @@ class ResearchPage(Page):
         self.cb_team_explicit.currentTextChanged.connect(self._explicit_team_changed)
         self.cb_season_explicit.currentIndexChanged.connect(self._explicit_season_changed)
         # Seçenekler ve sayfalama
-        opt = QHBoxLayout()
+        opt = FlowLayout()
         self.cb_once = QComboBox()
         self.cb_once.setAccessibleName("Önceki pencere")
         for k in O.PRE_OPTIONS:
@@ -1386,13 +1451,12 @@ class ResearchPage(Page):
         self.cb_lig.addItem("Lig: otomatik (tek lig)", None)
         for wid in (self.cb_once, self.cb_sonra, self.sp_limit, self.cb_lig):
             opt.addWidget(wid)
-        opt.addStretch(1)
         lay.addLayout(opt)
         self.cb_once.currentIndexChanged.connect(self._window_changed)
         self.cb_sonra.currentIndexChanged.connect(self._window_changed)
         self.sp_limit.valueChanged.connect(self._window_changed)
         self.cb_lig.currentIndexChanged.connect(self._olay_context_changed)
-        nav = QHBoxLayout()
+        nav = FlowLayout()
         self.btn_compare = QPushButton("Karşılaştır")
         self.btn_compare.setObjectName("primary")
         self.btn_compare.clicked.connect(lambda: self.compare_events(0))
@@ -1400,12 +1464,12 @@ class ResearchPage(Page):
         self.btn_prev.clicked.connect(lambda: self._page(-1))
         self.btn_next = QPushButton("Sonraki sayfa ▶")
         self.btn_next.clicked.connect(lambda: self._page(1))
-        self.lbl_page = plain_label("", "muted", fill=False)
+        self.lbl_page = plain_label("", "muted")
         nav.addWidget(self.btn_compare)
         nav.addWidget(self.btn_prev)
         nav.addWidget(self.btn_next)
-        nav.addWidget(self.lbl_page, 1)
         lay.addLayout(nav)
+        lay.addWidget(self.lbl_page)
         self.lbl_olay_state = plain_label("Henüz karşılaştırma yok.", "muted")
         lay.addWidget(self.lbl_olay_state)
         self.matrix = MatrixModel()
@@ -1466,7 +1530,7 @@ class ResearchPage(Page):
                                        "takvim_gunu": "Takvim günü", "arsivde_gozlenen_kayit": "Arşivde gözlenen kayıt",
                                        "sureklilik_durumu": "Süreklilik", "isaretler": "İşaretler"}
         self.interval_model.formatters = {"takvim_gunu": fmt_int, "arsivde_gozlenen_kayit": fmt_int,
-                                          "onceki_secili_olay": lambda v: v or DASH}
+                                          "onceki_secili_olay": lambda v: v if isinstance(v, str) and v else DASH}
         self.interval_view, _ = make_table(self.interval_model, sortable=False)
         self.interval_view.setAccessibleName("Seçili olaylar arası aralık")
         self.interval_view.setMinimumHeight(110)
@@ -1517,7 +1581,7 @@ class ResearchPage(Page):
         self.run_view.setAccessibleName("Çalıştırma geçmişi")
         self.run_view.setMinimumHeight(110)
         lay.addWidget(self.run_view)
-        row = QHBoxLayout()
+        row = FlowLayout()
         self.btn_hist_open = QPushButton("Saklı sonucu aç")
         self.btn_hist_open.clicked.connect(lambda: self.open_run(self._selected_run()))
         self.btn_hist_verify = QPushButton("Mevcut arşivle doğrula")
@@ -1526,7 +1590,6 @@ class ResearchPage(Page):
         self.btn_hist_olay.clicked.connect(self._hist_use_in_events)
         for x in (self.btn_hist_open, self.btn_hist_verify, self.btn_hist_olay):
             row.addWidget(x)
-        row.addStretch(1)
         lay.addLayout(row)
         lay.addWidget(section("Notlar"))
         self.chk_archived = QCheckBox("Arşivlenen notları da göster")
@@ -1560,7 +1623,7 @@ class ResearchPage(Page):
         self.lbl_link = plain_label("Bağlanacak maç: yok (Olay karşılaştırması sekmesinde bir matris hücresi veya açık "
                                     "listede bir maç seçin).", "muted")
         lay.addWidget(self.lbl_link)
-        r1 = QHBoxLayout()
+        r1 = FlowLayout()
         self.btn_note_add = QPushButton("Araştırmaya not ekle")
         self.btn_note_add.clicked.connect(lambda: self.add_note(False))
         self.btn_note_match = QPushButton("Seçili maça bağlı not ekle")
@@ -1569,9 +1632,8 @@ class ResearchPage(Page):
         self.btn_note_load.clicked.connect(self._note_to_editor)
         for x in (self.btn_note_add, self.btn_note_match, self.btn_note_load):
             r1.addWidget(x)
-        r1.addStretch(1)
         lay.addLayout(r1)
-        r2 = QHBoxLayout()
+        r2 = FlowLayout()
         self.btn_note_version = QPushButton("Seçili notun yeni sürümü")
         self.btn_note_version.setToolTip("Düzenleyicideki metinle yeni sürüm kaydeder; önceki sürüm korunur.")
         self.btn_note_version.clicked.connect(self.note_new_version)
@@ -1586,7 +1648,6 @@ class ResearchPage(Page):
         self.btn_note_card.clicked.connect(self.note_card)
         for x in (self.btn_note_version, self.btn_note_archive, self.cb_card_side, self.btn_note_card):
             r2.addWidget(x)
-        r2.addStretch(1)
         lay.addLayout(r2)
         self.card_text = QPlainTextEdit()
         self.card_text.setReadOnly(True)
