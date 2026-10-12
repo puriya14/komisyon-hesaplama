@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
+import numpy as np
 import pandas as pd
 
 from .football_txt import SKIP_REASONS, TXT_CONVERTER, TXT_FILES, TXT_FORMAT, convert_football_txt
@@ -68,6 +69,7 @@ class UpdateReport:
     github: dict = field(default_factory=dict)  # GitHub profili: depo -> commit / uç durumu / dosya durumu
     completed: dict = field(default_factory=dict)  # VERI-02: lig -> openfootball ile eklenen maç sayısı
     txt_sources: dict = field(default_factory=dict)  # FIKSTUR-03: lig -> kullanılan openfootball metin dosyası
+    espn: dict = field(default_factory=dict)  # KAYNAK-04: lig -> {"fikstur", "sonuc", "eslesen", "eslesmeyen"}
 
     def summary(self) -> str:
         lines = [
@@ -88,6 +90,11 @@ class UpdateReport:
         if self.completed:
             lines.append("Eksik dönem openfootball sonuçlarıyla tamamlandı (CC0; köken doğrulamalı): "
                          + ", ".join(f"{k} {v} maç" for k, v in self.completed.items()) + ".")
+        if self.espn:
+            lines.append("ESPN (onayınızla; resmi olmayan uç nokta): " + ", ".join(
+                f"{k} {v['fikstur']} yaklaşan maç, {v['sonuc']} sonuç" + (f", {len(v['eslesmeyen'])} takım adı "
+                                                                       "eşleşmedi" if v["eslesmeyen"] else "")
+                for k, v in self.espn.items()) + ".")
         for key in self.blocked_sources:
             lines.append(f"{SOURCES[key].name}: kullanım koşulları onaylanmadığı için kullanılmadı.")
         lines += self.warnings
@@ -313,11 +320,18 @@ class DataStore:
         completion = []
         if "openfootball" in allowed and not matches.empty:
             matches, completion = self._complete_from_openfootball(dl, gh, leagues, matches, today, report, force)
+        # KAYNAK-04: başka güncel kaynağı olmayan ligler için ESPN (yalnızca kullanıcı onayıyla; GitHub profilinde yok)
+        espn_fx, espn_unmatched, espn_meta = None, [], {}
+        if "espn" in allowed and not github and not matches.empty:
+            progress(90, "ESPN verileri alınıyor...")
+            matches, espn_fx, espn_unmatched, espn_meta = self._from_espn(dl, leagues, matches, today, fixture_days,
+                                                                          report, force)
 
         progress(92, "Yaklaşan maçlar (fikstür) alınıyor...")
         self._last_unmatched = []
         fixtures = self._update_fixtures(dl, leagues, matches, today, fixture_days, report, force,
-                                         allowed - {"football-data"} if github else allowed, gh)
+                                         allowed - {"football-data"} if github else allowed, gh, espn_fx)
+        self._last_unmatched += espn_unmatched
 
         self.matches = matches.reset_index(drop=True)
         self.fixtures = fixtures.reset_index(drop=True)
@@ -333,6 +347,7 @@ class DataStore:
             "github_kaynak": report.github if github else {},
             "eski_kopya_dosyalari": list(getattr(dl, "stale_files", [])) + (gh.stale if gh else []),
             "tamamlama_kokeni": completion,
+            "espn_eslesme": espn_meta,
         })
         report.n_matches = len(self.matches)
         report.n_fixtures = len(self.fixtures)
@@ -463,7 +478,138 @@ class DataStore:
         out = self._clean_matches(pd.concat([base] + added, ignore_index=True))
         return out, records
 
-    def _update_fixtures(self, dl, leagues, matches, today, days, report, force, allowed, gh=None) -> pd.DataFrame:
+    def _from_espn(self, dl, leagues, matches, today, days, report, force):
+        """KAYNAK-04: football-data'dan ve openfootball'dan güncel verisi gelmeyen ligler için ESPN skor tablosu
+        (``data.espn``). Bir önceki sezonun başından fikstür penceresinin sonuna kadar aylık istek atılır; tamamlanmış
+        ayların yanıtları önbellekte kalır. Takım adları yalnızca kanıtla eşlenir.
+
+        Döner: (veri, fikstür satırları | None, eşleşmeyen fikstürler, eşleme kayıtları). Önceki güncellemenin ESPN
+        satırları her seferinde yeniden kurulur."""
+        from collections import Counter
+
+        from .completion import COMPLETION_LABEL
+        from .espn import ESPN_LABEL, ESPN_LEAGUES, ESPN_MATCHING, ESPN_PARSER, PAIR_DAYS
+        from .espn import SKIP_REASONS as ESPN_SKIPS
+        from .espn import calendar_json, map_teams, month_chunks, parse_scoreboard, scoreboard_url
+        from .leagues import season_for_date, season_start_year
+
+        src = matches["source"].astype(str)
+        keep = matches[src != ESPN_LABEL]
+        base_all = matches[~src.isin({COMPLETION_LABEL, ESPN_LABEL})]
+        added, fixtures, unmatched, meta = [], [], [], {}
+        lo, hi = today, today + dt.timedelta(days=days)
+        for code in leagues:
+            slug = ESPN_LEAGUES.get(code)
+            if slug is None or report.leagues.get(code) == "football-data.co.uk":
+                continue
+            lg = LEAGUES[code]
+            cal = lg.calendar_year
+            of_cur = openfootball_season(today, cal)
+            if lg.openfootball and self._openfootball_file(dl, None, code, of_cur, force, report) is not None:
+                continue  # openfootball'da güncel sezon dosyası var: ESPN gerekmez
+            base = base_all[base_all["league"] == code]
+            if base.empty:
+                continue
+            y = today.year if cal else season_start_year(today)
+            cur_start = dt.date(y, 1, 1) if cal else dt.date(y, 7, 1)
+            prev_start = dt.date(y - 1, 1, 1) if cal else dt.date(y - 1, 7, 1)
+            events, skips, errors = {}, Counter(), []
+            for a, b in month_chunks(prev_start, hi):
+                rel = f"espn/{slug}/{a:%Y-%m}.json"
+                p = dl.cache_path(rel)
+                try:  # ay bitip sonuçlar oturduktan SONRA alınmış yanıt değişmez; diğerleri saatlik yenilenir
+                    done = (b < today - dt.timedelta(days=3) and p.exists()
+                            and dt.date.fromtimestamp(p.stat().st_mtime) > b + dt.timedelta(days=3))
+                except OSError:
+                    done = False
+                try:
+                    data = dl.get(scoreboard_url(slug, a, b), rel, None if done else 1.0, force)
+                except DownloadError as e:
+                    errors.append("bağlantı kurulamadı" if e.network or e.status is None else f"HTTP {e.status}")
+                    if e.network:
+                        break
+                    continue
+                pr = parse_scoreboard(data, lg.country)
+                skips.update(pr.skipped)
+                events.update({ev.event_id: ev for ev in pr.events})
+            if not events:
+                report.warnings.append(f"{lg.label}: ESPN'den veri alınamadı" + (f" ({errors[0]})" if errors else "")
+                                       + "; bu lig için yaklaşan maç ve yeni sonuç eklenmedi.")
+                continue
+            evs = sorted(events.values(), key=lambda e: (e.date, e.time, e.event_id))
+            cur = [e for e in evs if e.date >= cur_start]
+            tm = map_teams(evs, base, code, season_for_date(today, cal), cur)
+            cur_names = {e.home for e in cur} | {e.away for e in cur}
+            # Sonuçlar: depodaki son maç gününden sonra oynanmış, iki adı da eşlenmiş ve depoda olmayan maçlar
+            last = pd.Timestamp(base["date"].max()).date()
+            have: dict = {}
+            for h, a, d in zip(base["home"], base["away"], base["date"]):
+                have.setdefault((h, a), []).append(pd.Timestamp(d).date())
+            rows = []
+            for e in cur:
+                if e.ft is None or not (last < e.date < today):
+                    continue
+                h, a = tm.mapping.get(e.home), tm.mapping.get(e.away)
+                if h is None or a is None or h == a or any(abs((d - e.date).days) <= PAIR_DAYS
+                                                           for d in have.get((h, a), ())):
+                    continue
+                rows.append({"league": code, "season": season_for_date(e.date, cal), "date": pd.Timestamp(e.date),
+                             "time": e.time, "home": h, "away": a, "fthg": e.ft[0], "ftag": e.ft[1],
+                             "hthg": float(e.ht[0]) if e.ht else np.nan, "htag": float(e.ht[1]) if e.ht else np.nan,
+                             "source": ESPN_LABEL})
+            if rows:
+                added.append(pd.DataFrame(rows).reindex(columns=MATCH_COLUMNS))
+            # Fikstür: oynanmamış maçlar (pencere içinde)
+            n_fx = 0
+            for e in cur:
+                if e.ft is not None or e.state not in ("pre", "in") or not (lo <= e.date <= hi):
+                    continue
+                h, a = tm.mapping.get(e.home), tm.mapping.get(e.away)
+                if h is not None and a is not None and h != a:
+                    n_fx += 1
+                    fixtures.append({"league": code, "date": pd.Timestamp(e.date), "time": e.time, "home": h,
+                                     "away": a, "source": ESPN_LABEL, "raw_home": e.home, "raw_away": e.away,
+                                     "provider_id": e.event_id,
+                                     "eslesme": f"{ESPN_MATCHING}:{tm.basis.get(e.home)}|{tm.basis.get(e.away)}"})
+                    continue
+                unmatched.append({
+                    "league": code, "date": str(e.date), "time": e.time, "raw_home": e.home, "raw_away": e.away,
+                    "source": ESPN_LABEL, "provider_id": e.event_id,
+                    "eslesme_durumu": "AYNI_TAKIM" if h is not None and h == a else "BULUNAMADI",
+                    "eslesme_surumu": ESPN_MATCHING,
+                    "oneriler": {"ev": [str(x) for x in tm.unmapped.get(e.home, ("", ()))[1]],
+                                 "deplasman": [str(x) for x in tm.unmapped.get(e.away, ("", ()))[1]]}})
+            # Sezon takvimleri (uygunluk kontrolü bilinen eksiği buradan görür; ``eligibility.cached_coverages``)
+            prev_of = openfootball_season(cur_start - dt.timedelta(days=1), cal)
+            for of_season, group in ((of_cur, cur), (prev_of, [e for e in evs if e.date < cur_start])):
+                if not group:
+                    continue
+                path = self.raw_dir / "espn" / of_season / f"{code}.json"
+                path.parent.mkdir(parents=True, exist_ok=True)
+                tmp = path.with_name(path.name + ".part")
+                tmp.write_bytes(calendar_json(group, tm, f"ESPN {slug} {of_season}"))
+                tmp.replace(path)
+            miss = sorted(n for n in tm.unmapped if n in cur_names)
+            report.espn[code] = {"fikstur": n_fx, "sonuc": len(rows), "eslesen": len(tm.mapping), "eslesmeyen": miss}
+            if miss:
+                report.warnings.append(
+                    f"{lg.label}: ESPN'deki {len(miss)} takım adı veri deposundaki bir takımla kanıtla eşleşmedi ("
+                    + ", ".join(miss[:6]) + ("…" if len(miss) > 6 else "")
+                    + "); bu takımların maçları 'tahmin yok' olarak gösterilir, sonuçları eklenmez.")
+            if skips:
+                report.warnings.append(f"{lg.label}: ESPN'de {sum(skips.values())} kayıt okunmadı ("
+                                       + "; ".join(f"{v} × {ESPN_SKIPS.get(k, k)}" for k, v in sorted(skips.items()))
+                                       + "). Bu maçlar uydurulmadı.")
+            meta[code] = {**tm.record(), "ayristirici": ESPN_PARSER}
+        if added:
+            out = self._clean_matches(pd.concat([keep] + added, ignore_index=True))
+        else:
+            out = keep.reset_index(drop=True) if len(keep) != len(matches) else matches
+        fx = pd.DataFrame(fixtures) if fixtures else None
+        return out, fx, unmatched, meta
+
+    def _update_fixtures(self, dl, leagues, matches, today, days, report, force, allowed, gh=None,
+                         extra_fixtures: pd.DataFrame | None = None) -> pd.DataFrame:
         lo = pd.Timestamp(today)
         hi = pd.Timestamp(today) + pd.Timedelta(days=days)
         frames = []
@@ -552,6 +698,8 @@ class DataStore:
                 report.warnings.append(f"{lg.label}: {no_time} yaklaşan maçın saati kaynakta yok (tarih kesinleşmemiş "
                                        "olabilir; 'saat bilinmiyor' gösterilir).")
             extra.append(of[~unmatched])
+        if extra_fixtures is not None and not extra_fixtures.empty:
+            extra.append(extra_fixtures)
         fx = pd.concat([fd] + extra, ignore_index=True) if extra else fd
         if fx.empty:
             return pd.DataFrame(columns=FIXTURE_COLUMNS)

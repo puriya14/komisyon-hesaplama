@@ -295,8 +295,10 @@ def test_goals_page(app, window, goal_setup):
     page.refresh_coverage()
     # S4-PILOT-01: kaynak kaydına pilotun sonuç kaynağı eklendi (5. satır); ana uygulamada kullanılmadığı açıkça yazar.
     # S5-GITHUB-01: iki arşiv kaynağı eklendi (6. ve 7. satır); yalnızca ayrı GitHub arşivinde kullanıldıkları yazar.
-    assert page.cov_model.rowCount() > 0 and page.src_model.rowCount() == 7
+    # KAYNAK-04: ESPN eklendi (8. satır); onay gerektirir ve onay yoksa bunu yazar.
+    assert page.cov_model.rowCount() > 0 and page.src_model.rowCount() == 8
     status = dict(zip(page.src_model.frame["Kaynak"], page.src_model.frame["Durum"]))
+    assert status["ESPN skor tablosu (resmi olmayan uç nokta)"] == "ONAY YOK"
     assert status["openfootball/football.json (maç sonuçları; S4 pilotu)"].startswith("S4 pilotu ve eksik dönemin")
     assert status["datasets/football-datasets (GitHub; Premier League sezon CSV'leri)"].startswith("Yalnızca GitHub arşivi")
     assert status["StatsBomb açık verisi (hudl/open-data)"].startswith("Yalnızca GitHub arşivi")

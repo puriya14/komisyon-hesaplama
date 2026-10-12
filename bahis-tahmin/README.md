@@ -121,6 +121,7 @@ dokunmaz (`tests/conftest.py`: `BAHIS_TAHMIN_HOME` geçici dizine yönlendirilir
 - [`docs/DIZI_ARASTIRMA_SONUCLARI.md`](docs/DIZI_ARASTIRMA_SONUCLARI.md) — dizi araştırması sonuçları ve zorunlu test eşlemesi
 - [`docs/DIZI_ARASTIRMA_DUZELTMELER.md`](docs/DIZI_ARASTIRMA_DUZELTMELER.md) — sonuç belgesinin kanıt denetimi: düzeltme ve daraltma kaydı (S2-KABUL-01)
 - [`docs/ILERIYE_DONUK_OLCUM.md`](docs/ILERIYE_DONUK_OLCUM.md) — A/B/C için ileriye dönük ölçüm protokolü ve elle günlük akış
+- [`docs/KAYNAK_04.md`](docs/KAYNAK_04.md) — Serie B, La Liga 2, Ligue 2 için ESPN (onay + kişisel kullanım beyanıyla açılan kaynak): fikstür, eksik dönem, sezon takvimi, maç kanıtlı ad eşlemesi
 - [`docs/FIKSTUR_03.md`](docs/FIKSTUR_03.md) — diğer liglerin fikstürleri: openfootball Football.TXT metin depoları, dönüştürücü, köken ve kanıtlı takma adlar
 - [`docs/VERI_02.md`](docs/VERI_02.md) — eksik dönemin openfootball sonuçlarıyla tamamlanması (köken doğrulamalı), son sonuçların yayın gecikmesi ve Türkçe nedenli etiketler
 - [`docs/VERI_01.md`](docs/VERI_01.md) — "birçok maçta veri bulunamadı" düzeltmesi: kişisel kullanım beyanı, doğrulanmış takım takma adları, standart/sıkı veri denetimi

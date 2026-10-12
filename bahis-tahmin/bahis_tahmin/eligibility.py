@@ -117,11 +117,13 @@ PENDING_GRACE_DAYS = 4
 NOT_PLAYED_STATUSES = frozenset({"POSTPONED", "CANCELLED", "ABANDONED", "SUSPENDED"})
 FINISHED = "FINISHED"
 SCHEDULED_OR_UNKNOWN = "SCHEDULED_OR_UNKNOWN"
-# Takım adları veri deposundan farklı olan ve ``data.teams`` ile eşlenen fikstür kaynakları (fikstür etiketi)
-MAPPED_FIXTURE_SOURCES = frozenset({"openfootball"})
+# Takım adları veri deposundan farklı olan ve eşlenen fikstür kaynakları (fikstür etiketi): ``data.teams`` (openfootball)
+# veya maç kanıtı (KAYNAK-04, ``data.espn``). Fikstür, aynı kaynağın takviminde aynı adlarla yeniden bulunmalıdır.
+MAPPED_FIXTURE_SOURCES = frozenset({"openfootball", "espn"})
 # Kapsam kaynağıyla AYNI veri zincirinden gelen depo etiketleri: bu satırlar kaynağın bağımsız denetimi olamaz
 # (bağımsız katılımcı listesine girmez; depo↔kaynak karşılaştırması tek kaynak zinciri olarak işaretlenir)
-COVERAGE_CHAIN_LABELS = {"openfootball": frozenset({"openfootball", "openfootball-sonuc", "openfootball-tamamlama"})}
+COVERAGE_CHAIN_LABELS = {"openfootball": frozenset({"openfootball", "openfootball-sonuc", "openfootball-tamamlama"}),
+                         "espn": frozenset({"espn"})}
 
 # ----------------------------------------------------------------------------
 # Neden kodları
@@ -576,8 +578,9 @@ def _score_of(m: dict):
 
 
 def coverage_from_openfootball(data: bytes, league: str, season: str, retrieved_at: dt.datetime,
-                               known_teams, participants=None) -> SourceCoverage:
-    """openfootball/football.json sezon dosyasından kapsam kanıtı (ağ isteği yapmaz).
+                               known_teams, participants=None, source: str = "openfootball") -> SourceCoverage:
+    """openfootball/football.json sezon dosyasından kapsam kanıtı (ağ isteği yapmaz). ``source``: takvimin kaynak
+    etiketi (KAYNAK-04: ESPN takvimi aynı biçimde, adları önceden kanıtla eşlenmiş olarak yazılır).
 
     ``known_teams``: ad eşlemesinin bağlamı (ligin son iki sezonundaki depo takımları). ``participants``: bu sezonun
     BAĞIMSIZ katılımcı listesi (aynı sezonun başka sağlayıcıdan gelen veri deposundaki takımları); verilmezse tamlık
@@ -590,7 +593,7 @@ def coverage_from_openfootball(data: bytes, league: str, season: str, retrieved_
     since = getattr(participants, "available_since", None)
     if isinstance(participants, ParticipantSet) and since is None:
         participants = None  # erişilebilirlik anı bilinmeyen referans kanıt değildir
-    base = dict(league=league, source="openfootball", season=season, retrieved_at=retrieved_at, sha256=sha,
+    base = dict(league=league, source=source, season=season, retrieved_at=retrieved_at, sha256=sha,
                 matching_version=MATCHING_VERSION, windows=(), reaches_end=False,
                 participants=len(set(participants)) if participants else None,
                 participants_since=since if participants else None)
@@ -629,7 +632,7 @@ def coverage_from_openfootball(data: bytes, league: str, season: str, retrieved_
             seen[key] = content
         rows.append((key, d.date(), t1, t2, _status_of(m), rnd))
     known = sorted(set(known_teams or ()))
-    res = resolve_teams([r[2] for r in rows] + [r[3] for r in rows], known, league, "openfootball")
+    res = resolve_teams([r[2] for r in rows] + [r[3] for r in rows], known, league, source)
     out, bad = [], set()
     for _, day, t1, t2, status, rnd in rows:
         h = res[t1].team if res[t1].exact else None
@@ -1698,6 +1701,23 @@ def cached_coverages(raw_dir, leagues, today: dt.date, known_teams_by_league: di
             out.setdefault(code, []).append(coverage_from_openfootball(
                 path.read_bytes(), code, label, at, known_teams_by_league.get(code, ()),
                 (participants_by_season or {}).get((code, label))))
+    # KAYNAK-04: ESPN sezon takvimleri (adlar güncelleme sırasında kanıtla eşlenmiş; eşleşmeyenler eşleşmez kalır)
+    from .data.espn import ESPN_LABEL, ESPN_LEAGUES
+
+    for code in leagues:
+        lg = LEAGUES.get(code)
+        if lg is None or code not in ESPN_LEAGUES:
+            continue
+        for season in sorted({openfootball_season(today - dt.timedelta(days=d), lg.calendar_year)
+                              for d in (0, 365, 730)}):
+            path = Path(raw_dir) / "espn" / season / f"{code}.json"
+            if not path.is_file():
+                continue
+            at = dt.datetime.fromtimestamp(path.stat().st_mtime, tz=dt.timezone.utc)
+            label = _norm_season(season, lg.calendar_year)
+            out.setdefault(code, []).append(coverage_from_openfootball(
+                path.read_bytes(), code, label, at, known_teams_by_league.get(code, ()),
+                (participants_by_season or {}).get((code, label)), source=ESPN_LABEL))
     return out
 
 
@@ -1738,7 +1758,7 @@ def build_context(store, engine, consent: dict | None, today: dt.date | None = N
     tmp = EligibilityContext(matches, None, rights=RightsStatus({}))
     known = {lg: tmp.recent_teams(lg) for lg in leagues}
     if participants is None and matches is not None and not matches.empty and "source" in matches:
-        chain = COVERAGE_CHAIN_LABELS["openfootball"]
+        chain = frozenset().union(*COVERAGE_CHAIN_LABELS.values())  # hiçbir takvim kaynağının zinciri bağımsız değil
         participants = season_participants(matches[~matches["source"].astype(str).isin(chain)])
     covs = cached_coverages(getattr(store, "raw_dir", "."), leagues, today, known, participants)
     return EligibilityContext(matches, sv, covs, consent=consent, verified_labels=verified_labels(store),

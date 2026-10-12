@@ -179,8 +179,8 @@ def test_declaration_opens_only_the_declarable_scope_and_registry_stays_truthful
     assert other.codes({"football-datasets"}, ()) and other.codes({"uydurma"}, ()) == ["KAYNAK_HAKKI_BILINMIYOR"]
     assert other.by_label["statsbomb-acik"].model_egitimi == "DOGRULANAMADI"
     assert "KAYNAK_KOKENI_DOGRULANAMADI" in other.codes({"openfootball-sonuc"}, ())
-    # Kaynak kaydı (belge durumu) değişmez; beyan verilebilen kaynaklar yalnızca bu ikisi
-    assert R.DECLARABLE == ("football-data", "github-mirror")
+    # Kaynak kaydı (belge durumu) değişmez; beyan verilebilen kaynaklar yalnızca bunlar (KAYNAK-04: ESPN eklendi)
+    assert R.DECLARABLE == ("football-data", "github-mirror", "espn")
     for k in R.DECLARABLE:
         assert R.USE_RIGHTS[k]["belge"] == "" and "IZINLI_BELGELI" not in R.USE_RIGHTS[k].values()
     assert R.effective_declarations({"football-data": "t"}, {"football-data": "t", "github-mirror": "t"}) == {

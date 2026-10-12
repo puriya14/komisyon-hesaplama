@@ -147,6 +147,26 @@ SOURCES: dict[str, SourceInfo] = {
         cost="Ücretsiz",
         requires_consent=False,
     ),
+    "espn": SourceInfo(
+        key="espn",
+        name="ESPN skor tablosu (resmi olmayan uç nokta)",
+        url="https://www.espn.com/soccer/",
+        terms_url="https://www.espn.com/",
+        license_summary=(
+            "site.api.espn.com skor tablosu uç noktası belgelenmemiştir; açık bir lisans veya veri kullanım metni "
+            "bulunamadı (2026-10-12 denetimi; uç noktaya bu ortamdan erişilemedi). Sitenin genel kullanım koşulları "
+            "espn.com sayfa altındaki 'Terms of Use' bağlantısındadır. Yalnızca Serie B, La Liga 2 ve Ligue 2 için, "
+            "başka güncel kaynak yokken fikstür, sonuç ve sezon takvimi alınır."
+        ),
+        commercial_use="Doğrulanamadı (açık izin yok).",
+        automated_download="Doğrulanamadı; lig başına aylık, önbellekli ve seyrek istek.",
+        model_training="Doğrulanamadı.",
+        redistribution="İzin varsayılmaz: veriler yalnızca kullanıcının bilgisayarında tutulur.",
+        coverage=("Serie B, La Liga 2, Ligue 2: fikstür, normal süre sonucu, varsa devre skorları; oran ve istatistik "
+                  "yok. Takım adları yalnızca maç kanıtıyla eşlenir."),
+        cost="Ücretsiz (anahtar gerekmez)",
+        requires_consent=True,
+    ),
     "the-odds-api": SourceInfo(
         key="the-odds-api",
         name="The Odds API",
@@ -168,7 +188,7 @@ SOURCES: dict[str, SourceInfo] = {
 }
 
 # Uygulamanın gerçekten kullandığı (adaptörü olan) kaynaklar
-IMPLEMENTED = ("football-data", "github-mirror", "openfootball")
+IMPLEMENTED = ("football-data", "github-mirror", "openfootball", "espn")
 
 # Veri deposundaki ``source`` etiketi -> kaynak anahtarı
 SOURCE_LABELS = {"football-data.co.uk": "football-data", "github-yedek": "github-mirror", "openfootball": "openfootball",
@@ -176,7 +196,9 @@ SOURCE_LABELS = {"football-data.co.uk": "football-data", "github-yedek": "github
                  "statsbomb-acik": "statsbomb-acik",
                  # VERI-02: güncel sezonun openfootball ile tamamlanan satırları; aynı kaynak ve lisans (CC0), hak
                  # yalnızca köken doğrulanırsa (data/completion.py)
-                 "openfootball-tamamlama": "openfootball-sonuc"}
+                 "openfootball-tamamlama": "openfootball-sonuc",
+                 # KAYNAK-04: ESPN sonuç ve fikstür satırları (onay + kişisel kullanım beyanı)
+                 "espn": "espn"}
 
 # Kullanım kapsamının yapılandırılmış hâli (veri uygunluk kontrolü bunu okur; S3-GATE-01, kapsamlar S3-GATE-02).
 # Değerler yukarıdaki SOURCES metinlerinin aynısıdır, YENİ HAK VERMEZ: belge yoksa "DOGRULANAMADI" kalır. Ayrı alanlar:
@@ -228,6 +250,16 @@ USE_RIGHTS: dict[str, dict] = {
                                               "LICENSE.md dosyaları aynı git nesnesi (670154e3538863b2)."),
                            "sinirlar": ("CC0 doğruluk garantisi vermez ve üçüncü kişi haklarını temizlemez (madde 4); "
                                         "uygulama ham veriyi dağıtmaz.")},
+    # KAYNAK-04: koşul metni yok; hiçbir alan izinli sayılmaz. Kullanıcının onayı erişimi, kişisel kullanım beyanı
+    # (VERI-01) yalnızca kişisel analiz, bu bilgisayarda eğitim ve tahmin alanlarını açar.
+    "espn": {"erisim_kosullari": "DOGRULANAMADI", "sonuc_kullanimi": "DOGRULANAMADI",
+             "model_egitimi": "DOGRULANAMADI", "model_kullanimi": "DOGRULANAMADI",
+             "ticari_kullanim": "DOGRULANAMADI", "yeniden_dagitim": "IZIN_VARSAYILMAZ", "belge": "",
+             "saglar": ("sonuc", "fikstur", "takvim"),
+             "kisisel_beyan": ("sonuc_kullanimi", "model_egitimi", "model_kullanimi"),
+             "belge_denetimi": ("2026-10-12 (KAYNAK-04): uç nokta belgelenmemiş; açık lisans veya veri kullanım metni "
+                                "bulunamadı ve uç noktaya bu ortamdan erişilemedi. Kullanıcı kaynağı onayla açmayı "
+                                "seçti.")},
     # S5-GITHUB-01: depo lisansı (PDDL) asıl kaynağın (football-data.co.uk) haklarını kanıtlamaz; etiket değiştirmek
     # football-data kaydının doğrulanamayan kapsamını aşmaz.
     "football-datasets": {"erisim_kosullari": "DOGRULANAMADI", "sonuc_kullanimi": "DOGRULANAMADI",
@@ -299,8 +331,8 @@ def archive_allowed(key: str, operation: str) -> bool:
 # Kişisel kullanım beyanı verilebilen kaynaklar (uygulamanın sonuç verisi aldığı, onay gerektiren kaynaklar)
 DECLARABLE = tuple(k for k in IMPLEMENTED if USE_RIGHTS.get(k, {}).get("kisisel_beyan"))
 # Onay penceresinin sürümü: ayarlardaki ``onay_surumu`` bundan küçükse pencere bir kez yeniden gösterilir (VERI-01'de
-# kişisel kullanım beyanı eklendi; eski indirme onayı beyan sayılmaz).
-CONSENT_SCHEMA = 2
+# kişisel kullanım beyanı eklendi; eski indirme onayı beyan sayılmaz. 3: KAYNAK-04'te ESPN eklendi).
+CONSENT_SCHEMA = 3
 
 
 def effective_declarations(consent: dict | None, declarations: dict | None) -> set[str]:
