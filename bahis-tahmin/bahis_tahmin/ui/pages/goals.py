@@ -662,8 +662,9 @@ class GoalsPage(Page):
             "Kaynak": s.name, "Lisans özeti": s.license_summary, "Ticari kullanım": s.commercial_use,
             "Model eğitimi": s.model_training, "Maliyet": s.cost,
             "Durum": ("Entegre edilmedi" if k == "the-odds-api" else
-                      # S4: yalnızca ayrı pilot klasöründe; ana uygulama bu kaynaktan sonuç okumaz
-                      "Yalnızca S4 pilotu (köken doğrulaması zorunlu)" if k == "openfootball-sonuc" else
+                      # S4 pilotu; VERI-02: ana uygulamada yalnızca eksik güncel dönemin tamamlanması
+                      "S4 pilotu ve eksik dönemin tamamlanması (köken doğrulaması zorunlu)"
+                      if k == "openfootball-sonuc" else
                       # S5: yalnızca ayrı GitHub arşivinde; ana uygulama bu kaynaklardan sonuç okumaz veya eğitmez
                       "Yalnızca GitHub arşivi (envanter; analiz ve eğitim kapalı)" if k == "football-datasets" else
                       "Yalnızca GitHub arşivi (araştırma amaçlı tarihsel inceleme; eğitim ve tahmin kapalı)"

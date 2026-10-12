@@ -114,7 +114,7 @@ aynıdır; yalnızca kodların engel düzeyi değişir (`eligibility.STANDART_LE
 Standart moddaki etiketler:
 
 - **Kullanılabilir.** Bilinen bir sorun yok. Güncellik kanıtlanamadıysa açıklamada yazar.
-- **Uyarılı · bahis adayı değil (KOD).** Tahmin gösterilir; bahis adayı ve değer önerisi yoktur.
+- **Uyarılı · bahis adayı değil: kısa neden (KOD).** Tahmin gösterilir; bahis adayı ve değer önerisi yoktur (VERI-02'den itibaren etikette kısa Türkçe neden de yazar).
 - **Uygun değil / Eksik veri / Doğrulanamıyor · KOD.** Tahmin yoktur. Etiket artık birincil nedenin kendi türünü yazar
   (ör. "Uygun değil · MODEL_YOK").
 

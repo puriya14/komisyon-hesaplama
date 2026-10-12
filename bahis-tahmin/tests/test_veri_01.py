@@ -113,7 +113,8 @@ def test_known_missing_match_shows_warned_forecast_but_never_a_bet(m, teams):
         assert e.forecast_ok and not e.bet_ok and e.status_label == "Uyarılı" and e.lead_code == "DEPODA_EKSIK_MAC"
         label, text = E.display_label(e, E.check_for_display(e, e.candidate_id, mk, AS_OF,
                                                              vd.prediction.state_digest))
-        assert label == "Uyarılı · bahis adayı değil (DEPODA_EKSIK_MAC)" and "bahis adayı değil" in text
+        assert label == "Uyarılı · bahis adayı değil: veride eksik maç var (DEPODA_EKSIK_MAC)"
+        assert "bahis adayı değil" in text
         assert E.check_for_decision(e, e.candidate_id, mk, AS_OF, vd.prediction.state_digest)[0] == "DEPODA_EKSIK_MAC"
     assert vd.any_usable(AS_OF) and not vs.any_usable(AS_OF)
     from bahis_tahmin.goals.ledger import Ledger

@@ -98,7 +98,9 @@ SOURCES: dict[str, SourceInfo] = {
         automated_download="Sabit commit üzerinden, önbellekli ve seyrek (tek lig).",
         model_training="CC0 (derleyicinin hakları açısından izinli).",
         redistribution="CC0 (derleyicinin hakları açısından izinli); uygulama ham veriyi dağıtmaz.",
-        coverage="Sezon dosyalarında normal süre sonucu (score.ft / liste) ve çoğu maçta ilk yarı (score.ht).",
+        coverage=("Sezon dosyalarında normal süre sonucu (score.ft / liste) ve çoğu maçta ilk yarı (score.ht). "
+                  "S4 pilotunda tam sezon; ana uygulamada (VERI-02) yalnızca veri deposunun geride kaldığı güncel "
+                  "dönemin tamamlanması (etiket openfootball-tamamlama; köken doğrulamalı)."),
         cost="Ücretsiz",
         requires_consent=False,
     ),
@@ -168,7 +170,10 @@ IMPLEMENTED = ("football-data", "github-mirror", "openfootball")
 # Veri deposundaki ``source`` etiketi -> kaynak anahtarı
 SOURCE_LABELS = {"football-data.co.uk": "football-data", "github-yedek": "github-mirror", "openfootball": "openfootball",
                  "openfootball-sonuc": "openfootball-sonuc", "football-datasets": "football-datasets",
-                 "statsbomb-acik": "statsbomb-acik"}
+                 "statsbomb-acik": "statsbomb-acik",
+                 # VERI-02: güncel sezonun openfootball ile tamamlanan satırları; aynı kaynak ve lisans (CC0), hak
+                 # yalnızca köken doğrulanırsa (data/completion.py)
+                 "openfootball-tamamlama": "openfootball-sonuc"}
 
 # Kullanım kapsamının yapılandırılmış hâli (veri uygunluk kontrolü bunu okur; S3-GATE-01, kapsamlar S3-GATE-02).
 # Değerler yukarıdaki SOURCES metinlerinin aynısıdır, YENİ HAK VERMEZ: belge yoksa "DOGRULANAMADI" kalır. Ayrı alanlar:

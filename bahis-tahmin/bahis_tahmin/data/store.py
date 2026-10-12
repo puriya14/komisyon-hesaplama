@@ -57,6 +57,7 @@ class UpdateReport:
     profile: str = PROFILE_DEFAULT
     stale: int = 0  # indirme başarısız olduğu için önbellekteki ESKİ kopyası kullanılan dosya
     github: dict = field(default_factory=dict)  # GitHub profili: depo -> commit / uç durumu / dosya durumu
+    completed: dict = field(default_factory=dict)  # VERI-02: lig -> openfootball ile eklenen maç sayısı
 
     def summary(self) -> str:
         lines = [
@@ -71,6 +72,9 @@ class UpdateReport:
             lines.append(f"{self.stale} dosya güncellenemedi; önbellekteki ESKİ kopya kullanıldı (güncel sayılmaz).")
         if self.used_mirror and self.profile != PROFILE_GITHUB:
             lines.append("football-data.co.uk'a ulaşılamadığı için GitHub yedek veri seti kullanıldı.")
+        if self.completed:
+            lines.append("Eksik dönem openfootball sonuçlarıyla tamamlandı (CC0; köken doğrulamalı): "
+                         + ", ".join(f"{k} {v} maç" for k, v in self.completed.items()) + ".")
         for key in self.blocked_sources:
             lines.append(f"{SOURCES[key].name}: kullanım koşulları onaylanmadığı için kullanılmadı.")
         lines += self.warnings
@@ -280,6 +284,10 @@ class DataStore:
         matches, renames = unify_spellings(matches)
         if renames:
             matches = self._clean_matches(matches)
+        # VERI-02: geride kalan ligleri openfootball'un oynanmış maç sonuçlarıyla tamamla (fikstürle aynı dosya)
+        completion = []
+        if "openfootball" in allowed and not matches.empty:
+            matches, completion = self._complete_from_openfootball(dl, gh, leagues, matches, today, report, force)
 
         progress(92, "Yaklaşan maçlar (fikstür) alınıyor...")
         self._last_unmatched = []
@@ -299,6 +307,7 @@ class DataStore:
             "veri_profili": profile,
             "github_kaynak": report.github if github else {},
             "eski_kopya_dosyalari": list(getattr(dl, "stale_files", [])) + (gh.stale if gh else []),
+            "tamamlama_kokeni": completion,
         })
         report.n_matches = len(self.matches)
         report.n_fixtures = len(self.fixtures)
@@ -320,6 +329,60 @@ class DataStore:
         m = m[(m["fthg"] >= 0) & (m["ftag"] >= 0) & (m["fthg"] < 20) & (m["ftag"] < 20)]
         m = m.drop_duplicates(subset=["league", "date", "home", "away"], keep="first")
         return m.sort_values(["date", "league", "time", "home"], kind="mergesort").reset_index(drop=True)
+
+    def _openfootball_file(self, dl, gh, code: str, season: str, force: bool) -> bytes | None:
+        lg = LEAGUES[code]
+        try:
+            if gh is not None:
+                return gh.get("openfootball/football.json", f"{season}/{lg.openfootball}.json")
+            return dl.get(f"{OPENFOOTBALL_BASE}/{season}/{lg.openfootball}.json",
+                          f"openfootball/{season}/{lg.openfootball}.json", 6.0, force)
+        except (DownloadError, _GitHubUnavailable):
+            return None
+
+    def _complete_from_openfootball(self, dl, gh, leagues, matches, today, report, force):
+        """Ligin depodaki son maç gününden sonra oynanmış, depoda olmayan maçları openfootball sezon dosyasından ekler
+        (``data.completion``). Döner: (veri, köken kayıtları)."""
+        from ..eligibility import _norm_season
+        from .completion import COMPLETION_LABEL, build_record, select_rows
+
+        base = matches[matches["source"].astype(str) != COMPLETION_LABEL]
+        added, records = [], []
+        now = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+        for code in leagues:
+            lg = LEAGUES[code]
+            g = base[base["league"] == code]
+            if not lg.openfootball or g.empty:
+                continue
+            last = pd.Timestamp(g["date"].max()).date()
+            cur = openfootball_season(today, lg.calendar_year)
+            seasons = [cur]
+            prev = openfootball_season(today - dt.timedelta(days=365), lg.calendar_year)
+            if prev != cur and last < today - dt.timedelta(days=60):  # depo önceki sezonda kalmış olabilir
+                seasons.insert(0, prev)
+            n_lg = 0
+            for of_season in seasons:
+                data = self._openfootball_file(dl, gh, code, of_season, force)
+                if data is None:
+                    continue
+                season = _norm_season(of_season, lg.calendar_year)
+                rows, names = select_rows(data, code, season, base, last, today)
+                if rows.empty:
+                    continue
+                rel = f"tamamlama/{of_season}/{lg.openfootball}.json"
+                path = self.raw_dir / rel
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(data)  # kökenin kanıtı: kullanılan baytların birebir kopyası
+                records.append(build_record(code, season, of_season, data, rel, last, today, rows, names, now))
+                added.append(rows)
+                n_lg += len(rows)
+            if n_lg:
+                report.completed[code] = n_lg
+        # Önceki güncellemenin tamamlama satırları her zaman yeniden üretilir (kaydı olmayan satır kalmaz)
+        if not added:
+            return (base.reset_index(drop=True) if len(base) != len(matches) else matches), []
+        out = self._clean_matches(pd.concat([base] + added, ignore_index=True))
+        return out, records
 
     def _update_fixtures(self, dl, leagues, matches, today, days, report, force, allowed, gh=None) -> pd.DataFrame:
         lo = pd.Timestamp(today)

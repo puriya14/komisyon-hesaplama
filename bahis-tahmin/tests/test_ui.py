@@ -291,7 +291,7 @@ def test_goals_page(app, window, goal_setup):
     # S5-GITHUB-01: iki arşiv kaynağı eklendi (6. ve 7. satır); yalnızca ayrı GitHub arşivinde kullanıldıkları yazar.
     assert page.cov_model.rowCount() > 0 and page.src_model.rowCount() == 7
     status = dict(zip(page.src_model.frame["Kaynak"], page.src_model.frame["Durum"]))
-    assert status["openfootball/football.json (maç sonuçları; S4 pilotu)"].startswith("Yalnızca S4 pilotu")
+    assert status["openfootball/football.json (maç sonuçları; S4 pilotu)"].startswith("S4 pilotu ve eksik dönemin")
     assert status["datasets/football-datasets (GitHub; Premier League sezon CSV'leri)"].startswith("Yalnızca GitHub arşivi")
     assert status["StatsBomb açık verisi (hudl/open-data)"].startswith("Yalnızca GitHub arşivi")
     assert status["The Odds API"] == "Entegre edilmedi" and status["openfootball/football.json"] == "Onay gerekmez"

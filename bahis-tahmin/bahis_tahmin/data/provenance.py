@@ -115,9 +115,15 @@ def verify_results(matches: pd.DataFrame | None, records, raw_dir) -> tuple[bool
 
 def verified_labels(store) -> set[str]:
     """Veri deposundaki kökeni doğrulanmış sonuç etiketleri (kayıt yoksa boş küme; ağ isteği yapmaz)."""
+    from .completion import COMPLETION_LABEL, verify_completion
+
     meta = getattr(store, "meta", None) or {}
+    out: set[str] = set()
+    matches, raw_dir = getattr(store, "matches", None), getattr(store, "raw_dir", ".")
     records = meta.get("kaynak_kokeni") or []
-    if not records:
-        return set()
-    ok, _ = verify_results(getattr(store, "matches", None), records, getattr(store, "raw_dir", "."))
-    return {OPENFOOTBALL_RESULT_LABEL} if ok else set()
+    if records and verify_results(matches, records, raw_dir)[0]:
+        out.add(OPENFOOTBALL_RESULT_LABEL)
+    completion = meta.get("tamamlama_kokeni") or []
+    if completion and verify_completion(matches, completion, raw_dir)[0]:
+        out.add(COMPLETION_LABEL)  # VERI-02: güncel sezon tamamlaması
+    return out

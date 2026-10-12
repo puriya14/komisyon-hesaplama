@@ -111,6 +111,9 @@ LOOKBACK_DAYS = 365  # takım özelliklerinin (form, n365, zamanla azalan güçl
 MIN_TEAM_MATCHES = 10  # karar politikasıyla aynı: son 365 günde bu ligde en az maç
 LEAGUE_MISSING_SHARE = 0.05  # lig düzeyinde eksik/belirsiz maç payı bunu aşarsa paylaşılan lig durumu güvenilmez
 PAIR_DAY_TOLERANCE = 3  # kaynak ile depo arasında aynı eşleşme için tarih farkı toleransı (yerel tarih farkları)
+# VERI-02 (yalnızca standart mod): bilgi kesiminden önceki son bu kadar gün içinde oynanması beklenen ama sonucu henüz
+# kaynakta da depoda da olmayan maçlar olağan yayın gecikmesidir (SON_SONUC_BEKLENIYOR); daha eskileri belirsizdir.
+PENDING_GRACE_DAYS = 4
 NOT_PLAYED_STATUSES = frozenset({"POSTPONED", "CANCELLED", "ABANDONED", "SUSPENDED"})
 FINISHED = "FINISHED"
 SCHEDULED_OR_UNKNOWN = "SCHEDULED_OR_UNKNOWN"
@@ -118,7 +121,7 @@ SCHEDULED_OR_UNKNOWN = "SCHEDULED_OR_UNKNOWN"
 MAPPED_FIXTURE_SOURCES = frozenset({"openfootball"})
 # Kapsam kaynağıyla AYNI veri zincirinden gelen depo etiketleri: bu satırlar kaynağın bağımsız denetimi olamaz
 # (bağımsız katılımcı listesine girmez; depo↔kaynak karşılaştırması tek kaynak zinciri olarak işaretlenir)
-COVERAGE_CHAIN_LABELS = {"openfootball": frozenset({"openfootball", "openfootball-sonuc"})}
+COVERAGE_CHAIN_LABELS = {"openfootball": frozenset({"openfootball", "openfootball-sonuc", "openfootball-tamamlama"})}
 
 # ----------------------------------------------------------------------------
 # Neden kodları
@@ -199,6 +202,10 @@ REASONS: dict[str, Reason] = {
     "KAYNAK_DURUMU_BELIRSIZ": Reason(
         "Takımın geçmiş tarihli bir maçının sonucu ne kaynakta ne depoda var (oynandı mı bilinmiyor).",
         "tahmin", UNKNOWN, "Kaynak ve veriler güncellendikten sonra yeniden deneyin."),
+    "SON_SONUC_BEKLENIYOR": Reason(
+        f"Takımın son {PENDING_GRACE_DAYS} gün içindeki maçının sonucu henüz yayımlanmadı (kaynakta da veride de yok; "
+        "sonuçlar genellikle birkaç gün içinde gelir). Tahmin bu maçı içermiyor.", "tahmin", UNKNOWN,
+        "Birkaç gün sonra verileri yeniden güncelleyin."),
     "KAYNAK_ESLESME_BELIRSIZ": Reason("Takımın maçları kaynak takviminde güvenilir biçimde eşleştirilemedi.", "tahmin",
                                       UNKNOWN, "Takım adı eşlemesini düzeltin."),
     "KAYNAK_DEPO_CELISKISI": Reason(
@@ -247,7 +254,8 @@ LEAD_ORDER = (
     "LIG_MODEL_KAPSAMI_DISI", "TAKIM_DURUMDA_YOK", "DURUM_KARAR_ANINDAN_SONRA", "DEPODA_EKSIK_MAC",
     "DEPODA_GECERSIZ_SKOR", "DURUM_DEPODAN_GERIDE", "LIG_DURUMU_EKSIK", "DURUM_KOKENI_YOK", "DURUM_VERIYLE_UYUSMUYOR",
     "KAYNAK_KAPSAMI_YOK", "KAYNAK_KAPSAMI_KISMI", "KAYNAK_KARAR_ANINDAN_SONRA", "KAYNAK_ESLESME_BELIRSIZ",
-    "KAYNAK_DEPO_CELISKISI", "KAYNAK_DURUMU_BELIRSIZ", "KAYNAK_ARALIK_DISI", "LIG_DURUMU_BELIRSIZ",
+    "KAYNAK_DEPO_CELISKISI", "KAYNAK_DURUMU_BELIRSIZ", "SON_SONUC_BEKLENIYOR", "KAYNAK_ARALIK_DISI",
+    "LIG_DURUMU_BELIRSIZ",
     "OLASILIK_GECERSIZ", "GEREKLI_ALAN_EKSIK", "TAKIM_GECMISI_YETERSIZ", "KAYNAK_ERISIM_IZNI_YOK",
     "KAYNAK_HAKKI_BILINMIYOR", "KAYNAK_ETIKETI_UYUMSUZ", "KAYNAK_KOKENI_DOGRULANAMADI", "MODEL_EGITIM_KOKENI_YOK",
     "KAYNAK_SONUC_KULLANIMI_DOGRULANAMADI", "KAYNAK_EGITIM_HAKKI_DOGRULANAMADI", "KAYNAK_MODEL_KULLANIMI_DOGRULANAMADI",
@@ -269,7 +277,8 @@ STANDART_LEVELS = {
     "DURUM_KOKENI_YOK": "bahis", "DURUM_VERIYLE_UYUSMUYOR": "bahis", "LIG_DURUMU_EKSIK": "bahis",
     "LIG_DURUMU_KISMEN_EKSIK": "yok", "LIG_DURUMU_BELIRSIZ": "bahis",
     "KAYNAK_KAPSAMI_YOK": "yok", "KAYNAK_KAPSAMI_KISMI": "yok", "KAYNAK_KARAR_ANINDAN_SONRA": "yok",
-    "KAYNAK_ARALIK_DISI": "yok", "KAYNAK_DURUMU_BELIRSIZ": "bahis", "KAYNAK_ESLESME_BELIRSIZ": "bahis",
+    "KAYNAK_ARALIK_DISI": "yok", "KAYNAK_DURUMU_BELIRSIZ": "bahis", "SON_SONUC_BEKLENIYOR": "yok",
+    "KAYNAK_ESLESME_BELIRSIZ": "bahis",
     "KAYNAK_DEPO_CELISKISI": "bahis", "KAYNAK_ESLESMEMIS_ADLAR": "yok",
     "GEREKLI_ALAN_EKSIK": "tahmin", "TAKIM_GECMISI_YETERSIZ": "bahis", "LIG_IY_ORANI_DUSUK": "bahis",
     "KAYNAK_ERISIM_IZNI_YOK": "tahmin", "KAYNAK_HAKKI_BILINMIYOR": "tahmin", "KAYNAK_ETIKETI_UYUMSUZ": "tahmin",
@@ -1273,7 +1282,8 @@ class EligibilityContext:
         if partial:  # kısmi takvim "eksik yok" kanıtı olamaz ama bilinen eksiği gösterebilir
             self._missing_in_partial(home, away, near[near["ingest"]], near, partial, cut_day, codes, detail)
         if evidence:
-            self._check_against_source(home, away, near[near["ingest"]], near, evidence, cut_day, codes, detail, base)
+            self._check_against_source(home, away, near[near["ingest"]], near, evidence, cut_day, codes, detail, base,
+                                       PENDING_GRACE_DAYS if self.mode == "standart" else 0)
             self._store_vs_source(home, away, g, evidence, cut_day, codes, detail)
             for t in (home, away):
                 if not any(t in (m.home, m.away) for c in evidence for m in c.matches):
@@ -1298,8 +1308,12 @@ class EligibilityContext:
                          mode=self.mode)
 
     @staticmethod
-    def _check_against_source(home, away, g_pair, g_any, complete, cut_day, codes, detail, base) -> None:
+    def _check_against_source(home, away, g_pair, g_any, complete, cut_day, codes, detail, base,
+                              pending_days: int = 0) -> None:
         """Kaynakta beklenen maçlar ↔ depodaki maçlar (takım düzeyi ve paylaşılan lig durumu).
+
+        ``pending_days`` (yalnızca standart mod): bilgi kesiminden önceki son bu kadar günde sonucu henüz hiçbir yerde
+        olmayan maçlar belirsiz sayılmaz, ``SON_SONUC_BEKLENIYOR`` olur (olağan yayın gecikmesi). 0 = v2 davranışı.
 
         ``g_pair``: modelin işlediği depo satırları (eşleştirme; bilgi kesimi + tarih toleransı); ``g_any``: aynı aralıkta
         karantinadakiler dahil bütün satırlar (geçersiz skorlu kaydı "yok" yerine ayrıca adlandırmak için)."""
@@ -1318,6 +1332,7 @@ class EligibilityContext:
         team_missing: dict[str, list[str]] = {}
         team_invalid: dict[str, list[str]] = {}
         team_unknown: dict[str, list[str]] = {}
+        team_pending: dict[str, list[str]] = {}
         team_unmapped: dict[str, list[str]] = {}
         league: dict[str, dict[str, int]] = {}  # sezon -> pencere içindeki diğer-takım sayımları
         unmapped: set[str] = set()
@@ -1350,6 +1365,9 @@ class EligibilityContext:
                         bucket.setdefault(t, []).append(str(m.date))
                     if not ours and in_window:
                         cnt["eksik"] += 1
+                elif pending_days and md >= cut_day - pending_days:
+                    for t in ours:
+                        team_pending.setdefault(t, []).append(str(m.date))
                 else:
                     for t in ours:
                         team_unknown.setdefault(t, []).append(str(m.date))
@@ -1368,6 +1386,9 @@ class EligibilityContext:
         if team_unknown:
             codes.append("KAYNAK_DURUMU_BELIRSIZ")
             detail["sonucu_belirsiz"] = {t: v[-5:] for t, v in team_unknown.items()}
+        if team_pending:
+            codes.append("SON_SONUC_BEKLENIYOR")
+            detail["sonucu_bekleniyor"] = {t: v[-5:] for t, v in team_pending.items()}
         if team_unmapped:
             codes.append("KAYNAK_ESLESME_BELIRSIZ")
             detail["rakip_adi_eslesmeyen"] = {t: v[-5:] for t, v in team_unmapped.items()}
@@ -1576,15 +1597,45 @@ def forecast_block_codes(e) -> list[str]:
     return [c for c in e.reasons if code_level(c, mode) == "tahmin"] or ["BAGLAM_YOK"]
 
 
+# Etiketlerde kodun yanında gösterilen kısa Türkçe açıklama (ayrıntı metni ve gereken düzeltme ``REASONS``'ta)
+SHORT_TEXT = {
+    "BAGLAM_YOK": "uygunluk değerlendirilmedi", "BAGLAM_UYUSMUYOR": "sonuç başka güne veya modele ait",
+    "MAC_GECMISTE": "maç tarihi geçti", "MODEL_YOK": "model eğitilmedi", "LIG_MODEL_KAPSAMI_DISI": "lig modelde yok",
+    "TAKIM_ESLESMEDI": "takım adı eşleşmedi", "TAKIM_ESLESMESI_DOGRULANAMADI": "takım kimliği doğrulanamadı",
+    "TAKIM_DURUMDA_YOK": "takım modelde yok", "DURUM_KARAR_ANINDAN_SONRA": "model sonraki maçları içeriyor",
+    "DURUM_DEPODAN_GERIDE": "model veriden eski", "DEPODA_EKSIK_MAC": "veride eksik maç var",
+    "DEPODA_GECERSIZ_SKOR": "geçersiz skorlu maç", "DURUM_KOKENI_YOK": "eski model dosyası",
+    "DURUM_VERIYLE_UYUSMUYOR": "model farklı veriyle eğitilmiş", "LIG_DURUMU_EKSIK": "ligde çok maç eksik",
+    "LIG_DURUMU_KISMEN_EKSIK": "ligde az sayıda maç eksik", "LIG_DURUMU_BELIRSIZ": "ligde sonucu bilinmeyen maçlar",
+    "KAYNAK_KAPSAMI_YOK": "güncellik takvimi yok", "KAYNAK_KAPSAMI_KISMI": "güncellik takvimi eksik",
+    "KAYNAK_KARAR_ANINDAN_SONRA": "takvim sonradan alınmış", "KAYNAK_ARALIK_DISI": "geçmiş dönem doğrulanamadı",
+    "KAYNAK_DURUMU_BELIRSIZ": "son maç sonucu bilinmiyor", "SON_SONUC_BEKLENIYOR": "son maç sonucu bekleniyor",
+    "KAYNAK_ESLESME_BELIRSIZ": "takvimde eşleşme belirsiz", "KAYNAK_DEPO_CELISKISI": "kaynaklar çelişiyor",
+    "KAYNAK_ESLESMEMIS_ADLAR": "takvimde eşleşmeyen adlar", "GEREKLI_ALAN_EKSIK": "gerekli veri yok",
+    "TAKIM_GECMISI_YETERSIZ": "takımın bu ligde az maçı var", "LIG_IY_ORANI_DUSUK": "ligde ilk yarı verisi az",
+    "KAYNAK_ERISIM_IZNI_YOK": "kaynak onayı yok", "KAYNAK_HAKKI_BILINMIYOR": "kaynak kayıtlı değil",
+    "KAYNAK_ETIKETI_UYUMSUZ": "kaynak etiketi uyumsuz", "KAYNAK_KOKENI_DOGRULANAMADI": "veri kökeni doğrulanamadı",
+    "KAYNAK_SONUC_KULLANIMI_DOGRULANAMADI": "kullanım beyanı yok", "KAYNAK_EGITIM_HAKKI_DOGRULANAMADI": "kullanım beyanı yok",
+    "KAYNAK_MODEL_KULLANIMI_DOGRULANAMADI": "kullanım beyanı yok", "MODEL_EGITIM_KOKENI_YOK": "modelin veri kökeni yok",
+    "OLASILIK_GECERSIZ": "geçersiz olasılık",
+}
+assert set(SHORT_TEXT) == set(REASONS)
+
+
+def _short(code) -> str:
+    return f"{SHORT_TEXT.get(code, code)} ({code})" if code else ""
+
+
 def display_label(e, codes) -> tuple[str, str]:
-    """(kısa durum, ayrıntı metni). Renkten bağımsız: Kullanılabilir / Doğrulanamıyor / Eksik veri / Uygun değil."""
+    """(kısa durum, ayrıntı metni). Renkten bağımsız: Kullanılabilir / Uyarılı / Doğrulanamıyor / Eksik veri / Uygun
+    değil; ardından kısa Türkçe neden ve kodu."""
     if e is None or (codes and codes[0] in ("BAGLAM_YOK", "BAGLAM_UYUSMUYOR")):
         code = codes[0] if codes else "BAGLAM_YOK"
-        return f"Doğrulanamıyor · {code}", f"{REASONS[code].text} [{code}] Gereken: {REASONS[code].fix}"
+        return f"Doğrulanamıyor · {_short(code)}", f"{REASONS[code].text} [{code}] Gereken: {REASONS[code].fix}"
     if codes:
-        return f"{e.status_label} · {e.lead_code}", e.short_text()
+        return f"{e.status_label} · {_short(e.lead_code)}", e.short_text()
     if not e.bet_ok:
-        return f"{e.status_label} · bahis adayı değil ({e.lead_code})", e.short_text()
+        return f"{e.status_label} · bahis adayı değil: {_short(e.lead_code)}", e.short_text()
     return e.status_label, e.short_text()
 
 
