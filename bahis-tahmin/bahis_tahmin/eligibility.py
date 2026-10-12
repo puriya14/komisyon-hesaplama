@@ -455,11 +455,13 @@ def expected_per_team(league: str, n_teams: int) -> int:
 # "tamlık" yüklemez.
 POST_STAGE_LEAGUES = frozenset({"SC0", "B1", "G1", "AUT", "DNK", "SWZ"})
 
-# Numaralı normal sezon turu etiketleri ("Matchday 7", "7. Spieltag"); başka etiketler ayrı aşama sayılır
+# Numaralı normal sezon turu etiketleri ("Matchday 7", "7. Spieltag", FIKSTUR-03 metin dosyalarında "Regular Season - 7"
+# ve İskoçya'nın bölünme öncesi "1st Phase - 7"); başka etiketler (ör. "Championship Round - 1") ayrı aşama sayılır
 _ROUND_PATTERNS = (
     re.compile(r"^(?:matchday|match day|round|spieltag|jornada|giornata|journee|speeldag|rodada|fecha|runde|hafta|"
                r"week|gameweek|matchweek)\s*(\d+)$"),
     re.compile(r"^(\d+)\s*\.?\s*(?:spieltag|hafta|journee|giornata|jornada|matchday|round|speeldag|runde)$"),
+    re.compile(r"^(?:regular season|1st phase|first phase)\s*-\s*(\d+)$"),
 )
 
 
@@ -1687,6 +1689,8 @@ def cached_coverages(raw_dir, leagues, today: dt.date, known_teams_by_league: di
         for season in sorted({openfootball_season(today - dt.timedelta(days=d), lg.calendar_year)
                               for d in (0, 365, 730)}):
             path = Path(raw_dir) / "openfootball" / season / f"{lg.openfootball}.json"
+            if not path.is_file():  # FIKSTUR-03: football.json'da yoksa Football.TXT dönüşümü (aynı biçim)
+                path = path.with_name(f"{lg.openfootball}.txt.json")
             if not path.is_file():
                 continue
             at = dt.datetime.fromtimestamp(path.stat().st_mtime, tz=dt.timezone.utc)

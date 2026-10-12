@@ -69,6 +69,8 @@ def main() -> int:
     for code in leagues:
         lg = LEAGUES[code]
         p = home / "raw" / "openfootball" / openfootball_season(today, lg.calendar_year) / f"{lg.openfootball}.json"
+        if not p.exists():  # FIKSTUR-03: football.json'da yoksa Football.TXT dönüşümü
+            p = p.with_name(f"{lg.openfootball}.txt.json")
         files[code] = p.exists()
         if p.exists():
             n = F.missing_played_openfootball(p.read_bytes(), m, code)

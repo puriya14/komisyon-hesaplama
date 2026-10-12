@@ -80,7 +80,10 @@ SOURCES: dict[str, SourceInfo] = {
         automated_download="İzinli (CC0).",
         model_training="İzinli (CC0).",
         redistribution="İzinli (CC0).",
-        coverage="Fikstür ve sonuçlar (yalnızca yedek fikstür kaynağı olarak kullanılır). Oran yok.",
+        coverage=("Fikstür ve sonuçlar (yalnızca yedek fikstür kaynağı olarak kullanılır). Oran yok. FIKSTUR-03: "
+                  "football.json'da güncel sezon dosyası olmayan liglerde aynı topluluğun ulusal Football.TXT "
+                  "depoları (europe, belgium, austria, deutschland, england, espana, italy, south-america; aynı CC0 "
+                  "lisans dosyası) okunur."),
         cost="Ücretsiz",
         requires_consent=False,
     ),
@@ -218,7 +221,11 @@ USE_RIGHTS: dict[str, dict] = {
                            "belge": "https://github.com/openfootball/football.json/blob/master/LICENSE.md",
                            "saglar": ("sonuc",), "koken_dogrulamasi": True,
                            "belge_denetimi": ("2026-10-10 (S4-PILOT-01): LICENSE.md, commit e6744429ee39 git nesnesi "
-                                              "670154e3538863b2 — CC0 1.0 Universal metni okundu."),
+                                              "670154e3538863b2 — CC0 1.0 Universal metni okundu. 2026-10-12 "
+                                              "(FIKSTUR-03): openfootball/europe 0bf83f88e8fe, belgium 1166d3c9c572, "
+                                              "austria 627ba1b3ebdd, deutschland c34532ab6950, england b17e8f01707d, "
+                                              "espana 09afd6cd836e, italy 48954d163c31, south-america 119fa1724b20 "
+                                              "LICENSE.md dosyaları aynı git nesnesi (670154e3538863b2)."),
                            "sinirlar": ("CC0 doğruluk garantisi vermez ve üçüncü kişi haklarını temizlemez (madde 4); "
                                         "uygulama ham veriyi dağıtmaz.")},
     # S5-GITHUB-01: depo lisansı (PDDL) asıl kaynağın (football-data.co.uk) haklarını kanıtlamaz; etiket değiştirmek

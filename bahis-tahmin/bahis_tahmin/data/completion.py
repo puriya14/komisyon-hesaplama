@@ -27,6 +27,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from .football_txt import TXT_CONVERTER, TXT_FORMAT, convert_football_txt
 from .parsers import MATCH_COLUMNS, OPENFOOTBALL_RESULT_PARSER, OPENFOOTBALL_RESULT_PARSERS, parse_openfootball_results
 from .teams import MATCHING_VERSION, resolve_teams
 
@@ -103,11 +104,13 @@ def select_rows(data: bytes, league: str, season: str, base: pd.DataFrame, after
 
 
 def build_record(league: str, season: str, of_season: str, data: bytes, cache_rel: str, after: dt.date,
-                 before: dt.date, rows: pd.DataFrame, names: dict, retrieved_at: str) -> dict:
+                 before: dt.date, rows: pd.DataFrame, names: dict, retrieved_at: str, fmt: dict | None = None) -> dict:
+    """``data``: önbellekte saklanan köken kanıtının baytları. ``fmt`` (FIKSTUR-03): kanıt Football.TXT ise
+    ``{"bicim", "donusturucu", "kaynak"}``; doğrulama dosyayı aynı dönüştürücüyle yeniden çevirir."""
     return {"surum": COMPLETION_VERSION, "league": league, "season": season, "openfootball_sezon": of_season,
             "cache_rel": cache_rel, "sha256": hashlib.sha256(data).hexdigest(), "ayristirici": OPENFOOTBALL_RESULT_PARSER,
             "eslesme_surumu": MATCHING_VERSION, "sonra": str(after), "once": str(before), "ad_eslemesi": names,
-            "rows": int(len(rows)), "rows_sha256": rows_sha256(rows), "alinma": retrieved_at}
+            "rows": int(len(rows)), "rows_sha256": rows_sha256(rows), "alinma": retrieved_at, **(fmt or {})}
 
 
 def verify_completion(matches: pd.DataFrame | None, records, raw_dir) -> tuple[bool, list[str]]:
@@ -147,6 +150,11 @@ def verify_completion(matches: pd.DataFrame | None, records, raw_dir) -> tuple[b
         if hashlib.sha256(data).hexdigest() != r["sha256"]:
             problems.append(f"{lg} {season}: dosya özeti kayıtla uyuşmuyor")
             continue
+        if r.get("bicim") is not None:  # FIKSTUR-03: kanıt Football.TXT; aynı dönüştürücüyle yeniden çevrilir
+            if r.get("bicim") != TXT_FORMAT or r.get("donusturucu") != TXT_CONVERTER:
+                problems.append(f"{lg} {season}: dosya biçimi veya dönüştürücü sürümü farklı")
+                continue
+            data = convert_football_txt(data, str(r.get("openfootball_sezon")), str(r.get("kaynak") or ""))[0]
         try:
             after, before = dt.date.fromisoformat(r["sonra"]), dt.date.fromisoformat(r["once"])
         except (TypeError, ValueError):

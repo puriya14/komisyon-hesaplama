@@ -18,6 +18,7 @@ sorumluluğundadır ve hukuki bir değerlendirme değildir. Ayrıntılar aşağ�
 | openfootball/football.json | Yedek fikstür | CC0 1.0 | İzinli | İzinli | İzinli | Onay gerekmez |
 | openfootball/football.json (sonuçlar, `openfootball-sonuc`) | Yalnızca S4 pilotu: E0 maç sonuçları | CC0 1.0 (derleyici hakları; doğruluk garantisi ve üçüncü kişi hakları kapsam dışı, madde 4) | Sabit commit, önbellekli | İzinli (köken doğrulanırsa) | İzinli; uygulama ham veriyi dağıtmaz | Onay gerekmez; köken doğrulaması zorunlu |
 | openfootball/clubs (`europe/england/eng.clubs.txt`) | Yalnızca kulüp alternatif adı kanıtı (pilot kimlik eşlemesi) | CC0 1.0 | Tek dosya, bir kez okundu | — (veri değil, kimlik kanıtı) | — | Kodda 16 ad eşlemesi |
+| openfootball ulusal metin depoları (europe, belgium, austria, deutschland, england, espana, italy, south-america; FIKSTUR-03) | football.json'da güncel sezon dosyası olmayan liglerin fikstürü, takvimi ve eksik dönemi | CC0 1.0 (lisans dosyası football.json'unkiyle aynı git nesnesi) | Tek dosya, önbellekli; GitHub profilinde sabit commit | İzinli (köken doğrulanırsa; `openfootball-tamamlama`) | İzinli; uygulama ham veriyi dağıtmaz | Onay gerekmez; Football.TXT dönüştürücüsü + köken doğrulaması |
 | The Odds API | (Planlanan) gerçek oran | Ücretli planlar; resmi koşullar doğrulanamadı | API anahtarı | Doğrulanamadı | Doğrulanamadı | **Entegre edilmedi** (ücretli, kullanıcı ücretsiz kaynak istedi) |
 
 ## Uygulanan kontroller
@@ -48,6 +49,14 @@ sorumluluğundadır ve hukuki bir değerlendirme değildir. Ayrıntılar aşağ�
   garanti etmez ve üçüncü kişilerin olası haklarını (ör. lig fikstür listeleri üzerindeki talepler) temizlemez
   (madde 4). Sonuç satırları yalnızca köken doğrulamasıyla hak kazanır (`openfootball-sonuc`, `data/provenance.py`);
   football-data/GitHub yedeği satırları bu etiketle hak kazanamaz. Ham veri depoya veya dağıtıma konmadı.
+- 2026-10-12 (FIKSTUR-03): openfootball'un ulusal Football.TXT depolarının `LICENSE.md` dosyaları sığ git klonuyla
+  okundu. Hepsi football.json'unkiyle aynı git nesnesi (670154e3538863b2), yani CC0 1.0. Okunan commit'ler: europe
+  0bf83f88e8fe, belgium 1166d3c9c572, austria 627ba1b3ebdd, deutschland c34532ab6950, england b17e8f01707d,
+  espana 09afd6cd836e, italy 48954d163c31, south-america 119fa1724b20.
+  - deutschland deposundaki `openliga/` dosyaları openligadb.de verisinden dönüştürülmüştür; CC0 derleyicinin
+    hakları içindir ve üçüncü kişi haklarını temizlemez (madde 4, yukarıdaki not).
+  - Belçika 2026-27 dosyası elle tutulmaktadır (kaynak notu: proleague.be). 8. haftadan sonra tarih içermez;
+    tarihsiz maçlar okunmaz.
 
 - VERI-01 (kişisel kullanım beyanı): Onay penceresinde ve `update --kisisel-kullanim` seçeneğinde, indirme onayından
   ayrı ikinci bir kutu vardır. Kullanıcı bu kutuyla verileri yalnızca kişisel ve ticari olmayan amaçla

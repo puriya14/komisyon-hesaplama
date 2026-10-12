@@ -182,11 +182,28 @@ _DERIVED_ALIASES: dict[str, dict[str, str]] = {
         "wsg tirol": "Tirol",
     },
 }
-for _country, _group in _DERIVED_ALIASES.items():
-    _base = ALIASES_BY_COUNTRY.setdefault(_country, {})
-    assert not set(_base) & set(_group), (_country, set(_base) & set(_group))
-    _base.update(_group)
-del _country, _group, _base
+# FIKSTUR-03: openfootball metin depolarının (Football.TXT) 2026-27 dosyalarındaki adlar. Kanıt VERI-01 ile aynı maç
+# düzeyi kural (lig, tarih ±1 gün, aynı MS [+İY] skoru, tek aday): "atiker konyaspor", "bb erzurumspor", "saint johnstone",
+# "energie cottbus" 3/3 maç; "dsc arminia bielefeld" 42/42. Yedek veri seti güncel sezonda 2-3 tur içerdiğinden
+# "amed" (2/2), "aytemiz alanyaspor" (1/1), "aris thessaloniki" (2/2), "iraklis 1908" (1/1), "ofi" (2/2) ve "volos" (2/2)
+# için ek olarak sezon kadrosu kısıtı kullanıldı: iki kaynağın 2026/27 kadrosu aynı büyüklükte (T1 18, G1 14), diğer
+# bütün adlar kanıtla eşleşmiş, kalan her ad bütün oylarıyla kalan takımlardan TEKİNE işaret ediyor ve eşleme birebir.
+# Kanıtı olmayan adlar (ör. Belçika "OH Leuven", "STVV") eklenmedi.
+_TXT_ALIASES: dict[str, dict[str, str]] = {
+    "Türkiye": {
+        "amed": "Amedspor", "atiker konyaspor": "Konyaspor", "aytemiz alanyaspor": "Alanyaspor",
+        "bb erzurumspor": "Erzurumspor",
+    },
+    "Yunanistan": {"aris thessaloniki": "Aris", "iraklis 1908": "Iraklis", "ofi": "OFI Crete", "volos": "Volos NFC"},
+    "İskoçya": {"saint johnstone": "St Johnstone"},
+    "Almanya": {"dsc arminia bielefeld": "Bielefeld", "energie cottbus": "Cottbus"},
+}
+for _extra in (_DERIVED_ALIASES, _TXT_ALIASES):
+    for _country, _group in _extra.items():
+        _base = ALIASES_BY_COUNTRY.setdefault(_country, {})
+        assert not set(_base) & set(_group), (_country, set(_base) & set(_group))
+        _base.update(_group)
+del _extra, _country, _group, _base
 
 # Geriye uyumlu düz görünüm (ülke kapsamı olmadan)
 ALIASES: dict[str, str] = {k: v for group in ALIASES_BY_COUNTRY.values() for k, v in group.items()}

@@ -53,7 +53,9 @@ metni bulunamadı. <b>Kullanıcı onayı olmadan indirilmez.</b> Model eğitimi 
 kişisel (ticari olmayan) kullanım beyanı gerekir; beyan ticari kullanım veya yeniden dağıtım hakkı vermez.</li>
 <li><a href="https://github.com/xgabora/Club-Football-Match-Data-2000-2025">Club Football Match Data (GitHub)</a> – depo MIT
 lisanslı; içerik football-data.co.uk ve ClubElo kaynaklıdır (asıl kaynağın koşulları geçerli). Kullanıcı onayı gerekir.</li>
-<li><a href="https://github.com/openfootball/football.json">openfootball/football.json</a> – CC0 (serbest); yedek fikstür kaynağı.</li>
+<li><a href="https://github.com/openfootball/football.json">openfootball/football.json</a> – CC0 (serbest); yedek fikstür kaynağı.
+football.json'da güncel sezon dosyası olmayan liglerde (ör. Süper Lig) openfootball'un aynı lisanslı ulusal metin
+depoları (<a href="https://github.com/openfootball/europe">europe</a> ve diğerleri) okunur.</li>
 </ul>
 <p>Veriler yalnızca bilgisayarınızda saklanır ve uygulama ile dağıtılmaz: <code>{home}</code></p>
 

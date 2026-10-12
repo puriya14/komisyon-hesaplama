@@ -12,7 +12,16 @@ from typing import Callable
 
 import pandas as pd
 
-from .github_kaynak import GITHUB_HOSTS, PROFILE_DEFAULT, PROFILE_GITHUB, PROFILES, REPOS, STATUS_TEXT
+from .football_txt import SKIP_REASONS, TXT_CONVERTER, TXT_FILES, TXT_FORMAT, convert_football_txt
+from .github_kaynak import (
+    GITHUB_HOSTS,
+    PROFILE_DEFAULT,
+    PROFILE_GITHUB,
+    PROFILES,
+    REPOS,
+    STATUS_TEXT,
+    TXT_REPO_SPECS,
+)
 from .leagues import LEAGUES, openfootball_season, recent_season_starts, season_code, season_label
 from .parsers import (
     FIXTURE_COLUMNS,
@@ -58,6 +67,7 @@ class UpdateReport:
     stale: int = 0  # indirme başarısız olduğu için önbellekteki ESKİ kopyası kullanılan dosya
     github: dict = field(default_factory=dict)  # GitHub profili: depo -> commit / uç durumu / dosya durumu
     completed: dict = field(default_factory=dict)  # VERI-02: lig -> openfootball ile eklenen maç sayısı
+    txt_sources: dict = field(default_factory=dict)  # FIKSTUR-03: lig -> kullanılan openfootball metin dosyası
 
     def summary(self) -> str:
         lines = [
@@ -72,6 +82,9 @@ class UpdateReport:
             lines.append(f"{self.stale} dosya güncellenemedi; önbellekteki ESKİ kopya kullanıldı (güncel sayılmaz).")
         if self.used_mirror and self.profile != PROFILE_GITHUB:
             lines.append("football-data.co.uk'a ulaşılamadığı için GitHub yedek veri seti kullanıldı.")
+        if self.txt_sources:
+            lines.append("football.json'da güncel sezon dosyası olmayan ligler için openfootball metin dosyaları "
+                         "kullanıldı (CC0): " + ", ".join(f"{k} ({v})" for k, v in self.txt_sources.items()) + ".")
         if self.completed:
             lines.append("Eksik dönem openfootball sonuçlarıyla tamamlandı (CC0; köken doğrulamalı): "
                          + ", ".join(f"{k} {v} maç" for k, v in self.completed.items()) + ".")
@@ -79,6 +92,16 @@ class UpdateReport:
             lines.append(f"{SOURCES[key].name}: kullanım koşulları onaylanmadığı için kullanılmadı.")
         lines += self.warnings
         return "\n".join(lines)
+
+
+@dataclass
+class _OFData:
+    """Bir openfootball sezon dosyası, football.json biçiminde. ``txt``: dosya Football.TXT'den dönüştürüldüyse ASIL
+    metin baytları (köken kanıtı olarak saklanan budur); ``source``: depo:yol; ``parse``: dönüştürme özeti."""
+    data: bytes
+    txt: bytes | None = None
+    source: str = ""
+    parse: object | None = None
 
 
 class DataStore:
@@ -89,6 +112,7 @@ class DataStore:
         self.fixtures = pd.DataFrame(columns=FIXTURE_COLUMNS)
         self.meta: dict = {}
         self._last_unmatched: list[dict] = []
+        self._of_memo: dict = {}
 
     # ------------------------------------------------------------------ disk
     @property
@@ -181,6 +205,7 @@ class DataStore:
         progress = progress or (lambda p, m: None)
         dl = downloader or Downloader(self.raw_dir, allowed_hosts=GITHUB_HOSTS if github else None)
         report = UpdateReport(profile=profile)
+        self._of_memo = {}  # bu güncellemede alınan openfootball sezon dosyaları (tamamlama ve fikstür aynı dosyayı kullanır)
         allowed = allowed_sources(None) if allowed is None else set(allowed)
         use_fd = "football-data" in allowed and not github
         # GitHub profilinde yedek veri seti asıl sonuç kaynağıdır (football-data kullanılmaz)
@@ -330,21 +355,75 @@ class DataStore:
         m = m.drop_duplicates(subset=["league", "date", "home", "away"], keep="first")
         return m.sort_values(["date", "league", "time", "home"], kind="mergesort").reset_index(drop=True)
 
-    def _openfootball_file(self, dl, gh, code: str, season: str, force: bool) -> bytes | None:
+    def _openfootball_file(self, dl, gh, code: str, season: str, force: bool, report=None) -> _OFData | None:
+        """Ligin openfootball sezon dosyası (football.json biçiminde). football.json'da yoksa (FIKSTUR-03) ligin
+        openfootball metin deposundaki Football.TXT dosyası dönüştürülür. Aynı güncellemede bir kez alınır."""
+        key = (code, season)
+        if key in self._of_memo:
+            return self._of_memo[key]
         lg = LEAGUES[code]
+        out = None
         try:
             if gh is not None:
-                return gh.get("openfootball/football.json", f"{season}/{lg.openfootball}.json")
-            return dl.get(f"{OPENFOOTBALL_BASE}/{season}/{lg.openfootball}.json",
-                          f"openfootball/{season}/{lg.openfootball}.json", 6.0, force)
+                data = gh.get("openfootball/football.json", f"{season}/{lg.openfootball}.json")
+            else:
+                data = dl.get(f"{OPENFOOTBALL_BASE}/{season}/{lg.openfootball}.json",
+                              f"openfootball/{season}/{lg.openfootball}.json", 6.0, force)
+            out = _OFData(data)
+            self._txt_json_path(code, season).unlink(missing_ok=True)  # asıl dosya varken eski dönüşüm kullanılmaz
         except (DownloadError, _GitHubUnavailable):
-            return None
+            out = self._openfootball_txt(dl, gh, code, season, force, report)
+        self._of_memo[key] = out
+        return out
+
+    def _txt_json_path(self, code: str, season: str) -> Path:
+        """Football.TXT dönüşümünün yazıldığı yer (uygunluk kontrolü takvimi buradan okur; ``cached_coverages``)."""
+        return self.raw_dir / "openfootball" / season / f"{LEAGUES[code].openfootball}.txt.json"
+
+    def _openfootball_txt(self, dl, gh, code: str, season: str, force: bool, report=None) -> _OFData | None:
+        lg = LEAGUES[code]
+        for f in TXT_FILES.get(code, ()):
+            path = f.resolve(season)
+            try:
+                if gh is not None:
+                    raw = gh.get(f.repo, path)
+                else:
+                    raw = dl.get(f.url(season), f"openfootball_txt/{f.repo.split('/')[-1]}/{path}", 6.0, force)
+            except (DownloadError, _GitHubUnavailable):
+                continue
+            data, parse = convert_football_txt(raw, season, f.label(season))
+            if not parse.matches:
+                if report is not None:
+                    report.warnings.append(f"{lg.label}: {f.label(season)} okunamadı (maç bulunamadı); kullanılmadı.")
+                continue
+            out_path = self._txt_json_path(code, season)
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = out_path.with_name(out_path.name + ".part")
+            tmp.write_bytes(data)
+            tmp.replace(out_path)
+            if report is not None:
+                report.txt_sources[code] = f.label(season)
+                skipped = {k: v for k, v in parse.skipped.items() if k != "NOT_ISARETI"}
+                if skipped:
+                    report.warnings.append(
+                        f"{lg.label}: openfootball metin dosyasında {sum(skipped.values())} satır okunmadı ("
+                        + "; ".join(f"{v} × {SKIP_REASONS.get(k, k)}" for k, v in sorted(skipped.items()))
+                        + "). Bu maçlar uydurulmadı.")
+            return _OFData(data, raw, f.label(season), parse)
+        return None
 
     def _complete_from_openfootball(self, dl, gh, leagues, matches, today, report, force):
         """Ligin depodaki son maç gününden sonra oynanmış, depoda olmayan maçları openfootball sezon dosyasından ekler
         (``data.completion``). Döner: (veri, köken kayıtları)."""
         from ..eligibility import _norm_season
         from .completion import COMPLETION_LABEL, build_record, select_rows
+
+        def proof_of(of: _OFData, lg, of_season: str):
+            """(kopya yolu, köken kanıtı baytları, biçim alanları): Football.TXT ise ASIL metin dosyası saklanır."""
+            if of.txt is None:
+                return f"tamamlama/{of_season}/{lg.openfootball}.json", of.data, None
+            return (f"tamamlama/{of_season}/{lg.openfootball}.txt", of.txt,
+                    {"bicim": TXT_FORMAT, "donusturucu": TXT_CONVERTER, "kaynak": of.source})
 
         base = matches[matches["source"].astype(str) != COMPLETION_LABEL]
         added, records = [], []
@@ -362,18 +441,18 @@ class DataStore:
                 seasons.insert(0, prev)
             n_lg = 0
             for of_season in seasons:
-                data = self._openfootball_file(dl, gh, code, of_season, force)
-                if data is None:
+                of = self._openfootball_file(dl, gh, code, of_season, force, report)
+                if of is None:
                     continue
                 season = _norm_season(of_season, lg.calendar_year)
-                rows, names = select_rows(data, code, season, base, last, today)
+                rows, names = select_rows(of.data, code, season, base, last, today)
                 if rows.empty:
                     continue
-                rel = f"tamamlama/{of_season}/{lg.openfootball}.json"
+                rel, proof, fmt = proof_of(of, lg, of_season)
                 path = self.raw_dir / rel
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_bytes(data)  # kökenin kanıtı: kullanılan baytların birebir kopyası
-                records.append(build_record(code, season, of_season, data, rel, last, today, rows, names, now))
+                path.write_bytes(proof)  # kökenin kanıtı: kullanılan baytların birebir kopyası
+                records.append(build_record(code, season, of_season, proof, rel, last, today, rows, names, now, fmt))
                 added.append(rows)
                 n_lg += len(rows)
             if n_lg:
@@ -404,6 +483,8 @@ class DataStore:
             for col in ("home", "away"):
                 fd[col] = [canon.get((_country(lg), spelling_key(t)), t) for lg, t in zip(fd["league"], fd[col])]
 
+        from ..eligibility import PENDING_GRACE_DAYS
+
         extra = []
         for code in leagues if "openfootball" in allowed else ():
             lg = LEAGUES[code]
@@ -414,21 +495,27 @@ class DataStore:
             if not known:
                 continue
             season = openfootball_season(today, lg.calendar_year)
-            url = f"{OPENFOOTBALL_BASE}/{season}/{lg.openfootball}.json"
-            try:
-                if gh is not None:
-                    data = gh.get("openfootball/football.json", f"{season}/{lg.openfootball}.json")
-                else:
-                    data = dl.get(url, f"openfootball/{season}/{lg.openfootball}.json", 6.0, force)
-            except (DownloadError, _GitHubUnavailable):
+            src = self._openfootball_file(dl, gh, code, season, force, report)
+            if src is None:
                 continue
-            of = parse_openfootball(data, code, keep_provider_id=True)
-            of = of[(of["date"] >= lo) & (of["date"] <= hi)]
+            data = src.data
+            allof = parse_openfootball(data, code, keep_provider_id=True)
+            of = allof[(allof["date"] >= lo) & (allof["date"] <= hi)]
             if pd.notna(last_fd):
                 of = of[of["date"] > last_fd]
             if of.empty:
                 continue
             of = of.copy()
+            # Kaynağın kendisi geride mi: tarihi (sonuç gecikme payından da) geçmiş, sonucu ne kaynakta ne veride olan
+            # maçlar. Bu durumda kaynağın yaklaşan maç tarihleri de güncellenmemiş olabilir.
+            last_known = matches.loc[matches["league"] == code, "date"].max()
+            stale = allof[(allof["date"] < lo - pd.Timedelta(days=PENDING_GRACE_DAYS))
+                          & ((allof["date"] > last_known) if pd.notna(last_known) else True)]
+            if len(stale) >= 3:
+                report.warnings.append(
+                    f"{lg.label}: kaynak takviminde tarihi geçmiş ama sonucu hiçbir kaynakta olmayan {len(stale)} maç var "
+                    f"(en eskisi {pd.Timestamp(stale['date'].min()):%d.%m.%Y}); kaynak geride, yaklaşan maçların "
+                    "tarihleri kesin olmayabilir.")
             # Kimlik bağlamı: dosyadaki bütün adlar (ters çakışma denetimi) + ligin son iki sezonundaki takımlar.
             # Yalnızca KESİN kimlik eşleşir; belirsiz/benzer adlar eşleşmemiş olarak ham adlarıyla saklanır.
             res = resolve_teams(openfootball_team_names(data) + list(of["home"]) + list(of["away"]), known, code,
@@ -460,6 +547,10 @@ class DataStore:
                         "eslesme_surumu": MATCHING_VERSION,
                         "oneriler": {"ev": list(h.suggestions or h.candidates),
                                      "deplasman": list(a.suggestions or a.candidates)}})
+            no_time = int((of["time"].fillna("").astype(str) == "").sum())
+            if no_time:
+                report.warnings.append(f"{lg.label}: {no_time} yaklaşan maçın saati kaynakta yok (tarih kesinleşmemiş "
+                                       "olabilir; 'saat bilinmiyor' gösterilir).")
             extra.append(of[~unmatched])
         fx = pd.concat([fd] + extra, ignore_index=True) if extra else fd
         if fx.empty:
@@ -580,7 +671,7 @@ class _GitHubFiles:
     def get(self, repo: str, path: str) -> bytes:
         from .github_kaynak import FETCHED, STALE_COPY, GitHubError
 
-        spec = REPOS[repo]
+        spec = REPOS.get(repo) or TXT_REPO_SPECS[repo]
         try:
             if repo not in self.commits:
                 self.commits[repo] = self._cache.resolve(self.transport, spec)
@@ -605,7 +696,9 @@ class _GitHubFiles:
                     commit, ref_status, note = old["commit"], STALE_COPY, f"dosya alınamadı ({e.kind}); {note}"
                     break
             if cf is None:
-                self.report.github[repo] = {"commit": commit, "durum": e.kind, "aciklama": f"alınamadı: {e}"}
+                # Depoda olmayan tek dosya (ör. ligin o sezon dosyası yok), aynı depodan alınmış dosyaların durumunu ezmez
+                if not (e.kind == "BULUNAMADI" and repo in self.report.github):
+                    self.report.github[repo] = {"commit": commit, "durum": e.kind, "aciklama": f"alınamadı: {e}"}
                 raise _GitHubUnavailable(str(e)) from e
         status = STALE_COPY if ref_status == STALE_COPY else cf.status
         if cf.status == FETCHED:

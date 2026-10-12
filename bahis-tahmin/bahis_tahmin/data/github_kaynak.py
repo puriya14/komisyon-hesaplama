@@ -72,6 +72,19 @@ REPOS: dict[str, RepoSpec] = {
 }
 
 
+def _txt_repo_specs() -> dict[str, RepoSpec]:
+    from .football_txt import TXT_REPOS
+
+    return {r: RepoSpec(r, "master", "openfootball-sonuc", "openfootball-sonuc",
+                        "openfootball topluluk derlemesi (CC0; Football.TXT metin deposu)") for r in TXT_REPOS}
+
+
+# FIKSTUR-03: openfootball'un ulusal Football.TXT depoları (football.json bu depolardan derlenir; lisans dosyaları
+# football.json'unkiyle aynı git nesnesi, CC0 1.0). Yalnızca football.json'da güncel sezon dosyası olmayan liglerin
+# fikstür, takvim ve eksik dönem yedeği olarak okunur; tarihsel arşive (``REPOS``) girmez.
+TXT_REPO_SPECS: dict[str, RepoSpec] = _txt_repo_specs()
+
+
 class GitHubError(Exception):
     """GitHub erişim hatası. ``kind``: IZINSIZ_ADRES, YONLENDIRME_DISARI, BULUNAMADI, KOTA, HTTP, AG, BICIM,
     OZET_UYUSMAZ, CEVRIMDISI."""

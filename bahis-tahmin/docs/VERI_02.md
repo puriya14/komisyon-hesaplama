@@ -74,7 +74,8 @@ ligde 10 maça ulaşınca uyarı kendiliğinden kalkar.
 
 ## Bilinen sınırlar
 
-- Tamamlama yalnızca openfootball dosyası olan liglerde yapılır. 2026-27 için bu ligler: E0, E1, D1, SP1, I1, F1, N1,
-  P1. Bu liglerin dışındaki liglerde yaklaşan maç da yalnızca football-data'dan gelir.
+- Tamamlama yalnızca openfootball dosyası olan liglerde yapılır. 2026-27 için football.json'daki ligler: E0, E1, D1,
+  SP1, I1, F1, N1, P1. FIKSTUR-03'ten sonra openfootball metin depolarındaki T1, SC0, G1, D2 (ve dosya çıkarsa
+  diğerleri) de kullanılır ([`FIKSTUR_03.md`](FIKSTUR_03.md)).
 - openfootball'un kendisi de bir iki gün geride olabilir; bu durum notta yazılır.
 - Tamamlanan maçlarda bahis oranı yoktur. Model bu maçları sonuç olarak kullanır, piyasa bilgisi olarak kullanmaz.

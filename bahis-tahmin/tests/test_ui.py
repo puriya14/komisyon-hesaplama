@@ -13,6 +13,12 @@ if sys.platform != "win32" and not os.environ.get("DISPLAY"):
 QtWidgets = pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
 
 
+def _istanbul_today() -> pd.Timestamp:
+    from bahis_tahmin.timeutil import ISTANBUL
+
+    return pd.Timestamp(dt.datetime.now(ISTANBUL).date())
+
+
 @pytest.fixture(scope="module")
 def app():
     from bahis_tahmin.ui.theme import apply_theme
@@ -31,7 +37,7 @@ def window(app, synthetic, trained_engine, tmp_home):
     st = DataStore(tmp_home)
     st.matches = synthetic
     fx = synthetic.tail(5)[["league", "date", "time", "home", "away", "o_h", "o_d", "o_a", "o_o25", "o_u25", "source"]].copy()
-    fx["date"] = pd.Timestamp.today().normalize()
+    fx["date"] = _istanbul_today()  # uygulamanın maç günü İstanbul günüdür (UTC akşamı yerel tarihle çakışmasın)
     st.fixtures = fx.reindex(columns=st.fixtures.columns)
     win.ctl.store = st
     win.ctl.engine = trained_engine
@@ -130,7 +136,7 @@ def test_unmatched_only_fixtures_are_listed_with_reasons(app, window):
 
     ctl = window.ctl
     ctl.store.fixtures = ctl.store.fixtures.iloc[0:0]
-    ctl.store.meta["eslesmeyen_fikstur"] = [{"league": "T1", "date": str(pd.Timestamp.today().date()), "time": "",
+    ctl.store.meta["eslesmeyen_fikstur"] = [{"league": "T1", "date": str(_istanbul_today().date()), "time": "",
                                              "raw_home": "Qwerty Kulubu", "raw_away": "Zyx Gucu",
                                              "source": "openfootball"}]
     ctl.refresh_predictions()
