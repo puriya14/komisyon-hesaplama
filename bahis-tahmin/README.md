@@ -72,6 +72,8 @@ Kayıtlı araştırmalar (S6; betimleyici, ayrı çalışma alanı): `calisma-ol
 karşılaştırır; çalıştırmaları veri ve kod sürümüyle saklar. Ayrıntılar: [`docs/S6_CALISMA.md`](docs/S6_CALISMA.md).
 Salt okunur `calisma-olay-karsilastir`, aynı takımın birden çok geçmiş olayının önce/sonra pencerelerini yan yana
 gösterir. Olaylar saklı bir çalıştırma grubundan veya açık bir listeden gelir. Ayrıntılar: [`docs/S6_OLAY.md`](docs/S6_OLAY.md).
+Arayüzde (S7): "Araştırma Çalışma Alanı" sayfası araştırma oluşturma/revizyon, önizleme, çalıştırma ve saklı sonuç,
+grup karşılaştırması, olay matrisi ve notları terminal olmadan sunar. Ayrıntılar: [`docs/S7_UI.md`](docs/S7_UI.md).
 
 ## Gol pazarları kısaca
 

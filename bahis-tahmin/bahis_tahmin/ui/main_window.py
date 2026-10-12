@@ -29,6 +29,7 @@ from .pages.sequences import SequencesPage
 from .pages.match import MatchPage
 from .pages.predictions import PredictionsPage
 from .pages.ratings import RatingsPage
+from .pages.research import ResearchPage
 from .pages.settings import SettingsPage
 
 NAV = [
@@ -38,6 +39,7 @@ NAV = [
     ("Maç Analizi", MatchPage),
     ("Gol Pazarları", GoalsPage),
     ("Dizi Araştırması", SequencesPage),
+    ("Araştırma Çalışma Alanı", ResearchPage),
     ("Güç Sıralaması", RatingsPage),
     ("Geriye Dönük Test", BacktestPage),
     ("Veri", DataPage),
@@ -119,7 +121,8 @@ class MainWindow(QMainWindow):
     def _busy(self, busy: bool) -> None:
         self.progress.setVisible(busy)
         if not busy:
-            QTimer.singleShot(4000, lambda: self.status.setText("Hazır") if not self.ctl.busy else None)
+            # bağlam nesnesiyle: pencere silinirse zamanlayıcı iptal olur (silinen etikete dokunmaz)
+            QTimer.singleShot(4000, self.status, lambda: self.status.setText("Hazır") if not self.ctl.busy else None)
 
     def _message(self, kind: str, text: str) -> None:
         if kind == "error":
@@ -138,6 +141,11 @@ class MainWindow(QMainWindow):
             self.status.setToolTip(text)
 
     def closeEvent(self, ev) -> None:
+        for page in self.pages:  # kaydedilmemiş taslak sessizce kaybolmaz (Kaydet / Değişiklikleri bırak / Vazgeç)
+            confirm = getattr(page, "confirm_close", None)
+            if confirm is not None and not confirm():
+                ev.ignore()
+                return
         if self.ctl.busy and not self.ctl.busy_critical:
             # salt okuma işi (ör. dizi tablosu): sormadan, iş parçacığı bitene kadar gizlenip beklenir
             self.hide()

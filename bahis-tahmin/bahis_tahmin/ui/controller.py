@@ -146,6 +146,11 @@ class AppController(QObject):
         task.start()
         return True
 
+    def run_job(self, fn: Callable, on_done: Callable[[object], None], label: str, critical: bool = True) -> bool:
+        """Sayfalar için aynı tek görev yöneticisi: ``fn(progress)`` arka planda, ``on_done(sonuç)`` ana iş
+        parçacığında. Başka iş sürüyorsa başlatmaz (False). ``critical``: yazan iş (kapanışta onay sorulur)."""
+        return self._run(fn, on_done, label, critical=critical)
+
     def _finish(self, task: Task, on_done, res) -> None:
         task.wait()
         self._task = None
