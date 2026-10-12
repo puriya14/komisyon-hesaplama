@@ -60,14 +60,20 @@ def _progress(p: int, msg: str) -> None:
     print(f"[{p:3d}%] {msg}", flush=True)
 
 
-def _eligibility_ctx(st, eng):
+def _eligibility_ctx(st, eng, strict: bool = False):
     """Ortak veri uygunluk bağlamı (veri deposu + motor durumu + önbellekteki kaynak takvimleri + kayıtlı haklar).
 
-    Kullanıcı onayı yalnızca kaynak ERİŞİMİNİ kapsar; komut satırında uygunluğu atlatan bir bayrak yoktur."""
+    Kullanıcı onayı yalnızca kaynak ERİŞİMİNİ kapsar; hak kapsamı belge veya ayarlarda kayıtlı kişisel kullanım
+    beyanıyla (VERI-01) açılır. Veri denetimi modu ayarlardan okunur. ``strict``: ileriye dönük ölçüm kaydı gibi
+    v2 protokolüne bağlı yollar için sıkı mod ve beyansız haklar. Komut satırında uygunluğu atlatan bir bayrak yoktur."""
     from .eligibility import build_context
     from .timeutil import ISTANBUL
 
-    return build_context(st, eng, Settings.load().source_consent, today=_now_utc().astimezone(ISTANBUL).date())
+    s = Settings.load()
+    today = _now_utc().astimezone(ISTANBUL).date()
+    if strict:
+        return build_context(st, eng, s.source_consent, today=today)
+    return build_context(st, eng, s.source_consent, today=today, declarations=s.declarations(), mode=s.veri_denetimi)
 
 
 def _now_utc():
@@ -82,10 +88,20 @@ def _training_blocked(st) -> bool:
     from .data.provenance import verified_labels
     from .eligibility import reason_texts, training_rights_codes
 
-    codes = training_rights_codes(st.matches, Settings.load().source_consent, verified_labels(st))
+    from .data.source_registry import missing_declarations
+
+    s = Settings.load()
+    codes = training_rights_codes(st.matches, s.source_consent, verified_labels(st), s.declarations())
     if codes:
         print("Model eğitimi yapılmadı (veri kaynağının kullanım kapsamı doğrulanmadı): " + reason_texts(codes),
               file=sys.stderr)
+        miss = missing_declarations(set(st.matches["source"].dropna().astype(str)), s.source_consent,
+                                    s.kisisel_kullanim) if "source" in st.matches else []
+        if miss:
+            acc = [k for k in miss if k not in s.source_consent]
+            print("Kişisel (ticari olmayan) kullanım beyanı için: python -m bahis_tahmin update"
+                  + (f" --accept-terms {','.join(acc)}" if acc else "") + f" --kisisel-kullanim {','.join(miss)}",
+                  file=sys.stderr)
     return bool(codes)
 
 
@@ -113,6 +129,33 @@ def cmd_update(a) -> int:
                 return 2
             print(f"{SOURCES[key].name} kullanım koşulları onaylandı ({SOURCES[key].terms_url}).")
             s.source_consent[key] = dt.datetime.now().isoformat(timespec="seconds")
+    if a.kisisel_kullanim_geri_al:
+        for key in a.kisisel_kullanim_geri_al.split(","):
+            if s.kisisel_kullanim.pop(key.strip(), None) is not None:
+                print(f"{key.strip()}: kişisel kullanım beyanı geri alındı.")
+    if a.kisisel_kullanim:
+        import datetime as dt
+
+        from .data.source_registry import CONSENT_SCHEMA, DECLARABLE, SOURCES
+
+        keys = [k.strip() for k in a.kisisel_kullanim.split(",") if k.strip()]
+        for key in keys:  # önce hepsi denetlenir: hatalı bir anahtar varsa hiçbir beyan kaydedilmez
+            if key not in DECLARABLE:
+                print(f"Kişisel kullanım beyanı verilemeyen kaynak: {key} (beyan verilebilenler: "
+                      f"{', '.join(DECLARABLE)})", file=sys.stderr)
+                return 2
+            if key not in s.source_consent:
+                print(f"{key}: önce indirme onayı gerekir (--accept-terms {key}).", file=sys.stderr)
+                return 2
+        for key in keys:
+            s.kisisel_kullanim[key] = dt.datetime.now().isoformat(timespec="seconds")
+            print(f"{SOURCES[key].name}: kişisel kullanım beyanı kaydedildi. Verileri yalnızca kişisel ve ticari "
+                  "olmayan amaçla (kendi analiziniz, bu bilgisayarda model eğitimi ve tahmin) kullanacağınızı, "
+                  "paylaşmayacağınızı ve yeniden dağıtmayacağınızı beyan ettiniz; kaynağın koşulları geçerlidir "
+                  f"({SOURCES[key].terms_url}).")
+        s.onay_surumu = CONSENT_SCHEMA
+    if a.veri_denetimi:
+        s.veri_denetimi = a.veri_denetimi
     if a.profil:
         s.data_profile = a.profil
     s.save()
@@ -352,7 +395,7 @@ def cmd_goal_forecast_log(a) -> int:
         print(f"Gol modeli yüklenemedi ({err}); tüm adaylar MODEL_YOK nedeniyle olasılıksız kaydedilir.")
     led_path = app_home() / LEDGER_FILE
     led = Ledger(led_path) if (a.uygula or led_path.exists()) else None
-    recs = build_forecast_records(eng, st.fixtures, st.matches, ledger=led, ctx=_eligibility_ctx(st, eng),
+    recs = build_forecast_records(eng, st.fixtures, st.matches, ledger=led, ctx=_eligibility_ctx(st, eng, strict=True),
                                   unmatched=st.unmatched_fixtures, source_rights=rights)
     ok = [r for r in recs if r["decision_status"] == "TAHMIN"]
     print(f"Protokol {ACTIVE_PROTOCOL}: {len(recs)} aday kayıt ({len(ok)} tahmin, {len(recs) - len(ok)} tahmin yok).")
@@ -1125,6 +1168,12 @@ def main(argv: list[str] | None = None) -> int:
     u.add_argument("--force", action="store_true")
     u.add_argument("--no-mirror", action="store_true", help="GitHub yedek veri setini kullanma")
     u.add_argument("--accept-terms", help="kullanım koşullarını okuyup onayladığınız kaynaklar, ör. football-data")
+    u.add_argument("--kisisel-kullanim", metavar="KAYNAKLAR",
+                   help="kişisel, ticari olmayan kullanım beyanı verdiğiniz kaynaklar (indirme onayı da gerekir), "
+                        "ör. football-data,github-mirror; beyan olmadan bu verilerle model eğitilmez")
+    u.add_argument("--kisisel-kullanim-geri-al", metavar="KAYNAKLAR", help="kişisel kullanım beyanını geri al")
+    u.add_argument("--veri-denetimi", choices=("standart", "siki"),
+                   help="veri denetimi modu (ayar olarak kaydedilir; varsayılan standart)")
     u.add_argument("--profil", choices=["varsayilan", "github"],
                    help="veri profili (kaydedilir): github = yalnızca seçili GitHub depoları, football-data yok")
     u.set_defaults(fn=cmd_update)

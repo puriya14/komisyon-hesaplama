@@ -12,8 +12,15 @@ Güncellik (``freshness``):
 
 * ``VERIFIED_CURRENT`` — İlgili kapsamın güncelliği kanıtla doğrulandı.
 * ``KNOWN_STALE`` — Tamamlanmış ve erişilebilir olması beklenen maçların eksik olduğu biliniyor.
-* ``UNKNOWN`` — Doğrulamaya yeterli kanıt yok. UNKNOWN hiçbir zaman uygun sayılmaz; kontrol çağrılmadıysa veya bağlam
-  verilmediyse sonuç uygun değildir (``BAGLAM_YOK``).
+* ``UNKNOWN`` — Doğrulamaya yeterli kanıt yok. Sıkı modda (``siki``, v2) UNKNOWN hiçbir zaman uygun sayılmaz; kontrol
+  çağrılmadıysa veya bağlam verilmediyse sonuç uygun değildir (``BAGLAM_YOK``).
+
+Veri denetimi modu (VERI-01, ``POLICY_MODES``): ``siki`` v2 kurallarının aynısıdır (kütüphane varsayılanı; ileriye
+dönük ölçüm kaydı ve pilot bu modu kullanır). ``standart`` (uygulama ve CLI varsayılanı) neden kodlarını ve güncellik
+sonucunu değiştirmez, yalnızca kodların engel düzeyini ``STANDART_LEVELS`` ile belirler: yapısal engeller (model/
+takım/kimlik/zaman/hak) tahmini engeller; bilinen eksik veri, çelişki, az geçmiş ve eski model durumu yalnızca bahis
+adayını engeller (tahmin "Uyarılı" gösterilir); yalnızca kanıt eksikliği (bağımsız takvimle güncellik
+doğrulanamadı) engel değildir ve açıklamada yazılır.
 
 Kanıt zinciri (kontrol edilen veri, tahminde KULLANILAN veriye bağlanır):
 
@@ -64,7 +71,10 @@ belgeyle doğrulanmış ve modelin eğitim verisi kökeni kayıtlı olmalıdır;
 olasılıksız kayıt ve kaynak kapsamı açıklaması gösterilir). Gerçek veriyle model eğitimi ``training_rights_codes``
 ile aynı kayıttan denetlenir. Yeniden dağıtım ve ticari kullanım bu işlemler için gerekmez ve engel değildir.
 Kullanıcı onayı yalnızca erişimi kapsar; arayüz onayı, komut satırı bayrağı veya kaynak etiketi bu alanları
-doğrulanmış yapamaz (etiket, kaynağın gerçekten sağladığı veri türüyle de denetlenir).
+doğrulanmış yapamaz (etiket, kaynağın gerçekten sağladığı veri türüyle de denetlenir). VERI-01: kullanıcı, indirme
+onayı verdiği ve kaydında ``kisisel_beyan`` alanları bulunan kaynak için ayrıca açık bir kişisel (ticari olmayan)
+kullanım beyanı verebilir; beyan bu alanları belge yerine kullanıcının sorumluluğunda "KULLANICI_BEYANI" yapar
+(``rights_from_registry``). Belge durumu, ticari kullanım ve yeniden dağıtım değişmez.
 
 Bu modül olasılık hesaplamaz ve modelin matematiğini değiştirmez.
 """
@@ -87,6 +97,10 @@ from .data.teams import MATCHING_VERSION
 from .timeutil import ISTANBUL
 
 POLICY_VERSION = "veri-uygunluk-v2"  # v1 (S3-GATE-01) sonuçları karar denetiminde bu sürümle eşleşmez
+# VERI-01: veri denetimi modu. "siki" = v2 kuralları aynen (kütüphane varsayılanı; ileriye dönük ölçüm protokolü v3 ve
+# pilot buna bağlıdır). "standart" = uygulama/CLI varsayılanı (bkz. STANDART_LEVELS).
+POLICY_MODES = ("standart", "siki")
+POLICY_VERSIONS = {"siki": POLICY_VERSION, "standart": "veri-uygunluk-v3-standart"}
 
 VERIFIED_CURRENT = "VERIFIED_CURRENT"
 KNOWN_STALE = "KNOWN_STALE"
@@ -120,6 +134,11 @@ class Reason:
     freshness: str | None
     fix: str
 
+
+_BEYAN_FIX = ("Veri sayfasındaki 'Kaynak koşulları ve onaylar...' penceresinde bu kaynak için kişisel (ticari "
+              "olmayan) kullanım beyanı verin (komut satırı: update --kisisel-kullanim KAYNAK); ya da kaynağın lisans "
+              "belgesini kaynak kaydına ekleyin. İndirme onayı tek başına yeterli değildir. İleriye dönük ölçüm kaydı "
+              "(protokol v3) ve pilot beyanı kabul etmez; yalnızca belgeli kaynakla çalışır.")
 
 REASONS: dict[str, Reason] = {
     "BAGLAM_YOK": Reason("Veri uygunluk kontrolü yapılmadı veya gerekli bağlam verilmedi.", "tahmin", UNKNOWN,
@@ -202,15 +221,14 @@ REASONS: dict[str, Reason] = {
         "Verinin kaynak etiketi, bu kaynağın uygulamada sağladığı veri türüyle uyuşmuyor (etiketle hak aşılamaz).",
         "tahmin", None, "Veriyi kaynağın kendi adaptörüyle yeniden indirin."),
     "KAYNAK_SONUC_KULLANIMI_DOGRULANAMADI": Reason(
-        "Sonuç verisinin kaynağında analizde kullanım hakkı belgeyle doğrulanmadı; tahmin ve bahis adayı üretilmez.",
-        "tahmin", None, "Kaynağın lisans/izin belgesini kaynak kaydına ekleyin (uygulamadaki onay yeterli değildir)."),
+        "Sonuç verisinin kaynağında analizde kullanım hakkı belgeyle doğrulanmadı (bu işlemde geçerli bir kişisel "
+        "kullanım beyanı da yok); tahmin ve bahis adayı üretilmez.", "tahmin", None, _BEYAN_FIX),
     "KAYNAK_EGITIM_HAKKI_DOGRULANAMADI": Reason(
-        "Modelin eğitildiği verinin kaynağında model eğitimi hakkı belgeyle doğrulanmadı; tahmin ve bahis adayı "
-        "üretilmez.", "tahmin", None,
-        "Kaynağın lisans/izin belgesini kaynak kaydına ekleyin (uygulamadaki onay yeterli değildir)."),
+        "Modelin eğitildiği verinin kaynağında model eğitimi hakkı belgeyle doğrulanmadı (bu işlemde geçerli bir "
+        "kişisel kullanım beyanı da yok); tahmin ve bahis adayı üretilmez.", "tahmin", None, _BEYAN_FIX),
     "KAYNAK_MODEL_KULLANIMI_DOGRULANAMADI": Reason(
-        "Bu veriyle eğitilmiş modelin kullanım hakkı belgeyle doğrulanmadı; tahmin ve bahis adayı üretilmez.",
-        "tahmin", None, "Kaynağın lisans/izin belgesini kaynak kaydına ekleyin (uygulamadaki onay yeterli değildir)."),
+        "Bu veriyle eğitilmiş modelin kullanım hakkı belgeyle doğrulanmadı (bu işlemde geçerli bir kişisel kullanım "
+        "beyanı da yok); tahmin ve bahis adayı üretilmez.", "tahmin", None, _BEYAN_FIX),
     "KAYNAK_KOKENI_DOGRULANAMADI": Reason(
         "Sonuç satırlarının gerçekten kayıtlı kaynak dosyasından geldiği doğrulanamadı (köken kaydı, dosya özeti veya "
         "yeniden ayrıştırma uyuşmuyor); etiket tek başına hak vermez.", "tahmin", None,
@@ -237,16 +255,54 @@ LEAD_ORDER = (
 )
 
 
-def lead_reason(codes) -> str | None:
-    """Engelleyen kodlardan kullanıcıya gösterilecek birincil neden (bilgi kodları hariç)."""
-    blocking = [c for c in codes if REASONS[c].blocks != "yok"]
+# VERI-01 "standart" modunda her kodun engel düzeyi (siki modda REASONS[c].blocks aynen kullanılır).
+#   tahmin: yapısal engel — tahmin kurulamaz veya yanlış maça/takıma/ana ait olur ya da hak yoktur;
+#   bahis : bilinen eksik/çelişkili veri, az geçmiş, eski model durumu — tahmin uyarıyla gösterilir, bahis adayı olmaz;
+#   yok   : yalnızca kanıt eksikliği (bağımsız takvimle güncellik doğrulanamadı) — bilinen bir sorun yok; tahmin ve
+#           değer hesabı engellenmez, güncellik açıklamada yazılır.
+# Güncellik sonucu (freshness) ve neden kodları her iki modda aynıdır (gerçeği yazar); yalnızca engel düzeyi değişir.
+STANDART_LEVELS = {
+    "BAGLAM_YOK": "tahmin", "BAGLAM_UYUSMUYOR": "tahmin", "MAC_GECMISTE": "tahmin", "MODEL_YOK": "tahmin",
+    "LIG_MODEL_KAPSAMI_DISI": "tahmin", "TAKIM_ESLESMEDI": "tahmin", "TAKIM_ESLESMESI_DOGRULANAMADI": "tahmin",
+    "TAKIM_DURUMDA_YOK": "tahmin", "DURUM_KARAR_ANINDAN_SONRA": "tahmin",
+    "DURUM_DEPODAN_GERIDE": "bahis", "DEPODA_EKSIK_MAC": "bahis", "DEPODA_GECERSIZ_SKOR": "bahis",
+    "DURUM_KOKENI_YOK": "bahis", "DURUM_VERIYLE_UYUSMUYOR": "bahis", "LIG_DURUMU_EKSIK": "bahis",
+    "LIG_DURUMU_KISMEN_EKSIK": "yok", "LIG_DURUMU_BELIRSIZ": "bahis",
+    "KAYNAK_KAPSAMI_YOK": "yok", "KAYNAK_KAPSAMI_KISMI": "yok", "KAYNAK_KARAR_ANINDAN_SONRA": "yok",
+    "KAYNAK_ARALIK_DISI": "yok", "KAYNAK_DURUMU_BELIRSIZ": "bahis", "KAYNAK_ESLESME_BELIRSIZ": "bahis",
+    "KAYNAK_DEPO_CELISKISI": "bahis", "KAYNAK_ESLESMEMIS_ADLAR": "yok",
+    "GEREKLI_ALAN_EKSIK": "tahmin", "TAKIM_GECMISI_YETERSIZ": "bahis", "LIG_IY_ORANI_DUSUK": "bahis",
+    "KAYNAK_ERISIM_IZNI_YOK": "tahmin", "KAYNAK_HAKKI_BILINMIYOR": "tahmin", "KAYNAK_ETIKETI_UYUMSUZ": "tahmin",
+    "KAYNAK_KOKENI_DOGRULANAMADI": "tahmin", "KAYNAK_SONUC_KULLANIMI_DOGRULANAMADI": "tahmin",
+    "KAYNAK_EGITIM_HAKKI_DOGRULANAMADI": "tahmin", "KAYNAK_MODEL_KULLANIMI_DOGRULANAMADI": "tahmin",
+    "MODEL_EGITIM_KOKENI_YOK": "tahmin", "OLASILIK_GECERSIZ": "tahmin",
+}
+LEVELS = {"siki": {c: r.blocks for c, r in REASONS.items()}, "standart": STANDART_LEVELS}
+assert all(set(v) == set(REASONS) for v in LEVELS.values())
+_RANK = {"yok": 0, "bahis": 1, "tahmin": 2}
+assert all(_RANK[STANDART_LEVELS[c]] <= _RANK[r.blocks] for c, r in REASONS.items())  # standart siki'den katı olamaz
+
+
+def code_level(code: str, mode: str = "siki") -> str:
+    """Kodun ``mode`` modundaki engel düzeyi: "tahmin" / "bahis" / "yok"."""
+    return LEVELS.get(mode, LEVELS["siki"])[code]
+
+
+def _lead_key(code: str):
+    return (LEAD_ORDER.index(code) if code in LEAD_ORDER else len(LEAD_ORDER), code)
+
+
+def lead_reason(codes, mode: str = "siki") -> str | None:
+    """Engelleyen kodlardan kullanıcıya gösterilecek birincil neden (bilgi kodları hariç). Tahmini engelleyen kod,
+    yalnızca bahsi engelleyenden önce gelir (siki modda LEAD_ORDER ile aynı sonuç)."""
+    blocking = [c for c in codes if code_level(c, mode) != "yok"]
     if not blocking:
         return None
-    return min(blocking, key=lambda c: (LEAD_ORDER.index(c) if c in LEAD_ORDER else len(LEAD_ORDER), c))
+    return min(blocking, key=lambda c: (code_level(c, mode) != "tahmin",) + _lead_key(c))
 
 
 STATUS_TEXT = {"UYGUN": "Kullanılabilir", KNOWN_STALE: "Eksik veri", UNKNOWN: "Doğrulanamıyor",
-               "ENGELLI": "Uygun değil"}
+               "ENGELLI": "Uygun değil", "UYARILI": "Uyarılı"}
 
 # Pazarın gerçek model bağımlılığı (skor etiketlenebilirliğinden AYRI): gol modeli (M10) üç pazarı da yarı bazlı
 # takım güçlerinden (goals.model.REQUIRED) üretir; 3,5 Üst'ün sonuçlandırması yalnızca maç sonu skoru gerektirse de
@@ -700,6 +756,7 @@ class SourceUse:
     ticari_kullanim: str = "BILINMIYOR"
     saglar: tuple[str, ...] = ()  # kaynağın uygulamada sağladığı veri türleri ("sonuc", "fikstur", "takvim")
     koken: str = "GEREKMEZ"  # GEREKMEZ / DOGRULANDI / DOGRULANAMADI (satırların gerçekten bu kaynaktan geldiği)
+    beyan: str = "YOK"  # VERI-01 kişisel kullanım beyanı: VAR / YOK (VAR iken açılan alanlar "KULLANICI_BEYANI")
 
 
 # İşlem -> gerekli kapsam. "veri": işlemde kullanılan sonuç verisinin etiketleri; "model": modelin eğitim verisinin
@@ -710,6 +767,9 @@ OPERATION_SCOPES: dict[str, dict[str, tuple[str, ...]]] = {
     "bahis": {"veri": ("sonuc_kullanimi",), "model": ("model_egitimi", "model_kullanimi")},
     "egitim": {"veri": ("sonuc_kullanimi", "model_egitimi"), "model": ()},
 }
+# Kabul edilen kapsam değerleri: belgeli izin veya (VERI-01) kullanıcının kişisel kullanım beyanı. "KULLANICI_BEYANI"
+# yalnızca ``rights_from_registry`` tarafından, kayıtta DOGRULANAMADI olan ve beyan verilebilen alanlara yazılır.
+ACCEPTED_RIGHTS = frozenset({"IZINLI_BELGELI", "KULLANICI_BEYANI"})
 _SCOPE_CODES = {"sonuc_kullanimi": "KAYNAK_SONUC_KULLANIMI_DOGRULANAMADI",
                 "model_egitimi": "KAYNAK_EGITIM_HAKKI_DOGRULANAMADI",
                 "model_kullanimi": "KAYNAK_MODEL_KULLANIMI_DOGRULANAMADI"}
@@ -738,7 +798,7 @@ class RightsStatus:
                 out.append("KAYNAK_ERISIM_IZNI_YOK")
             need = (scope["veri"] if lb in data_labels else ()) + (scope["model"] if lb in train_labels else ())
             for f in dict.fromkeys(need):
-                if getattr(u, f) != "IZINLI_BELGELI":
+                if getattr(u, f) not in ACCEPTED_RIGHTS:
                     out.append(_SCOPE_CODES[f])
         return sorted(set(out))
 
@@ -746,14 +806,20 @@ class RightsStatus:
         return {lb: (asdict(self.by_label[lb]) if lb in self.by_label else None) for lb in sorted(set(labels))}
 
 
-def rights_from_registry(labels, consent: dict | None, verified_labels=None) -> RightsStatus:
+def rights_from_registry(labels, consent: dict | None, verified_labels=None,
+                         declarations: dict | None = None) -> RightsStatus:
     """Kaynak kaydındaki BELGELİ kullanım kapsamı + kullanıcı onayı (onay yalnızca erişimi etkiler).
 
     ``verified_labels``: kökeni doğrulanmış etiketler (``data.provenance.verified_labels``). Kaydında
-    ``koken_dogrulamasi`` olan kaynak, etiketi doğrulanmadıkça hak kazanmaz."""
+    ``koken_dogrulamasi`` olan kaynak, etiketi doğrulanmadıkça hak kazanmaz.
+
+    ``declarations`` (VERI-01): kullanıcının kişisel kullanım beyanları (kaynak anahtarı -> zaman). Beyan yalnızca
+    indirme onayı da olan ve kaydında ``kisisel_beyan`` alanları bulunan kaynakta, değeri tam olarak DOGRULANAMADI olan
+    bu alanları "KULLANICI_BEYANI" yapar. Ticari kullanım, yeniden dağıtım ve erişim koşulları değişmez."""
     from .data.source_registry import SOURCE_LABELS, SOURCES, USE_RIGHTS
 
     consent = consent or {}
+    declarations = declarations or {}
     out = {}
     for lb in set(labels):
         key = SOURCE_LABELS.get(lb)
@@ -764,17 +830,26 @@ def rights_from_registry(labels, consent: dict | None, verified_labels=None) -> 
         erisim = "IZINLI" if not SOURCES[key].requires_consent else ("ONAY_VAR" if key in consent else "ONAY_YOK")
         koken = ("GEREKMEZ" if not r.get("koken_dogrulamasi") else
                  "DOGRULANDI" if lb in set(verified_labels or ()) else "DOGRULANAMADI")
-        out[lb] = SourceUse(lb, key, erisim, r["sonuc_kullanimi"], r["model_egitimi"], r["yeniden_dagitim"],
-                            r.get("model_kullanimi", "BILINMIYOR"), r.get("erisim_kosullari", "BILINMIYOR"),
-                            r.get("ticari_kullanim", "BILINMIYOR"), tuple(r.get("saglar", ())), koken)
+        scope = {f: r.get(f, "BILINMIYOR") for f in ("sonuc_kullanimi", "model_egitimi", "model_kullanimi")}
+        beyan = "YOK"
+        if key in declarations and erisim == "ONAY_VAR" and r.get("kisisel_beyan"):
+            beyan = "VAR"
+            for f in r["kisisel_beyan"]:
+                if scope.get(f) == "DOGRULANAMADI":
+                    scope[f] = "KULLANICI_BEYANI"
+        out[lb] = SourceUse(lb, key, erisim, scope["sonuc_kullanimi"], scope["model_egitimi"], r["yeniden_dagitim"],
+                            scope["model_kullanimi"], r.get("erisim_kosullari", "BILINMIYOR"),
+                            r.get("ticari_kullanim", "BILINMIYOR"), tuple(r.get("saglar", ())), koken, beyan)
     return RightsStatus(out)
 
 
-def training_rights_codes(matches: pd.DataFrame | None, consent: dict | None, verified_labels=None) -> list[str]:
+def training_rights_codes(matches: pd.DataFrame | None, consent: dict | None, verified_labels=None,
+                          declarations: dict | None = None) -> list[str]:
     """Gerçek veriyle model eğitimi için engel kodları (boş = eğitime hak açısından engel yok).
 
     Eğitim verisinin her satırının kaynağı kayıtlı olmalı ve kaynak kaydında sonuç kullanımı ile model eğitimi hakkı
-    belgeli olmalıdır. Kullanıcı onayı yalnızca erişimi kapsar; onay kutusu veya bayrak bu kontrolü aşamaz."""
+    belgeli olmalı ya da (VERI-01) kullanıcı o kaynak için kişisel kullanım beyanı vermiş olmalıdır. İndirme onayı tek
+    başına erişimi kapsar; onay kutusu veya bayrak bu kontrolü aşamaz."""
     if matches is None or len(matches) == 0:
         return []
     if "source" not in matches:
@@ -782,7 +857,8 @@ def training_rights_codes(matches: pd.DataFrame | None, consent: dict | None, ve
     src = matches["source"]
     out = ["KAYNAK_HAKKI_BILINMIYOR"] if src.isna().any() else []
     labels = set(src.dropna().astype(str))
-    return sorted(set(out) | set(rights_from_registry(labels, consent, verified_labels).codes(labels, (), "egitim")))
+    rights = rights_from_registry(labels, consent, verified_labels, declarations)
+    return sorted(set(out) | set(rights.codes(labels, (), "egitim")))
 
 
 # ----------------------------------------------------------------------------
@@ -815,9 +891,18 @@ class Eligibility:
     fix_text: str
     policy_version: str = POLICY_VERSION
     fingerprint: str = ""
+    policy_mode: str = "siki"  # VERI-01 veri denetimi modu ("siki" = v2 kuralları; "standart")
 
     @property
     def status_key(self) -> str:
+        if self.policy_mode == "standart":
+            # Tahmin gösteriliyorsa ama bahis adayı değilse "Uyarılı"; engellenmişse birincil nedenin kendi türü
+            # (ör. MODEL_YOK "Uygun değil"dir; başka bir koddan gelen "Eksik veri" etiketi taşımaz)
+            if self.forecast_ok:
+                return "UYGUN" if self.bet_ok else "UYARILI"
+            lead = self.lead_code
+            f = REASONS[lead].freshness if lead else None
+            return f if f in (KNOWN_STALE, UNKNOWN) else "ENGELLI"
         if self.forecast_ok:
             return "UYGUN"
         if self.freshness in (KNOWN_STALE, UNKNOWN):
@@ -826,7 +911,7 @@ class Eligibility:
 
     @property
     def status_label(self) -> str:
-        """Renkten bağımsız okunabilir durum: Kullanılabilir / Eksik veri / Doğrulanamıyor / Uygun değil."""
+        """Renkten bağımsız okunabilir durum: Kullanılabilir / Uyarılı / Eksik veri / Doğrulanamıyor / Uygun değil."""
         return STATUS_TEXT[self.status_key]
 
     @property
@@ -839,12 +924,14 @@ class Eligibility:
 
     @property
     def lead_code(self) -> str | None:
-        return lead_reason(self.reasons)
+        return lead_reason(self.reasons, self.policy_mode)
 
     def short_text(self) -> str:
         """Tek satır: durum, somut neden, veri kesimi ve gereken düzeltme."""
         cut = self.data_cutoff or "-"
         if self.forecast_ok and self.bet_ok:
+            if self.freshness != VERIFIED_CURRENT:  # yalnızca standart modda: güncellik kanıtı yok (bilinen sorun yok)
+                return f"{self.status_label} (veri kesimi {cut}); not: {self.primary_text}"
             return f"{self.status_label} (veri kesimi {cut})"
         if self.forecast_ok:
             return (f"{self.status_label}; bahis adayı değil: {self.primary_text} [{self.lead_code}] — "
@@ -860,7 +947,8 @@ class Eligibility:
 
     def compact(self) -> dict:
         """Kayıtlara geriye uyumlu ek alan olarak yazılan özet."""
-        return {"politika": self.policy_version, "guncellik": self.freshness, "tahmin_uygun": self.forecast_ok,
+        return {"politika": self.policy_version, "politika_modu": self.policy_mode, "guncellik": self.freshness,
+                "tahmin_uygun": self.forecast_ok,
                 "bahis_veri_uygun": self.bet_ok, "nedenler": list(self.reasons), "bilgi_kesimi": self.info_cutoff,
                 "veri_kesimi": self.data_cutoff, "degerlendirme_ani": self.evaluated_at,
                 "aday_kimlik": self.candidate_id, "kanonik_kimlik": self.canonical_id,
@@ -874,29 +962,48 @@ def candidate_id(source: str, league: str, date, raw_home: str, raw_away: str) -
 
 
 def _finalize(base: dict, codes, markets, per_market: dict, evidence_checked: bool,
-              required_checked: bool) -> dict:
+              required_checked: bool, mode: str = "siki") -> dict:
+    """Kodlardan pazar başına sonuç. ``mode`` (VERI-01): "siki" = v2 kuralı (güncellik VERIFIED_CURRENT değilse tahmin
+    yok); "standart" = yalnızca "tahmin" düzeyindeki kodlar tahmini, "bahis" düzeyindekiler bahis adayını engeller."""
+    if mode not in LEVELS:
+        raise ValueError(f"Bilinmeyen veri denetimi modu: {mode}")
     out = {}
     for mk in markets:
         cs = tuple(sorted(set(codes) | set(per_market.get(mk, ()))))
         stale = any(REASONS[c].freshness == KNOWN_STALE for c in cs)
         unknown = any(REASONS[c].freshness == UNKNOWN for c in cs) or not evidence_checked
         freshness = KNOWN_STALE if stale else (UNKNOWN if unknown else VERIFIED_CURRENT)
-        forecast_ok = (freshness == VERIFIED_CURRENT and required_checked
-                       and not any(REASONS[c].blocks == "tahmin" for c in cs))
-        bet_ok = forecast_ok and not any(REASONS[c].blocks == "bahis" for c in cs)
-        blocking = [c for c in cs if REASONS[c].blocks != "yok"]
-        if not blocking and not forecast_ok:
-            blocking = ["BAGLAM_YOK"]
+        lv = {c: code_level(c, mode) for c in cs}
+        hard = any(v == "tahmin" for v in lv.values())
+        if mode == "siki":
+            forecast_ok = freshness == VERIFIED_CURRENT and required_checked and not hard
+        else:
+            forecast_ok = required_checked and not hard
+        bet_ok = forecast_ok and not any(v == "bahis" for v in lv.values())
+        blocking = [c for c in cs if lv[c] != "yok"]
+        if not forecast_ok and (not blocking if mode == "siki" else not hard):
+            blocking = blocking + ["BAGLAM_YOK"]
             cs = tuple(sorted(set(cs) | {"BAGLAM_YOK"}))
-        lead = lead_reason(blocking)
-        primary, fix = (REASONS[lead].text, REASONS[lead].fix) if lead else ("Veri uygunluğu doğrulandı.", "-")
+        lead = lead_reason(blocking, mode)
+        if lead:
+            primary, fix = REASONS[lead].text, REASONS[lead].fix
+        elif freshness != VERIFIED_CURRENT:  # yalnızca standart modda: tahmin uygun, güncellik kanıtlanamadı
+            note = min((c for c in cs if REASONS[c].freshness in (UNKNOWN, KNOWN_STALE)), key=_lead_key, default=None)
+            if note is not None:
+                primary = f"Güncellik bağımsız bir takvimle doğrulanamadı — {REASONS[note].text} [{note}]"
+                fix = REASONS[note].fix
+            else:
+                primary, fix = "Güncellik bağımsız bir takvimle doğrulanamadı.", "-"
+        else:
+            primary, fix = "Veri uygunluğu doğrulandı.", "-"
         continuity = "EKSIK" if stale else ("BILINMIYOR" if unknown else "TAM")
         if any(c in ("GEREKLI_ALAN_EKSIK", "TAKIM_GECMISI_YETERSIZ") for c in cs):
             req = "EKSIK"
         else:
             req = "YETERLI" if required_checked else "KONTROL_EDILMEDI"
         e = dict(base, market=mk, freshness=freshness, continuity=continuity, required_fields=req, reasons=cs,
-                 forecast_ok=forecast_ok, bet_ok=bet_ok, primary_text=primary, fix_text=fix)
+                 forecast_ok=forecast_ok, bet_ok=bet_ok, primary_text=primary, fix_text=fix,
+                 policy_version=POLICY_VERSIONS[mode], policy_mode=mode)
         fp = _digest({k: v for k, v in e.items() if k != "evaluated_at"})
         out[mk] = Eligibility(**e, fingerprint=fp)
     return out
@@ -914,7 +1021,14 @@ class EligibilityContext:
 
     def __init__(self, matches: pd.DataFrame | None, state: StateView | None,
                  coverages: dict | None = None, rights: RightsStatus | None = None,
-                 consent: dict | None = None, verified_labels=None):
+                 consent: dict | None = None, verified_labels=None, *, declarations: dict | None = None,
+                 mode: str = "siki"):
+        """``mode``: veri denetimi modu (VERI-01; kütüphane varsayılanı "siki" = v2 kuralları). ``declarations``:
+        kullanıcının kişisel kullanım beyanları (``rights_from_registry``)."""
+        if mode not in POLICY_MODES:
+            raise ValueError(f"Bilinmeyen veri denetimi modu: {mode}")
+        self.mode = mode
+        self.policy_version = POLICY_VERSIONS[mode]
         self.state = state
         self.coverages = {lg: tuple(v) for lg, v in (coverages or {}).items()}
         need = ("league", "date", "home", "away", "fthg", "ftag")
@@ -943,7 +1057,7 @@ class EligibilityContext:
         labels = set(m["source"].dropna().astype(str))
         train = set(state.train_sources) if (state is not None and state.train_sources is not None) else labels
         self.rights = (rights if rights is not None
-                       else rights_from_registry(labels | train, consent, verified_labels))
+                       else rights_from_registry(labels | train, consent, verified_labels, declarations))
         h = hashlib.sha256()
         h.update(pd.util.hash_pandas_object(m[["league", "day", "home", "away", "source", "ingest"]].astype(str),
                                             index=False).values.tobytes() if len(m) else b"bos")
@@ -957,7 +1071,7 @@ class EligibilityContext:
                 if c.participants_since is not None:
                     h.update(f"|katilimci:{c.participants_since.isoformat()}".encode())
         h.update(_digest({k: asdict(v) for k, v in self.rights.by_label.items()}).encode())
-        h.update(f"{POLICY_VERSION}|{MATCHING_VERSION}".encode())
+        h.update(f"{self.policy_version}|{MATCHING_VERSION}".encode())
         self.fingerprint = h.hexdigest()
         self._cache: dict = {}
         self._rows_cache: dict = {}
@@ -1062,7 +1176,8 @@ class EligibilityContext:
             codes.append("MAC_GECMISTE")
         if not mapped:
             codes.append("TAKIM_ESLESMEDI")
-            return _finalize(base, codes, markets, {}, evidence_checked=False, required_checked=False)
+            return _finalize(base, codes, markets, {}, evidence_checked=False, required_checked=False,
+                             mode=self.mode)
         codes += self.rights.codes(labels, train, "tahmin")
         if unlabeled or (not provenance and self.matches["source"].isna().any()):
             codes.append("KAYNAK_HAKKI_BILINMIYOR")
@@ -1179,7 +1294,8 @@ class EligibilityContext:
                     req.append(hit[0])
             per_market[mk] = tuple(req)
         base["data_scope"]["ayrinti"] = detail
-        return _finalize(base, codes, markets, per_market, evidence_checked, required_checked=pcodes is not None)
+        return _finalize(base, codes, markets, per_market, evidence_checked, required_checked=pcodes is not None,
+                         mode=self.mode)
 
     @staticmethod
     def _check_against_source(home, away, g_pair, g_any, complete, cut_day, codes, detail, base) -> None:
@@ -1417,7 +1533,8 @@ def _context_mismatch(e, event_id: str, market: str, at: dt.datetime, state_dige
     """Sonuç bu maç, pazar, gün, politika ve model durumu için mi (ve ``at`` anından önce mi) üretildi?"""
     if not isinstance(e, Eligibility) or "BAGLAM_YOK" in e.reasons:
         return ["BAGLAM_YOK"]
-    if (e.candidate_id != event_id or e.market != market or e.policy_version != POLICY_VERSION
+    if (e.candidate_id != event_id or e.market != market
+            or e.policy_version != POLICY_VERSIONS.get(getattr(e, "policy_mode", "siki"))
             or e.as_of_day != info_cutoff(at)):
         return ["BAGLAM_UYUSMUYOR"]
     try:  # o andan SONRA değerlendirilmiş sonuç o anın kanıtı olamaz
@@ -1438,7 +1555,7 @@ def check_for_decision(e, event_id: str, market: str, decision_time: dt.datetime
     if mismatch:
         return mismatch
     if not e.bet_ok:
-        return [c for c in e.reasons if REASONS[c].blocks != "yok"] or ["BAGLAM_YOK"]
+        return [c for c in e.reasons if code_level(c, e.policy_mode) != "yok"] or ["BAGLAM_YOK"]
     return []
 
 
@@ -1449,8 +1566,14 @@ def check_for_display(e, event_id: str, market: str, now: dt.datetime, state_dig
     if mismatch:
         return mismatch
     if not e.forecast_ok:
-        return [c for c in e.reasons if REASONS[c].blocks == "tahmin"] or ["BAGLAM_YOK"]
+        return forecast_block_codes(e)
     return []
+
+
+def forecast_block_codes(e) -> list[str]:
+    """Tahmini engelleyen kodlar (sonucun kendi veri denetimi moduna göre); hiçbiri yoksa ``BAGLAM_YOK``."""
+    mode = getattr(e, "policy_mode", "siki")
+    return [c for c in e.reasons if code_level(c, mode) == "tahmin"] or ["BAGLAM_YOK"]
 
 
 def display_label(e, codes) -> tuple[str, str]:
@@ -1544,7 +1667,8 @@ def season_participants(matches: pd.DataFrame | None) -> dict:
 
 
 def build_context(store, engine, consent: dict | None, today: dt.date | None = None,
-                  participants: dict | None = None) -> EligibilityContext:
+                  participants: dict | None = None, *, declarations: dict | None = None,
+                  mode: str = "siki") -> EligibilityContext:
     """Uygulama/CLI için bağlam: veri deposu + motorun durumu + önbellekteki kaynak takvimleri + kayıtlı haklar.
 
     ``participants``: (lig, sezon) -> bağımsız katılımcılar (depo adlarıyla). Verilmezse depodan türetilir; kapsam
@@ -1562,7 +1686,8 @@ def build_context(store, engine, consent: dict | None, today: dt.date | None = N
         chain = COVERAGE_CHAIN_LABELS["openfootball"]
         participants = season_participants(matches[~matches["source"].astype(str).isin(chain)])
     covs = cached_coverages(getattr(store, "raw_dir", "."), leagues, today, known, participants)
-    return EligibilityContext(matches, sv, covs, consent=consent, verified_labels=verified_labels(store))
+    return EligibilityContext(matches, sv, covs, consent=consent, verified_labels=verified_labels(store),
+                              declarations=declarations, mode=mode)
 
 
 @dataclass
@@ -1593,7 +1718,7 @@ class FixtureVerdict:
         """Gösterim engeli (boş = bu anda gösterilebilir): gün, kimlik ve model durumu eşleşmesi dahil."""
         if self.prediction is None:
             e = self.by_market.get(market)
-            return ([c for c in e.reasons if REASONS[c].blocks == "tahmin"] or ["BAGLAM_YOK"]) if e else ["BAGLAM_YOK"]
+            return forecast_block_codes(e) if e else ["BAGLAM_YOK"]
         digest = getattr(self.prediction, "state_digest", None) or None
         return check_for_display(self.by_market.get(market), self.candidate_id, market, now, digest)
 

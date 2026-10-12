@@ -154,11 +154,16 @@ class LikelyPage(Page):
 
         rows = []
         skipped = len(self.ctl.match_unpredicted)
+        warned = 0
         now = self.ctl.now()
         for i, p in enumerate(self.ctl.predictions):
             if not p.forecast_ok_at(now):  # veri uygunluğu doğrulanmadı: "en olası" listesine girmez
                 skipped += 1
                 continue
+            # VERI-01 "Uyarılı" tahmin (bilinen eksik veri / az geçmiş): olasılık gösterilir ama bahis adayı değildir;
+            # oran ve beklenen değer gösterilmez
+            bet_ok = not p.data_block(now)
+            warned += not bet_ok
             cands = [(k, float(p.markets[k])) for k in keys]
             if not cands:
                 continue
@@ -167,7 +172,7 @@ class LikelyPage(Page):
             for k, prob in cands:
                 if prob < thr:
                     continue
-                o = p.odds.get(k)  # yalnızca gerçek oran; türetilmiş oran kullanılmaz
+                o = p.odds.get(k) if bet_ok else None  # yalnızca gerçek oran; türetilmiş oran kullanılmaz
                 rows.append({
                     "_i": i, "kupon": "", "date": p.date, "time": p.time, "league": p.league,
                     "match": f"{p.home} - {p.away}", "selection": MARKETS[k][0], "prob": prob,
@@ -175,9 +180,13 @@ class LikelyPage(Page):
                     "ev": prob * o - 1.0 if o else np.nan,
                 })
         self.model.set_frame(pd.DataFrame(rows))
-        self.gate_note.setText(
-            f"Veri uygunluğu doğrulanamadığı için listelenmeyen maç: {skipped} (neden ve gereken veri için "
-            "Tahminler sayfasındaki 'Veri durumu' sütununa bakın)." if skipped else "")
+        notes = []
+        if skipped:
+            notes.append(f"Tahmini gösterilemediği için listelenmeyen maç: {skipped}.")
+        if warned:
+            notes.append(f"Uyarılı (bahis adayı olmayan) {warned} maçta oran ve beklenen değer gösterilmez.")
+        self.gate_note.setText(" ".join(notes) + (" Neden ve gereken veri için Tahminler sayfasındaki 'Veri durumu' "
+                                                  "sütununa bakın." if notes else ""))
 
     def _update_kupon(self, *args) -> None:
         df = self.model.frame

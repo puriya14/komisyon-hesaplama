@@ -49,7 +49,8 @@ yukarıda açıklanan istatistiksel modellerden gelir ve uygulama internetsiz/LL
 <ul>
 <li><a href="https://www.football-data.co.uk/">football-data.co.uk</a> – maç sonuçları, ilk yarı skorları, istatistikler,
 1X2 ve 2.5 Alt/Üst oranları, fikstürler. Ücretsiz indirme sunulur; yeniden kullanım/model eğitimi için açık lisans
-metni bulunamadı. <b>Kullanıcı onayı olmadan indirilmez.</b></li>
+metni bulunamadı. <b>Kullanıcı onayı olmadan indirilmez.</b> Model eğitimi ve tahmin için ayrıca kullanıcının
+kişisel (ticari olmayan) kullanım beyanı gerekir; beyan ticari kullanım veya yeniden dağıtım hakkı vermez.</li>
 <li><a href="https://github.com/xgabora/Club-Football-Match-Data-2000-2025">Club Football Match Data (GitHub)</a> – depo MIT
 lisanslı; içerik football-data.co.uk ve ClubElo kaynaklıdır (asıl kaynağın koşulları geçerli). Kullanıcı onayı gerekir.</li>
 <li><a href="https://github.com/openfootball/football.json">openfootball/football.json</a> – CC0 (serbest); yedek fikstür kaynağı.</li>

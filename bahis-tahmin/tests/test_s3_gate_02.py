@@ -73,8 +73,8 @@ def test_empty_and_single_letter_names_are_never_identity_evidence():
 
 
 def test_fuzzy_and_prefix_only_suggest():
-    r = resolve_team("Coventry City FC", ["Coventry", "Arsenal"])
-    assert r.status == BULUNAMADI and r.team is None and r.suggestions[:1] == ("Coventry",)
+    r = resolve_team("Kingsbridge City FC", ["Kingsbridge", "Arsenal"])  # takma adı olmayan (uydurma) ad
+    assert r.status == BULUNAMADI and r.team is None and r.suggestions[:1] == ("Kingsbridge",)
     r = resolve_team("Arsenall", ["Arsenal", "Chelsea"])
     assert r.team is None and r.suggestions[:1] == ("Arsenal",)
 
@@ -701,6 +701,9 @@ def test_update_flow_does_not_auto_train_without_documented_scope(tmp_home, monk
     monkeypatch.setattr(C, "_train_goal", no_train)
     ctl = C.AppController()
     ctl.settings.source_consent["football-data"] = "2026-10-10T10:00:00"
+    from bahis_tahmin.data.source_registry import CONSENT_SCHEMA
+
+    ctl.settings.onay_surumu = CONSENT_SCHEMA  # VERI-01: onay penceresi kaydedildi, kişisel kullanım beyanı verilmedi
     results = []
     monkeypatch.setattr(ctl, "_run", lambda work, done, msg: results.append(work(lambda p, m: None)) or True)
     assert ctl.update_and_train()

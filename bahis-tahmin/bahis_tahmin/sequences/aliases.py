@@ -73,7 +73,21 @@ class AliasMap:
 
     @classmethod
     def from_matches(cls, matches: pd.DataFrame) -> "AliasMap":
-        return cls(detect_intra_season_splits(matches))
+        splits = detect_intra_season_splits(matches)
+        # VERI-01: veri deposu aynı adın yazımlarını (ör. "Nottm Forest" / "Nott'm Forest") tek yazıma indirir; o
+        # zaman katman 1 ayrılmayı göremez. Kimlik aynı olduğu için ön-kayıtlı tablo (ve özeti) korunur: iki yazımdan
+        # yalnızca biri veride kalmışsa beklenen ayrılma aynen eklenir.
+        from ..data.leagues import LEAGUES
+
+        present: dict[str, set] = {}
+        for lg, g in matches.groupby("league"):
+            country = LEAGUES[lg].country if lg in LEAGUES else lg
+            present.setdefault(country, set()).update(set(g["home"]) | set(g["away"]))
+        for (country, new), old in EXPECTED_SPLITS.items():
+            names = present.get(country, set())
+            if (country, new) not in splits and (new in names) != (old in names):
+                splits[(country, new)] = old
+        return cls(splits)
 
     def canonical(self, name: str, country: str) -> str:
         seen = set()

@@ -25,6 +25,8 @@ ENGINE_FILE = "engine.joblib"
 GOAL_ENGINE_FILE = "goal_engine.joblib"
 LEDGER_FILE = "gol_pazarlari.sqlite"
 STALE_HOURS = 6.0
+DECLARATION_HINT = ("Kişisel (ticari olmayan) kullanım beyanını Veri sayfasındaki 'Kaynak koşulları ve onaylar...' "
+                    "penceresinden verebilirsiniz.")
 
 
 class Task(QThread):
@@ -209,6 +211,9 @@ class AppController(QObject):
             if (self.settings.auto_update_on_start and self.store.has_data and not self.needs_consent()
                     and self.data_age_hours() >= STALE_HOURS):
                 self._queue.append(lambda: self.update_and_train(quiet=True))
+            elif self.settings.auto_update_on_start and self.store.has_data and self.consent_review_needed():
+                self.message.emit("status", "Otomatik güncelleme yapılmadı: kaynak onaylarınızı (kişisel kullanım "
+                                            "beyanı) bir kez gözden geçirin — 'Verileri Güncelle'.")
             elif self.store.has_data and (self.engine is None or self.needs_training()):
                 self.message.emit("status", "Model verilerle uyumlu değil; 'Modeli Yeniden Eğit' ile güncelleyin.")
 
@@ -233,12 +238,31 @@ class AppController(QObject):
 
     # ------------------------------------------------------------ actions
     def needs_consent(self) -> bool:
-        """Geçmiş maç verisi sağlayan hiçbir kaynağın kullanım koşulları onaylanmamış mı? GitHub veri profilinde
-        football-data kullanılmadığı için yalnızca GitHub yedek veri setinin onayı sayılır."""
+        """Onay penceresi gösterilmeli mi? Geçmiş maç verisi sağlayan hiçbir kaynağın kullanım koşulları onaylanmamışsa
+        veya kullanıcı onay penceresinin güncel sürümünü (VERI-01: kişisel kullanım beyanı) henüz kaydetmediyse. GitHub
+        veri profilinde football-data kullanılmadığı için yalnızca GitHub yedek veri setinin onayı sayılır."""
         from ..data.github_kaynak import PROFILE_GITHUB
+        from ..data.source_registry import CONSENT_SCHEMA
 
         keys = {"github-mirror"} if self.settings.data_profile == PROFILE_GITHUB else {"football-data", "github-mirror"}
-        return not (keys & self.settings.allowed_sources())
+        return not (keys & self.settings.allowed_sources()) or self.settings.onay_surumu < CONSENT_SCHEMA
+
+    def consent_review_needed(self) -> bool:
+        """Onay var ama onay penceresinin güncel sürümü (kişisel kullanım beyanı) henüz kaydedilmedi."""
+        from ..data.source_registry import CONSENT_SCHEMA
+
+        return bool(self.settings.source_consent) and self.settings.onay_surumu < CONSENT_SCHEMA
+
+    def declaration_hint(self, matches=None) -> str:
+        """Eğitim/tahmin hak engeli için kullanıcıya gösterilecek somut yol (beyan gereken kaynakların adlarıyla)."""
+        from ..data.source_registry import SOURCES, missing_declarations
+
+        m = self.store.matches if matches is None else matches
+        miss = missing_declarations(set(m["source"].dropna().astype(str)), self.settings.source_consent,
+                                    self.settings.kisisel_kullanim) if "source" in m else []
+        names = ", ".join(SOURCES[k].name for k in miss)
+        return ((f"Kişisel (ticari olmayan) kullanım beyanı gereken kaynak: {names}. " if names else "")
+                + DECLARATION_HINT)
 
     def record_consent(self, keys: list[str]) -> None:
         now = dt.datetime.now().isoformat(timespec="seconds")
@@ -249,6 +273,46 @@ class AppController(QObject):
 
     def revoke_consent(self, key: str) -> None:
         self.settings.source_consent.pop(key, None)
+        self.settings.kisisel_kullanim.pop(key, None)  # onay olmadan beyan da geçmez
+        self.settings.save()
+        self.settingsChanged.emit()
+
+    def record_declaration(self, keys: list[str]) -> None:
+        """Kişisel (ticari olmayan) kullanım beyanı: yalnızca beyan verilebilen ve indirme onayı olan kaynaklar."""
+        from ..data.source_registry import DECLARABLE
+
+        now = dt.datetime.now().isoformat(timespec="seconds")
+        for k in keys:
+            if k in DECLARABLE and k in self.settings.source_consent:
+                self.settings.kisisel_kullanim[k] = now
+        self.settings.save()
+        self.settingsChanged.emit()
+
+    def revoke_declaration(self, key: str) -> None:
+        self.settings.kisisel_kullanim.pop(key, None)
+        self.settings.save()
+        self.settingsChanged.emit()
+
+    def declarations_changed(self, added: bool) -> None:
+        """Beyan değişti: tahminler yeni haklarla yeniden değerlendirilir. Yeni beyan verildiyse ve veri olduğu halde
+        model yoksa/eskiyse model eğitilir (eğitim yine hak denetiminden geçer)."""
+        self.refresh_predictions()
+        if added and self.store.has_data:
+            # Koşul çalışma anında yeniden denetlenir: o sırada süren bir güncelleme modeli zaten eğitmiş olabilir
+            self._queue.append(self._retrain_if_needed)
+        self.refresh_goal_predictions()
+        if not self.busy and self._queue:
+            self._queue.pop(0)()
+
+    def _retrain_if_needed(self) -> None:
+        if self.store.has_data and (self.engine is None or self.needs_training()):
+            self.retrain()
+
+    def mark_consent_reviewed(self) -> None:
+        """Kullanıcı onay penceresinin güncel sürümünü kaydetti (beyan verse de vermese de bir daha sorulmaz)."""
+        from ..data.source_registry import CONSENT_SCHEMA
+
+        self.settings.onay_surumu = CONSENT_SCHEMA
         self.settings.save()
         self.settingsChanged.emit()
 
@@ -297,11 +361,11 @@ class AppController(QObject):
             )
             engine = old_engine
             sig = PredictionEngine.signature(store.matches, s.margin_method)
-            blocked = (training_rights_codes(store.matches, s.source_consent, verified_labels(store))
-                       if store.has_data else [])
+            blocked = (training_rights_codes(store.matches, s.source_consent, verified_labels(store),
+                                             s.declarations()) if store.has_data else [])
             if blocked:  # hak kapsamı doğrulanmayan gerçek veriyle eğitim yapılmaz (S3-GATE-02)
                 report.warnings.append("Model eğitimi yapılmadı: veri kaynağının kullanım kapsamı doğrulanmadı ("
-                                       + ", ".join(blocked) + ").")
+                                       + ", ".join(blocked) + "). " + self.declaration_hint(store.matches))
             elif store.has_data and (engine is None or engine.data_signature != sig):
                 engine = PredictionEngine()
 
@@ -341,10 +405,12 @@ class AppController(QObject):
         """Gerçek veriyle eğitimin hak kapsamı (onay kutusu bu kontrolü aşamaz)."""
         from ..eligibility import reason_texts
 
-        codes = training_rights_codes(self.store.matches, self.settings.source_consent, verified_labels(self.store))
+        codes = training_rights_codes(self.store.matches, self.settings.source_consent, verified_labels(self.store),
+                                      self.settings.declarations())
         if codes:
-            self.message.emit("warn", "Model eğitimi yapılmadı; veri kaynağının kullanım kapsamı doğrulanmadı:\n"
-                              + reason_texts(codes))
+            # İlk satır durum çubuğunda görünür: ne yapılacağı orada yazar
+            self.message.emit("warn", "Model eğitimi yapılmadı. " + self.declaration_hint() + "\nVeri kaynağının "
+                              "kullanım kapsamı doğrulanmadı:\n" + reason_texts(codes))
         return bool(codes)
 
     def retrain(self) -> bool:
@@ -436,13 +502,15 @@ class AppController(QObject):
         except OSError:
             files = ()
         m = self.store.matches
+        decl = self.settings.declarations()
         key = (id(engine), getattr(engine, "state_available_since", None), id(m), len(m),
                self.store.meta.get("updated_at"), files, tuple(sorted(self.settings.source_consent)),
-               self.today())
+               tuple(sorted(decl)), self.settings.veri_denetimi, self.today())
         ctx = self._ctx_cache.get(key)
         if ctx is None:
             try:
-                ctx = build_context(self.store, engine, self.settings.source_consent, today=self.today())
+                ctx = build_context(self.store, engine, self.settings.source_consent, today=self.today(),
+                                    declarations=decl, mode=self.settings.veri_denetimi)
             except Exception:
                 log.exception("Veri uygunluk bağlamı kurulamadı")
                 return None
@@ -583,10 +651,14 @@ class AppController(QObject):
     def save_settings(self, s: Settings) -> None:
         leagues_changed = (s.leagues != self.settings.leagues) or (s.years_back != self.settings.years_back)
         method_changed = s.margin_method != self.settings.margin_method
+        mode_changed = s.veri_denetimi != self.settings.veri_denetimi
         self.settings = s
         s.save()
         self.settingsChanged.emit()
         self.refresh_predictions()
+        retraining = not leagues_changed and method_changed and self.store.has_data
+        if mode_changed and not retraining:  # yeniden eğitim gol tahminlerini de yeniler (iki iş çakışmasın)
+            self.refresh_goal_predictions()
         if leagues_changed:
             self.message.emit("popup", "Lig/sezon seçimi değişti. Yeni verileri almak için 'Verileri Güncelle' butonunu kullanın.")
         elif method_changed and self.store.has_data:

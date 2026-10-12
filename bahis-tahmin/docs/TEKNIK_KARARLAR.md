@@ -40,6 +40,9 @@ Yüksek olasılıklı seçimler genellikle düşük oranlıdır ve avantaj anlam
 Kullanım hakkı belirsiz kaynaklar (football-data.co.uk ve ondan türetilmiş GitHub veri seti) kullanıcı
 onayı olmadan indirilmez (`data/source_registry.py`, `ui/consent.py`, `DataStore.update(allowed=...)`).
 Açılışta otomatik güncelleme varsayılan olarak kapalıdır; sayfa açmak yeniden eğitim tetiklemez.
+VERI-01: model eğitimi ve tahmin için indirme onayından ayrı, açık bir kişisel (ticari olmayan) kullanım beyanı
+istenir. Veri denetimi varsayılanı "standart"tır: yalnızca kanıt eksikliği tahmini engellemez, bilinen eksik veri
+yalnızca bahis adayını engeller. "Sıkı" mod v2 kurallarını aynen uygular (bkz. `docs/VERI_01.md`).
 
 ## K8. Sanal takip: SQLite, yalnızca ekleme, hash zinciri
 Kayıtlar karar anında değişmez biçimde yazılır (`goals/ledger.py`). UPDATE/DELETE tetikleyicilerle

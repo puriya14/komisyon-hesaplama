@@ -6,8 +6,10 @@ Denetim tarihi: 2026-10-10. Kod karşılığı: `bahis_tahmin/data/source_regist
 the-odds-api.com sitelerine **doğrudan erişilemeden** yapıldı (vekil sunucu 403). Aşağıdaki özetler,
 erişilebilen depo lisans dosyalarına ve genel bilgilere dayanır; **hukuki görüş değildir**. Kullanım
 hakkı belirsiz kaynaklar varsayılan olarak **kapalıdır**; kullanıcının açık onayı yalnızca indirmeyi (erişimi) açar.
-S3-GATE-02'den itibaren "kişisel/yerel analiz" gerekçesiyle otomatik kullanım izni yoktur: sonuç kullanımı, model
-eğitimi ve model kullanımı belgeyle doğrulanmadıkça bu verilerle tahmin gösterilmez ve model eğitilmez.
+S3-GATE-02'den itibaren "kişisel/yerel analiz" gerekçesiyle **otomatik** kullanım izni yoktur. Sonuç kullanımı, model
+eğitimi ve model kullanımı belgeyle doğrulanmadıkça bu verilerle tahmin gösterilmez ve model eğitilmez. Tek istisna
+VERI-01 ile geldi: kullanıcı ayrıca **açık bir kişisel (ticari olmayan) kullanım beyanı** verebilir. Bu beyan kendi
+sorumluluğundadır ve hukuki bir değerlendirme değildir. Ayrıntılar aşağıda ve [`VERI_01.md`](VERI_01.md) belgesinde.
 
 | Kaynak | Ne için | Lisans durumu | Otomatik indirme | Model eğitimi | Yeniden dağıtım | Uygulamadaki durum |
 |---|---|---|---|---|---|---|
@@ -46,6 +48,17 @@ eğitimi ve model kullanımı belgeyle doğrulanmadıkça bu verilerle tahmin g�
   garanti etmez ve üçüncü kişilerin olası haklarını (ör. lig fikstür listeleri üzerindeki talepler) temizlemez
   (madde 4). Sonuç satırları yalnızca köken doğrulamasıyla hak kazanır (`openfootball-sonuc`, `data/provenance.py`);
   football-data/GitHub yedeği satırları bu etiketle hak kazanamaz. Ham veri depoya veya dağıtıma konmadı.
+
+- VERI-01 (kişisel kullanım beyanı): Onay penceresinde ve `update --kisisel-kullanim` seçeneğinde, indirme onayından
+  ayrı ikinci bir kutu vardır. Kullanıcı bu kutuyla verileri yalnızca kişisel ve ticari olmayan amaçla
+  kullanacağını, paylaşmayacağını ve yeniden dağıtmayacağını beyan eder. Kişisel amaç kendi analizi, bu
+  bilgisayarda model eğitimi ve tahmindir.
+  - Beyan yalnızca football-data ve GitHub yedeği için ve yalnızca indirme onayıyla geçerlidir.
+  - Kayıtta `DOGRULANAMADI` olan sonuç kullanımı, model eğitimi ve model kullanımı alanlarını açar; değerleri
+    `KULLANICI_BEYANI` olur.
+  - Kaynak kaydındaki belge durumu değişmez. Ticari kullanım ve yeniden dağıtım beyanla açılmaz.
+  - Beyan geri alınabilir. Geri alınınca daha önce eğitilmiş model de kullanılmaz.
+  - İleriye dönük ölçüm kaydı (protokol v3) ve S4 pilotu beyanı kullanmaz.
 
 ## Açık konular (kullanıcı kararı gerekir)
 

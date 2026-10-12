@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 from ...config import DEFAULT_LEAGUES
 from ...data.github_kaynak import PROFILE_DEFAULT, PROFILE_GITHUB
 from ...data.leagues import LEAGUES, league_name
-from ...data.source_registry import IMPLEMENTED, SOURCES
+from ...data.source_registry import DECLARABLE, IMPLEMENTED, SOURCES
 from ..widgets import DataFrameModel, banner, make_table, section
 from .base import Page
 
@@ -138,7 +138,11 @@ class DataPage(Page):
             self.cb_profile.blockSignals(True)
             self.cb_profile.setCurrentIndex(i)
             self.cb_profile.blockSignals(False)
-        names = [SOURCES[k].name for k in IMPLEMENTED if SOURCES[k].requires_consent and k in s.source_consent]
+        decl = s.declarations()
+        names = [SOURCES[k].name + (" (kişisel kullanım beyanı var)" if k in decl else
+                                    " (beyan yok: bu kaynağın verisiyle model eğitilmez, tahmin gösterilmez)"
+                                    if k in DECLARABLE else "")
+                 for k in IMPLEMENTED if SOURCES[k].requires_consent and k in s.source_consent]
         self.consent_label.setText(
             "Onay verilen kaynaklar: " + ", ".join(names) if names else
             "Geçmiş maç verisi için henüz hiçbir kaynağın kullanım koşulları onaylanmadı; veri indirilemez.")
@@ -155,7 +159,10 @@ class DataPage(Page):
     def _consent(self) -> None:
         from ..consent import ask_consent
 
+        before = dict(self.ctl.settings.declarations())
         ask_consent(self.ctl, self)
+        if self.ctl.settings.declarations() != before:
+            self.ctl.declarations_changed(added=bool(set(self.ctl.settings.declarations()) - set(before)))
 
     def _apply(self) -> None:
         codes = [it.data(0, Qt.UserRole) for it in self._items() if it.checkState(0) == Qt.Checked]
@@ -168,10 +175,10 @@ class DataPage(Page):
         s.save()
         self.ctl.settingsChanged.emit()
         if self.ctl.needs_consent():
-            from ..consent import ask_consent
+            from ..consent import NOT_UPDATED_TEXT, ask_consent_before_update
 
-            if not ask_consent(self.ctl, self):
-                self.report.setText("Kaynak onayı verilmediği için veri indirilmedi.")
+            if not ask_consent_before_update(self.ctl, self):
+                self.report.setText(NOT_UPDATED_TEXT)
                 return
         self.ctl.update_and_train(force=self.chk_force.isChecked())
 

@@ -175,7 +175,11 @@ SOURCE_LABELS = {"football-data.co.uk": "football-data", "github-yedek": "github
 # kullanıcı indirme onayı (ayarlar; burada değil), kaynak erişim koşulları, sonuç verisinin analizde kullanımı, model
 # eğitimi, bu veriyle eğitilmiş mevcut modelin kullanımı, ticari kullanım ve yeniden dağıtım. Kullanıcının
 # uygulamadaki onayı yalnızca indirmeyi (erişimi) kapsar; diğer alanları doğrulanmış yapmaz ve "yerel/kişisel analiz"
-# gerekçesiyle otomatik izin verilmez (S3-GATE-02). Hangi işlemin hangi alanları gerektirdiği:
+# gerekçesiyle otomatik izin verilmez (S3-GATE-02). VERI-01: kullanıcı, onay verdiği kaynak için ayrıca açık bir
+# "kişisel kullanım beyanı" verebilir (``kisisel_beyan`` alanları; ayarlarda ``kisisel_kullanim``). Beyan, yalnızca
+# DOGRULANAMADI olan bu alanları kullanıcının kendi sorumluluğunda "KULLANICI_BEYANI" yapar (kişisel, ticari olmayan
+# analiz, bu bilgisayarda model eğitimi ve tahmin). Kayıttaki belge durumu değişmez; ticari kullanım ve yeniden dağıtım
+# beyanla açılmaz; IZIN_VARSAYILMAZ/YASAK alanlar hiçbir zaman açılmaz. Hangi işlemin hangi alanları gerektirdiği:
 # ``eligibility.OPERATION_SCOPES``. ``saglar``: kaynağın uygulamada GERÇEKTEN sağladığı veri türleri; bir etiketin
 # hakkı yalnızca bu türler için geçerlidir (ör. yalnızca fikstür sağlayan kaynağın etiketiyle sonuç verisi hak
 # kazanamaz). GitHub yedeğinin depo lisansı (MIT) asıl kaynağın haklarını kanıtlamaz.
@@ -187,12 +191,14 @@ USE_RIGHTS: dict[str, dict] = {
                       "model_egitimi": "DOGRULANAMADI", "model_kullanimi": "DOGRULANAMADI",
                       "ticari_kullanim": "DOGRULANAMADI", "yeniden_dagitim": "IZIN_VARSAYILMAZ", "belge": "",
                       "saglar": ("sonuc", "fikstur"),
+                      "kisisel_beyan": ("sonuc_kullanimi", "model_egitimi", "model_kullanimi"),
                       "belge_denetimi": ("2026-10-10 (S3-GATE-02): data.php ve contact.php bu ortamdan açılamadı (ad "
                                          "çözümlenemedi); koşul metni okunamadığı için hiçbir alan izinli sayılmadı.")},
     "github-mirror": {"erisim_kosullari": "DOGRULANAMADI", "sonuc_kullanimi": "DOGRULANAMADI",
                       "model_egitimi": "DOGRULANAMADI", "model_kullanimi": "DOGRULANAMADI",
                       "ticari_kullanim": "DOGRULANAMADI", "yeniden_dagitim": "IZIN_VARSAYILMAZ", "belge": "",
                       "saglar": ("sonuc",),
+                      "kisisel_beyan": ("sonuc_kullanimi", "model_egitimi", "model_kullanimi"),
                       "belge_denetimi": "Depo lisansı (MIT) asıl kaynağın (football-data.co.uk) haklarını kanıtlamaz."},
     "openfootball": {"erisim_kosullari": "IZINLI_BELGELI", "sonuc_kullanimi": "IZINLI_BELGELI",
                      "model_egitimi": "IZINLI_BELGELI", "model_kullanimi": "IZINLI_BELGELI",
@@ -276,6 +282,27 @@ def archive_allowed(key: str, operation: str) -> bool:
     if operation not in ARCHIVE_OPERATIONS:
         raise KeyError(operation)
     return archive_scope(key).get(operation) == "IZINLI_BELGELI"
+
+
+# Kişisel kullanım beyanı verilebilen kaynaklar (uygulamanın sonuç verisi aldığı, onay gerektiren kaynaklar)
+DECLARABLE = tuple(k for k in IMPLEMENTED if USE_RIGHTS.get(k, {}).get("kisisel_beyan"))
+# Onay penceresinin sürümü: ayarlardaki ``onay_surumu`` bundan küçükse pencere bir kez yeniden gösterilir (VERI-01'de
+# kişisel kullanım beyanı eklendi; eski indirme onayı beyan sayılmaz).
+CONSENT_SCHEMA = 2
+
+
+def effective_declarations(consent: dict | None, declarations: dict | None) -> set[str]:
+    """Geçerli beyanlar: beyan verilebilen ve indirme onayı da olan kaynaklar (onay geri alınırsa beyan da geçmez)."""
+    consent = consent or {}
+    return {k for k in (declarations or {}) if k in DECLARABLE and k in consent}
+
+
+def missing_declarations(labels, consent: dict | None, declarations: dict | None) -> list[str]:
+    """Verideki sonuç etiketlerinden, beyan verilebilen ama geçerli kişisel kullanım beyanı olmayan kaynaklar (yalnızca
+    kullanıcıya gösterilecek ipucu için; hak kararı ``eligibility`` içindedir)."""
+    keys = {SOURCE_LABELS.get(str(lb)) for lb in labels}
+    have = effective_declarations(consent, declarations)
+    return sorted(k for k in keys if k in DECLARABLE and k not in have)
 
 
 def allowed_sources(consent: dict[str, str] | None) -> set[str]:

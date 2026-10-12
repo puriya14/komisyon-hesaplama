@@ -102,6 +102,92 @@ ALIASES_BY_COUNTRY: dict[str, dict[str, str]] = {
         "olympiacos": "Olympiakos", "olympiakos piraeus": "Olympiakos", "paok": "PAOK", "aek athens": "AEK",
     },
 }
+
+# VERI-01: maç düzeyinde kanıtla türetilen takma adlar. openfootball sezon dosyalarındaki (2022-23..2026-27) oynanmış
+# maçlar, football-data adlı sonuçlarla (aynı lig, tarih ±1 gün, aynı MS skoru; ikisinde de varsa aynı İY skoru) yalnızca
+# tek aday kaldığında eşlendi. Kabul: en az 3 tekil maç, oyların en az %90'ı tek takımda, ev ve deplasman oyları aynı
+# takımda (çoğu girdi 30-150 maçla %100 uyumlu). "es troyes" 2026-27 adıdır: aynı kulübün "estac troyes" kaydı ve iki
+# eşleşen çift maçla desteklenir. Yalnızca mevcut eşleyicinin bulamadığı adlar eklendi; mevcut girdilerle çakışma yok.
+_DERIVED_ALIASES: dict[str, dict[str, str]] = {
+    "İngiltere": {
+        "accrington stanley": "Accrington", "birmingham city": "Birmingham", "blackburn rovers": "Blackburn",
+        "bolton wanderers": "Bolton", "bradford city": "Bradford", "bristol rovers": "Bristol Rvs",
+        "burton albion": "Burton", "cambridge united": "Cambridge", "cardiff city": "Cardiff",
+        "carlisle united": "Carlisle", "charlton athletic": "Charlton", "cheltenham town": "Cheltenham",
+        "colchester united": "Colchester", "coventry city": "Coventry", "crewe alexandra": "Crewe",
+        "derby county": "Derby", "doncaster rovers": "Doncaster", "exeter city": "Exeter", "grimsby town": "Grimsby",
+        "harrogate town": "Harrogate", "huddersfield town": "Huddersfield", "hull city": "Hull",
+        "lincoln city": "Lincoln", "mansfield town": "Mansfield", "northampton town": "Northampton",
+        "norwich city": "Norwich", "oxford united": "Oxford", "peterborough united": "Peterboro",
+        "plymouth argyle": "Plymouth", "preston north end": "Preston", "rotherham united": "Rotherham",
+        "salford city": "Salford", "shrewsbury town": "Shrewsbury", "stockport county": "Stockport",
+        "stoke city": "Stoke", "swansea city": "Swansea", "swindon town": "Swindon", "tranmere rovers": "Tranmere",
+        "wigan athletic": "Wigan", "wycombe wanderers": "Wycombe",
+    },
+    "İskoçya": {
+        "heart of midlothian": "Hearts",
+    },
+    "Almanya": {
+        "07 elversberg": "Elversberg", "arminia bielefeld": "Bielefeld", "bochum 1848": "Bochum",
+        "darmstadt 98": "Darmstadt", "dynamo dresden": "Dresden", "eintracht braunschweig": "Braunschweig",
+        "hannover 96": "Hannover", "jahn regensburg": "Regensburg", "karlsruher": "Karlsruhe",
+        "paderborn 07": "Paderborn", "spvgg greuther furth": "Greuther Furth", "ssv ulm": "Ulm",
+        "wehen wiesbaden": "Wehen",
+    },
+    "İspanya": {
+        "ad ceuta": "Ceuta", "ca osasuna": "Osasuna", "espanyol barcelona": "Espanol", "racing ferrol": "Ferrol",
+        "racing santander": "Santander", "rayo vallecano madrid": "Vallecano", "real betis balompie": "Betis",
+        "real racing santander": "Santander", "real sociedad b": "Sociedad B", "real sociedad futbol": "Sociedad",
+        "real valladolid": "Valladolid", "real zaragoza": "Zaragoza",
+    },
+    "İtalya": {
+        "acf fiorentina": "Fiorentina", "atalanta bc": "Atalanta", "delfino pescara": "Pescara",
+        "mantova 1911 ssd": "Mantova", "reggiana 1919": "Reggiana", "salernitana 1919": "Salernitana",
+        "uc sampdoria": "Sampdoria",
+    },
+    "Fransa": {
+        "clermont foot 63": "Clermont", "ea guingamp": "Guingamp", "es troyes": "Troyes", "estac troyes": "Troyes",
+        "grenoble foot 38": "Grenoble", "lille osc": "Lille", "montpellier hsc": "Montpellier",
+        "nancy lorraine": "Nancy", "racing lens": "Lens", "rodez af": "Rodez", "sm caen": "Caen",
+        "stade lavallois": "Laval", "stade reims": "Reims", "strasbourg alsace": "Strasbourg",
+        "usl dunkerque": "Dunkerque",
+    },
+    "Hollanda": {
+        "ado den haag": "Den Haag", "az": "AZ Alkmaar", "cambuur leeuwarden": "Cambuur",
+        "feyenoord rotterdam": "Feyenoord", "fortuna sittard": "For Sittard", "heracles almelo": "Heracles",
+        "pec zwolle": "Zwolle", "rkc waalwijk": "Waalwijk", "sbv excelsior": "Excelsior", "sbv vitesse": "Vitesse",
+        "telstar 1963": "Telstar", "twente 65": "Twente", "willem ii tilburg": "Willem II",
+    },
+    "Portekiz": {
+        "cs maritimo": "Maritimo", "estrela da amadora": "Estrela", "gd chaves": "Chaves", "gd estoril": "Estoril",
+        "gd estoril praia": "Estoril", "sl benfica": "Benfica", "sporting": "Sp Lisbon",
+        "sporting clube braga": "Sp Braga",
+    },
+    "Belçika": {
+        "fcv dender eh": "Dender", "k beerschot va": "Beerschot VA", "kaa gent": "Gent", "kvc westerlo": "Westerlo",
+        "sint truidense vv": "St Truiden", "sporting charleroi": "Charleroi", "standard liege": "Standard",
+        "union saint gilloise": "St. Gilloise", "zulte waregem": "Waregem",
+    },
+    "Türkiye": {
+        "bodrum": "Bodrumspor",
+    },
+    "Yunanistan": {
+        "ae kifisias": "Kifisia", "ae larissa": "Larisa", "aek athen": "AEK", "aris saloniki": "Aris",
+        "gs kallithea": "Athens Kallithea", "levadiakos": "Levadeiakos", "ofi heraklion": "OFI Crete",
+        "paok saloniki": "PAOK",
+    },
+    "Avusturya": {
+        "austria klagenfurt": "A. Klagenfurt", "austria lustenau": "A. Lustenau", "austria wien": "Austria Vienna",
+        "blau weiss linz": "BW Linz", "rapid wien": "SK Rapid", "rb salzburg": "Salzburg", "scr altach": "Altach",
+        "wsg tirol": "Tirol",
+    },
+}
+for _country, _group in _DERIVED_ALIASES.items():
+    _base = ALIASES_BY_COUNTRY.setdefault(_country, {})
+    assert not set(_base) & set(_group), (_country, set(_base) & set(_group))
+    _base.update(_group)
+del _country, _group, _base
+
 # Geriye uyumlu düz görünüm (ülke kapsamı olmadan)
 ALIASES: dict[str, str] = {k: v for group in ALIASES_BY_COUNTRY.values() for k, v in group.items()}
 
@@ -114,6 +200,15 @@ def norm_key(name) -> str:
     s = re.sub(r"[^a-z0-9]+", " ", s)
     tokens = [t for t in s.split() if t not in _STOP]
     return " ".join(tokens)
+
+
+def spelling_key(name) -> str:
+    """Yalnızca yazım farkını yok sayan anahtar (büyük/küçük harf, aksan, noktalama, boşluk): "Nott'm Forest" =
+    "Nottm Forest", "Preußen Münster" = "Preussen Munster". ``norm_key``ten farklı olarak hiçbir ad parçası atılmaz;
+    bu yüzden farklı kulüpleri birleştirmez (kimlik kanıtını genişletmez, yalnızca aynı adın yazımlarını eşler)."""
+    s = "" if name is None else str(name)
+    s = unicodedata.normalize("NFKD", s.translate(_FOLD)).encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"[^a-z0-9]+", "", s.lower())
 
 
 def category(key: str) -> frozenset:
@@ -201,9 +296,12 @@ def resolve_team(name, candidates, league: str | None = None, source: str | None
         return TeamMatch(raw, None, BELIRSIZ, "", tuple(sorted(same)))
     target = _alias(key, league, source)
     if target is not None:
-        hits = [c for cs in groups.values() for c in cs if c == target]
+        # Önce tam ad; yoksa hedef adın yalnızca yazımı farklı TEK karşılığı (ör. "Nott'm Forest" / "Nottm Forest")
+        want = spelling_key(target)
+        hits = ([c for cs in groups.values() for c in cs if c == target]
+                or [c for cs in groups.values() for c in cs if spelling_key(c) == want])
         if len(hits) == 1 and category(norm_key(target)) == category(key):
-            return TeamMatch(raw, target, KESIN, "takma_ad")
+            return TeamMatch(raw, hits[0], KESIN, "takma_ad")
     return TeamMatch(raw, None, BULUNAMADI, "", (), _suggest(key, groups))
 
 

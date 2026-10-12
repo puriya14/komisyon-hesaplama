@@ -96,11 +96,12 @@ def next_season_schedule(matches: pd.DataFrame, start: dt.date, retrieved_at: dt
 
 def full_context(matches: pd.DataFrame, engine, as_of: dt.datetime, fixture_day: dt.date | None = None,
                  rights: RightsStatus | None = None, drop: set | None = None,
-                 schedule: pd.DataFrame | None = None, retrieved: dt.datetime | None = None) -> EligibilityContext:
+                 schedule: pd.DataFrame | None = None, retrieved: dt.datetime | None = None,
+                 mode: str = "siki") -> EligibilityContext:
     """Sentetik depo + motor durumu + bütün sezonların tam takvimi + yeni sezon fikstürü + sentetik haklar.
 
     ``schedule``: kaynak takviminin kurulacağı TAM maç listesi (verilmezse depo; depo eksikken takvim tam
-    kalsın diye ayrı verilir)."""
+    kalsın diye ayrı verilir). ``mode``: veri denetimi modu (VERI-01; varsayılan sıkı = v2 kuralları)."""
     sched = matches if schedule is None else schedule
     seasons = sorted(sched["season"].astype(str).unique())
     retrieved = retrieved or (as_of - dt.timedelta(hours=1))
@@ -110,7 +111,8 @@ def full_context(matches: pd.DataFrame, engine, as_of: dt.datetime, fixture_day:
     nxt = f"{y}/{(y + 1) % 100:02d}"
     start = fixture_day or (info_cutoff(as_of) + dt.timedelta(days=3))
     covs.append(next_season_schedule(sched, start, retrieved, nxt))
-    return EligibilityContext(matches, state_view(engine), {"T1": covs}, rights=rights or synthetic_rights())
+    return EligibilityContext(matches, state_view(engine), {"T1": covs}, rights=rights or synthetic_rights(),
+                              mode=mode)
 
 
 def verified(event_id: str, market: str, as_of: dt.datetime, *, forecast_ok: bool = True, bet_ok: bool = True,

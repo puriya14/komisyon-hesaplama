@@ -161,6 +161,11 @@ def test_t01_known_missing_match_never_becomes_value_candidate(m, eng, teams, va
 
     monkeypatch.setattr(cli, "_now_utc", lambda: AS_OF)
     monkeypatch.setattr(F, "_now", lambda: AS_OF)
+    from bahis_tahmin.config import Settings
+
+    s = Settings.load()
+    s.veri_denetimi = "siki"  # VERI-01: bu senaryo v2 (sıkı) anlamını sınar; standart mod tests/test_veri_01.py'de
+    s.save()
     st = cli._store()
     st.fixtures = fx.reindex(columns=st.fixtures.columns)
     st.meta["eslesmeyen_fikstur"] = [{"league": "T1", "date": str(FIXTURE_DAY), "time": "", "raw_home": "Qwerty Kulubu",

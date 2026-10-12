@@ -372,6 +372,8 @@ class PredictionEngine:
         h.update(f"{ENGINE_VERSION}|{margin_method}|{len(matches)}".encode())
         for lg, g in matches.groupby("league"):
             h.update(f"{lg}:{len(g)}:{g['date'].max()}:{int(g['fthg'].sum())}:{int(g['ftag'].sum())}".encode())
+            # Takım adları da (VERI-01: yalnızca adı birleştirilen veri de yeniden eğitim gerektirir)
+            h.update("|".join(sorted(set(g["home"].astype(str)) | set(g["away"].astype(str)))).encode())
         return h.hexdigest()
 
     # --------------------------------------------------------------- train

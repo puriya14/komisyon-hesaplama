@@ -19,8 +19,9 @@ class DashboardPage(Page):
         super().__init__(controller, parent)
         self.first_run = banner(
             "<b>Hoş geldiniz!</b> Başlamak için son yılların maç verilerini indirip modeli eğitmeniz gerekiyor. "
-            "Verilerin kullanım koşullarını 'Veri' sayfasında okuyup onaylamanız istenecek (onay olmadan veri "
-            "indirilmez). İlk kurulum birkaç dakika sürer; sonraki güncellemelerde yalnızca yeni maçlar indirilir."
+            "Verilerin kullanım koşullarını okuyup onaylamanız istenecek (onay olmadan veri indirilmez). Tahmin için "
+            "aynı pencerede kişisel (ticari olmayan) kullanım beyanını da işaretleyin; beyan olmadan model "
+            "eğitilmez. İlk kurulum birkaç dakika sürer; sonraki güncellemelerde yalnızca yeni maçlar indirilir."
         )
         self.body.addWidget(self.first_run)
 
@@ -117,11 +118,14 @@ class DashboardPage(Page):
         unpred = self.ctl.match_unpredicted
         if preds or unpred:
             now = self.ctl.now()
-            n_ok = sum(1 for p in preds if p.forecast_ok_at(now))
-            n_val = sum(1 for p in preds if p.forecast_ok_at(now) and p.best_value(self.ctl.settings, now=now))
+            shown = [p for p in preds if p.forecast_ok_at(now)]
+            n_ok = len(shown)
+            n_warn = sum(1 for p in shown if p.data_block(now))  # VERI-01 "Uyarılı": tahmin var, bahis adayı değil
+            n_val = sum(1 for p in shown if p.best_value(self.ctl.settings, now=now))
             leagues = sorted({p.league for p in preds} | {v.league for v in unpred})
             self.c_fix.set(str(len(preds) + len(unpred)),
-                           f"veri uygun {n_ok} · tahmin yok {len(preds) + len(unpred) - n_ok} · "
+                           f"tahmin {n_ok}" + (f" (uyarılı {n_warn})" if n_warn else "")
+                           + f" · tahmin yok {len(preds) + len(unpred) - n_ok} · "
                            f"{n_val} değerli bahis fırsatı · {len(leagues)} lig")
             self.c_fix.setToolTip("\n".join(league_name(lg) for lg in leagues))
         else:

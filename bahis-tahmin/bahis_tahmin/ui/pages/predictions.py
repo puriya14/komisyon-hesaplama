@@ -125,10 +125,13 @@ class PredictionsPage(Page):
         s = self.ctl.settings
         df = self.model.frame
         n_blocked = int((df["p1"].isna()).sum()) if not df.empty else 0
+        n_warn = int(df["veri"].astype(str).str.startswith("Uyarılı").sum()) if not df.empty else 0
         self.footer.setText(
             f"{n} / {total} maç gösteriliyor · Değer hesabı: {ODDS_TYPE_LABELS.get(s.odds_type, s.odds_type)}, "
             f"en az %{100 * s.min_ev:.0f} beklenen değer, oran {s.min_odds:.2f}–{s.max_odds:.2f} · "
-            f"veri uygunluğu doğrulanamayan {n_blocked} maçta olasılık ve değer gösterilmez (Veri durumu sütunu)"
+            f"tahmini gösterilemeyen {n_blocked} maç"
+            + (f", uyarılı (bahis adayı olmayan) {n_warn} maç" if n_warn else "")
+            + " (nedenleri Veri durumu sütununda)"
         )
 
     def _open(self, index) -> None:

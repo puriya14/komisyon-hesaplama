@@ -130,12 +130,12 @@ class MainWindow(QMainWindow):
         elif kind == "popup":
             QMessageBox.information(self, APP_TITLE, text)
         elif kind == "consent":
-            from .consent import ask_consent
+            from .consent import NOT_UPDATED_TEXT, ask_consent_before_update
 
-            if ask_consent(self.ctl, self):
+            if ask_consent_before_update(self.ctl, self):
                 self.ctl.update_and_train()
             else:
-                self.status.setText("Kaynak onayı verilmedi; veri indirilmedi.")
+                self.status.setText(NOT_UPDATED_TEXT)
         else:
             self.status.setText(text.splitlines()[0] if text else "")
             self.status.setToolTip(text)

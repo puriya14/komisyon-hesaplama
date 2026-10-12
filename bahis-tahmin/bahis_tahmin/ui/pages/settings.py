@@ -62,6 +62,15 @@ class SettingsPage(Page):
         f3.addRow(self.chk_auto)
         f3.addRow(self.chk_mirror)
         f3.addRow("Kaç günlük fikstür gösterilsin", self.sp_days)
+        self.cb_check = QComboBox()
+        self.cb_check.addItem("Standart (önerilen)", "standart")
+        self.cb_check.addItem("Sıkı", "siki")
+        self.cb_check.setToolTip(
+            "Standart: güncelliği bağımsız bir takvimle kanıtlanamayan maçların tahmini gösterilir (açıklamada yazılır); "
+            "bilinen eksik veri veya az geçmiş varsa tahmin 'Uyarılı' gösterilir ve bahis adayı olmaz. Takım "
+            "eşleşmemesi, model yokluğu ve kullanım hakkı gibi yapısal engeller her iki modda da tahmini engeller.\n"
+            "Sıkı: güncelliği kanıtla doğrulanmayan hiçbir maçın tahmini gösterilmez (eski davranış).")
+        f3.addRow("Veri denetimi", self.cb_check)
         self.body.addWidget(g3)
 
         btn = QPushButton("Kaydet")
@@ -104,6 +113,7 @@ class SettingsPage(Page):
         self.chk_stake.setChecked(s.stake_suggestions)
         self.chk_mirror.setChecked(s.use_mirror_fallback)
         self.sp_days.setValue(s.fixture_days)
+        self.cb_check.setCurrentIndex(max(self.cb_check.findData(s.veri_denetimi), 0))
 
     def _save(self) -> None:
         s = copy.deepcopy(self.ctl.settings)
@@ -121,4 +131,5 @@ class SettingsPage(Page):
         s.stake_suggestions = self.chk_stake.isChecked()
         s.use_mirror_fallback = self.chk_mirror.isChecked()
         s.fixture_days = self.sp_days.value()
+        s.veri_denetimi = self.cb_check.currentData()
         self.ctl.save_settings(s)

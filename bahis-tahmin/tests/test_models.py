@@ -49,8 +49,10 @@ def test_team_name_matching():
     # kanıtı değil): doğrulanmış takma ad olmadan takım seçilmez, öneri ayrıca görünür.
     from bahis_tahmin.data.teams import resolve_team
 
-    assert match_team("Coventry City FC", known) is None
-    assert resolve_team("Coventry City FC", known).suggestions[:1] == ("Coventry",)
+    assert match_team("Kingsbridge City FC", known + ["Kingsbridge"]) is None
+    assert resolve_team("Kingsbridge City FC", known + ["Kingsbridge"]).suggestions[:1] == ("Kingsbridge",)
+    # VERI-01: maç düzeyinde kanıtlanmış takma ad (openfootball "Coventry City FC" = football-data "Coventry")
+    assert match_team("Coventry City FC", known, league="E1", source="openfootball") == "Coventry"
     assert match_team("İstanbul Başakşehir", known) == "Buyuksehyr"
     assert match_team("Göztepe", known) == "Goztep"
     assert match_team("Totally Unknown FC", known) is None

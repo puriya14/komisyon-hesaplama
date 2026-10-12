@@ -27,11 +27,15 @@ from .parsers import (
 )
 from .source_registry import SOURCES, allowed_sources
 from .sources import FD_BASE, MIRROR_URL, OPENFOOTBALL_BASE, Downloader, DownloadError
-from .teams import BELIRSIZ, MATCHING_VERSION, resolve_teams
+from .teams import BELIRSIZ, MATCHING_VERSION, resolve_teams, spelling_key
 
 log = logging.getLogger(__name__)
 
 ProgressFn = Callable[[int, str], None]
+
+# Takım adı yazımı birleştirilen kaynaklar (football-data adlandırması). Kökeni dosyayla doğrulanan sonuç satırlarına
+# (ör. openfootball-sonuc) dokunulmaz: ad değişirse yeniden ayrıştırma denetimi tutmaz.
+UNIFY_SOURCES = frozenset({"football-data.co.uk", "github-yedek"})
 
 CURRENT_SEASON_MAX_AGE_H = 3.0
 EXTRA_MAX_AGE_H = 12.0
@@ -105,6 +109,17 @@ class DataStore:
         except Exception as e:  # dosya yok/bozuk/uyumsuz pandas sürümü
             log.info("Kayıtlı veri yüklenemedi: %s", e)
             return False
+        # VERI-01 öncesi kaydedilmiş veride aynı takımın yazım farkları olabilir: yüklemede de birleştirilir (yalnızca
+        # bellekte; dosya bir sonraki güncellemede yazılır) ki yeniden eğitim ve uygunluk aynı adları görsün
+        matches, renames = unify_spellings(matches)
+        if renames:
+            matches = self._clean_matches(matches)
+            canon = _spelling_index(matches)
+            if canon and not fixtures.empty:
+                fixtures = fixtures.copy()
+                for col in ("home", "away"):
+                    fixtures[col] = [canon.get((_country(lg), spelling_key(t)), t) if isinstance(t, str) else t
+                                     for lg, t in zip(fixtures["league"], fixtures[col])]
         self.matches, self.fixtures, self.meta = matches, fixtures, meta
         return True
 
@@ -260,6 +275,11 @@ class DataStore:
         if matches.empty and self.has_data:
             report.warnings.append("Yeni veri alınamadı; mevcut veriler korunuyor.")
             matches = self.matches[self.matches["league"].isin(leagues)]
+        # Aynı takımın yalnızca yazımı farklı adları (ör. yedek veri setinde "Nottm Forest" / "Nott'm Forest") tek
+        # takıma indirilir; aksi halde takımın geçmişi ikiye bölünür ve fikstür adı eşleşmez.
+        matches, renames = unify_spellings(matches)
+        if renames:
+            matches = self._clean_matches(matches)
 
         progress(92, "Yaklaşan maçlar (fikstür) alınıyor...")
         self._last_unmatched = []
@@ -315,6 +335,11 @@ class DataStore:
                 report.warnings.append(f"{name} okunamadı: {e}")
         fd = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=FIXTURE_COLUMNS)
         fd = fd[fd["league"].isin(leagues) & (fd["date"] >= lo) & (fd["date"] <= hi)]
+        canon = _spelling_index(matches)
+        if canon and not fd.empty:  # football-data fikstüründe de maç verisindeki yazım kullanılır
+            fd = fd.copy()
+            for col in ("home", "away"):
+                fd[col] = [canon.get((_country(lg), spelling_key(t)), t) for lg, t in zip(fd["league"], fd[col])]
 
         extra = []
         for code in leagues if "openfootball" in allowed else ():
@@ -416,6 +441,60 @@ class DataStore:
         }).reset_index()
         order = {c: i for i, c in enumerate(LEAGUES)}
         return out.sort_values("league", key=lambda s: s.map(order)).reset_index(drop=True)
+
+
+def _country(code: str) -> str:
+    lg = LEAGUES.get(code)
+    return lg.country if lg is not None else str(code)
+
+
+def _spelling_index(m: pd.DataFrame) -> dict:
+    """(ülke, yazım anahtarı) -> maç verisindeki ad (``UNIFY_SOURCES`` satırları; ``unify_spellings`` sonrası tekildir)."""
+    if m is None or m.empty or "source" not in m:
+        return {}
+    sel = m[m["source"].isin(UNIFY_SOURCES)]
+    out: dict = {}
+    for col in ("home", "away"):
+        for lg, t in zip(sel["league"].astype(str), sel[col].astype(str)):
+            out.setdefault((_country(lg), spelling_key(t)), t)
+    return out
+
+
+def unify_spellings(m: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
+    """Aynı ülkenin liglerinde yalnızca yazımı farklı takım adlarını (``teams.spelling_key``) tek yazıma indirir.
+
+    Seçilen yazım, o ülkede en son kullanılan yazımdır (eşitlikte en sık kullanılan). Yalnızca ``UNIFY_SOURCES``
+    satırları değişir. Dönüş: (veri, {(ülke, eski ad): yeni ad})."""
+    if m is None or m.empty or "source" not in m:
+        return m, {}
+    sel = m["source"].isin(UNIFY_SOURCES).to_numpy()
+    if not sel.any():
+        return m, {}
+    country = m["league"].astype(str).map(_country).to_numpy()
+    dates = pd.to_datetime(m["date"]).to_numpy()
+    names: dict[tuple, dict[str, list]] = {}
+    for col in ("home", "away"):
+        for c, t, d, ok in zip(country, m[col].astype(str), dates, sel):
+            if not ok:
+                continue
+            k = spelling_key(t)
+            if not k:
+                continue
+            st = names.setdefault((c, k), {}).setdefault(t, [d, 0])
+            st[0] = max(st[0], d)
+            st[1] += 1
+    renames: dict[tuple, str] = {}
+    for (c, _), spellings in names.items():
+        if len(spellings) < 2:
+            continue
+        canon = max(spellings, key=lambda n: (spellings[n][0], spellings[n][1], n))
+        renames.update({(c, n): canon for n in spellings if n != canon})
+    if not renames:
+        return m, {}
+    m = m.copy()
+    for col in ("home", "away"):
+        m[col] = [renames.get((c, t), t) if ok else t for c, t, ok in zip(country, m[col], sel)]
+    return m, renames
 
 
 class _GitHubUnavailable(Exception):

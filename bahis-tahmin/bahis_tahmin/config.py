@@ -16,6 +16,10 @@ DEFAULT_LEAGUES = [
 ]
 
 
+# Veri denetimi modları (eligibility.POLICY_MODES ile aynı)
+VERI_DENETIMI = ("standart", "siki")
+
+
 def app_home_path() -> Path:
     """Uygulama veri klasörünün yolu (klasör oluşturulmaz; ör. pilot dizininin bundan ayrı olduğunu denetlemek için)."""
     env = os.environ.get("BAHIS_TAHMIN_HOME")
@@ -65,6 +69,14 @@ class Settings:
     stake_suggestions: bool = False
     # Veri profili (S5-GITHUB-01): "varsayilan" veya "github" (bütün güncelleme yolları yalnızca seçili GitHub depoları)
     data_profile: str = "varsayilan"
+    # VERI-01: kaynak anahtarı -> kullanıcının kişisel (ticari olmayan) kullanım beyanı verdiği zaman (ISO). Beyan
+    # yalnızca indirme onayı da olan kaynaklarda geçerlidir (source_registry.effective_declarations).
+    kisisel_kullanim: dict = field(default_factory=dict)
+    # Kullanıcının en son kaydettiği onay penceresi sürümü (source_registry.CONSENT_SCHEMA'dan küçükse sorulur)
+    onay_surumu: int = 0
+    # Veri denetimi: "standart" (doğrulanamayan güncellik tahmini engellemez; bilinen eksik/az geçmiş yalnızca bahis
+    # adayını engeller) veya "siki" (S3-GATE-02 davranışı: güncelliği doğrulanmayan tahmin gösterilmez)
+    veri_denetimi: str = "standart"
 
     @classmethod
     def path(cls) -> Path:
@@ -93,6 +105,18 @@ class Settings:
         self.years_back = int(min(max(int(self.years_back), 3), 33))
         if not isinstance(self.source_consent, dict):
             self.source_consent = {}
+        from .data.source_registry import DECLARABLE
+
+        if not isinstance(self.kisisel_kullanim, dict):
+            self.kisisel_kullanim = {}
+        self.kisisel_kullanim = {k: v for k, v in self.kisisel_kullanim.items()
+                                 if k in DECLARABLE and isinstance(v, str)}
+        try:
+            self.onay_surumu = max(int(self.onay_surumu), 0)
+        except (TypeError, ValueError):
+            self.onay_surumu = 0
+        if self.veri_denetimi not in VERI_DENETIMI:
+            self.veri_denetimi = "standart"
         if self.odds_type not in ("avg", "max", "b365", "pinnacle"):
             self.odds_type = "avg"
         if self.margin_method not in ("power", "proportional"):
@@ -109,6 +133,13 @@ class Settings:
         from .data.source_registry import allowed_sources
 
         return allowed_sources(self.source_consent)
+
+    def declarations(self) -> dict[str, str]:
+        """Geçerli kişisel kullanım beyanları (indirme onayı da olan, beyan verilebilen kaynaklar)."""
+        from .data.source_registry import effective_declarations
+
+        keys = effective_declarations(self.source_consent, self.kisisel_kullanim)
+        return {k: v for k, v in self.kisisel_kullanim.items() if k in keys}
 
     def save(self) -> None:
         self.validate()

@@ -168,6 +168,8 @@ class MatchDetail(QWidget):
         block = p.data_block(self.ctl.now())
         if block:
             notes.append("Bahis/değer önerisi yok (stake 0): " + (e.short_text() if e is not None else ", ".join(block)))
+        elif e is not None and e.freshness != "VERIFIED_CURRENT":  # standart mod: güncellik kanıtı yok
+            notes.append("Veri durumu: " + e.short_text())
         if notes:
             self.note.setText(" ".join(notes))
             self.note.show()

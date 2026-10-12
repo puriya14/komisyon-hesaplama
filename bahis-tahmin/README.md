@@ -32,7 +32,11 @@ Dizi araştırması: [`docs/DIZI_ARASTIRMA_KULLANIM.md`](docs/DIZI_ARASTIRMA_KUL
 
 Geçmiş maç verisi football-data.co.uk'tan (erişilemezse ondan türetilmiş GitHub veri setinden) indirilir.
 Bu kaynakların yeniden kullanım koşulları açıkça doğrulanamadığı için **ilk indirmeden önce onayınız
-istenir**; onay vermediğiniz kaynaktan veri indirilmez. Ayrıntılar: [`docs/LISANS_DENETIMI.md`](docs/LISANS_DENETIMI.md).
+istenir**; onay vermediğiniz kaynaktan veri indirilmez. Aynı pencerede, kaynak başına ayrı bir **kişisel kullanım
+beyanı** kutusu da vardır. Bu kutuyla verileri yalnızca kişisel ve ticari olmayan amaçla kullanacağınızı beyan
+edersiniz: kendi analiziniz, bu bilgisayarda model eğitimi ve tahmin. **Beyan olmadan model eğitilmez ve maçlarda
+olasılık gösterilmez** ("veri bulunamadı / MODEL_YOK"). Ayrıntılar:
+[`docs/LISANS_DENETIMI.md`](docs/LISANS_DENETIMI.md), [`docs/VERI_01.md`](docs/VERI_01.md).
 
 Veriler, modeller ve sanal takip dosyası yalnızca bilgisayarınızda tutulur:
 `%LOCALAPPDATA%\BahisTahmin` (Linux/macOS: `~/.local/share/BahisTahmin`).
@@ -40,7 +44,7 @@ Veriler, modeller ve sanal takip dosyası yalnızca bilgisayarınızda tutulur:
 ## Komut satırı
 
 ```bat
-.venv\Scripts\python -m bahis_tahmin update --leagues E0,T1 --years 10 --accept-terms football-data
+.venv\Scripts\python -m bahis_tahmin update --leagues E0,T1 --years 10 --accept-terms football-data --kisisel-kullanim football-data
 .venv\Scripts\python -m bahis_tahmin train
 .venv\Scripts\python -m bahis_tahmin predict --league T1
 .venv\Scripts\python -m bahis_tahmin gol-egit
@@ -88,7 +92,11 @@ grup karşılaştırması, olay matrisi ve notları terminal olmadan sunar. Ayr�
   eksikliği bilinen veriyle, kesin kimliği kurulamayan takımla ya da kullanım kapsamı (sonuç kullanımı, model eğitimi,
   model kullanımı) belgelenmemiş kaynakla olasılık gösterilmez, avantaj adayı ve sanal stake üretilmez; neden, veri
   kesimi ve gereken düzeltme yazılır ([`docs/VERI_UYGUNLUK.md`](docs/VERI_UYGUNLUK.md)). Kullanım kapsamı
-  doğrulanmamış gerçek veriyle model eğitimi de yapılmaz; kaynak onayı yalnızca indirmeyi kapsar.
+  doğrulanmamış gerçek veriyle model eğitimi de yapılmaz; kaynak onayı yalnızca indirmeyi kapsar, eğitim ve tahmin
+  için kişisel kullanım beyanı gerekir. Varsayılan **standart** veri denetiminde (Ayarlar › Veri denetimi):
+  - yalnızca güncelliği bağımsız takvimle kanıtlanamayan maçın tahmini gösterilir ve açıklamada yazılır;
+  - bilinen eksik veri veya az geçmiş varsa tahmin "Uyarılı" gösterilir, avantaj adayı olmaz;
+  - "Sıkı" mod eski (v2) davranıştır.
 
 ## Testler
 
@@ -113,6 +121,7 @@ dokunmaz (`tests/conftest.py`: `BAHIS_TAHMIN_HOME` geçici dizine yönlendirilir
 - [`docs/DIZI_ARASTIRMA_SONUCLARI.md`](docs/DIZI_ARASTIRMA_SONUCLARI.md) — dizi araştırması sonuçları ve zorunlu test eşlemesi
 - [`docs/DIZI_ARASTIRMA_DUZELTMELER.md`](docs/DIZI_ARASTIRMA_DUZELTMELER.md) — sonuç belgesinin kanıt denetimi: düzeltme ve daraltma kaydı (S2-KABUL-01)
 - [`docs/ILERIYE_DONUK_OLCUM.md`](docs/ILERIYE_DONUK_OLCUM.md) — A/B/C için ileriye dönük ölçüm protokolü ve elle günlük akış
+- [`docs/VERI_01.md`](docs/VERI_01.md) — "birçok maçta veri bulunamadı" düzeltmesi: kişisel kullanım beyanı, doğrulanmış takım takma adları, standart/sıkı veri denetimi
 - [`docs/VERI_UYGUNLUK.md`](docs/VERI_UYGUNLUK.md) — ortak veri uygunluk kontrolü (güncellik, kapsam, takım kimliği, zaman, işlem kapsamlı haklar; politika v2, S3-GATE-02)
 - [`docs/S4_PILOT.md`](docs/S4_PILOT.md) — tek ligde gerçek veri pilotu: komutlar, yalıtım, kaynak kökeni, katılımcı referansı
 - [`docs/S5_GITHUB.md`](docs/S5_GITHUB.md) — GitHub veri profili, sürümlü önbellek, tarihsel arşiv ve kaynak/işlem bazında kullanım kapsamı

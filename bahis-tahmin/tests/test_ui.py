@@ -44,7 +44,8 @@ def window(app, synthetic, trained_engine, tmp_home):
 
 def test_all_pages_render(app, window):
     assert len(window.ctl.predictions) == 5
-    # Geçici uygulama dizininde kaynak takvimi yok: güncellik doğrulanamaz, hiçbir tahmin "uygun" gösterilmez
+    # Sentetik verinin kaynak etiketi kaynak kaydında yok (kullanım hakkı bilinmiyor): standart veri denetiminde de
+    # hiçbir tahmin "uygun" gösterilmez (yapısal engel)
     assert all(not p.forecast_ok and p.eligibility is not None for p in window.ctl.predictions)
     for row in range(window.nav.count()):
         window.nav.setCurrentRow(row)
@@ -60,7 +61,8 @@ def test_predictions_table_and_dialog(app, window):
     assert page.model.rowCount() == 5
     df = page.model.frame
     assert df["p1"].isna().all() and (df["value"] == "").all()  # olasılık boş (sıfır değil), değer önerisi yok
-    assert df["veri"].str.startswith("Doğrulanamıyor").all()  # durum renkle değil metinle
+    # durum renkle değil metinle; standart modda etiket birincil nedenin türünü yazar (hak yok: "Uygun değil")
+    assert df["veri"].str.startswith("Uygun değil").all() and df["veri"].str.contains("KAYNAK_HAKKI_BILINMIYOR").all()
     dlg = MatchDialog(window.ctl, window.ctl.predictions[0])
     assert dlg.detail.mk_model.rowCount() == 0 and "Tahmin gösterilmiyor" in dlg.detail.summary.text()
     dlg.close()

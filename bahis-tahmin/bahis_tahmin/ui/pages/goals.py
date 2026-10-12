@@ -118,6 +118,7 @@ class GoalsPage(Page):
         controller.goalPredictionsChanged.connect(self.refresh_scan)
         controller.dataChanged.connect(self._reset_panel)
         controller.dataChanged.connect(self.refresh_coverage)
+        controller.settingsChanged.connect(self._settings_changed)
         controller.busyChanged.connect(lambda b: self.btn_train.setEnabled(not b and self.ctl.store.has_data))
         self.refresh_all()
 
@@ -225,7 +226,7 @@ class GoalsPage(Page):
         self.scan_note.setText(
             ("Uygun aday yok: hiçbir maçta önceden tanımlı kontrollerin tamamı geçilmedi. Bu geçerli bir sonuçtur. "
              if mode == "value" and df.empty else "")
-            + f"{len(verdicts)} maç · veri uygunluğu doğrulanamayan {n_blocked} maçta olasılık gösterilmez · "
+            + f"{len(verdicts)} maç · tahmini gösterilemeyen {n_blocked} maçta olasılık yok (nedeni veri sütununda) · "
             f"{n_val} avantaj adayı · karar politikası: {DecisionPolicy().version}. "
             "'En olası' görünümü avantaj göstermez; yüksek olasılık düşük oranla birlikte gelir. "
             "Bu pazarlar için veri setinde gerçek oran yoktur: oranları Maç analizi sekmesinde siz girersiniz.")
@@ -381,6 +382,7 @@ class GoalsPage(Page):
         """Model veya veri değişti: maç analizi paneli eski tahmin/uygunlukla kalmaz (kayıt kapalı)."""
         self._current = None
         self._current_verdict = None
+        self._verdict_key = None
         self._current_decisions = []
         self.btn_record.setEnabled(False)
         for s in ("A", "B", "C"):
@@ -390,12 +392,24 @@ class GoalsPage(Page):
         self.dec_model.set_frame(pd.DataFrame())
         self.sec_model.set_frame(pd.DataFrame())
 
+    def _policy_key(self) -> tuple:
+        """Uygunluğu değiştiren ayarlar: veri denetimi modu, onaylar ve kişisel kullanım beyanları (VERI-01)."""
+        s = self.ctl.settings
+        return s.veri_denetimi, tuple(sorted(s.source_consent)), tuple(sorted(s.declarations()))
+
+    def _settings_changed(self) -> None:
+        self._refresh_sources()
+        if getattr(self, "_verdict_key", None) is not None and self._verdict_key != self._policy_key():
+            self._reset_panel()  # paneldeki uygunluk eski mod/haklarla üretildi: gösterilmez, kaydedilmez
+
     def _panel_valid(self) -> bool:
-        """Paneldeki tahmin hâlâ GÜNCEL motorun aynı lig durumundan mı geliyor?"""
+        """Paneldeki tahmin hâlâ GÜNCEL motorun aynı lig durumundan ve güncel mod/haklarla mı üretildi?"""
         from ...eligibility import league_state_digest
 
         eng, p = self.ctl.goal_engine, getattr(self, "_current", None)
         if eng is None or not eng.trained or p is None or getattr(self, "_current_verdict", None) is None:
+            return False
+        if getattr(self, "_verdict_key", None) != self._policy_key():
             return False
         return bool(p.state_digest) and p.state_digest == league_state_digest(eng.states.get(p.league))
 
@@ -452,6 +466,7 @@ class GoalsPage(Page):
 
     def _show(self, v) -> None:
         self._current_verdict = v
+        self._verdict_key = self._policy_key()
         p = v.prediction
         self._current = p
         eng = self.ctl.goal_engine
@@ -635,6 +650,14 @@ class GoalsPage(Page):
 
     def refresh_coverage(self) -> None:
         st = self.ctl.store
+        self._refresh_sources()
+        if not st.has_data:
+            self.cov_model.set_frame(pd.DataFrame())
+            self.cov_sum_model.set_frame(pd.DataFrame())
+            return
+        self._refresh_coverage_tables(st)
+
+    def _refresh_sources(self) -> None:
         self.src_model.set_frame(pd.DataFrame([{
             "Kaynak": s.name, "Lisans özeti": s.license_summary, "Ticari kullanım": s.commercial_use,
             "Model eğitimi": s.model_training, "Maliyet": s.cost,
@@ -646,12 +669,12 @@ class GoalsPage(Page):
                       "Yalnızca GitHub arşivi (araştırma amaçlı tarihsel inceleme; eğitim ve tahmin kapalı)"
                       if k == "statsbomb-acik" else
                       "Onay gerekmez" if not s.requires_consent else
-                      ("Kullanıcı onayladı" if k in self.ctl.settings.source_consent else "ONAY YOK")),
+                      ("ONAY YOK" if k not in self.ctl.settings.source_consent else
+                       "Kullanıcı onayladı + kişisel kullanım beyanı" if k in self.ctl.settings.declarations() else
+                       "Kullanıcı onayladı (beyan yok)")),
         } for k, s in SOURCES.items()]))
-        if not st.has_data:
-            self.cov_model.set_frame(pd.DataFrame())
-            self.cov_sum_model.set_frame(pd.DataFrame())
-            return
+
+    def _refresh_coverage_tables(self, st) -> None:
         odds_counts = {}
         cov = coverage_matrix(st.matches, self.ctl.settings.source_consent, odds_counts)
         self._cov = cov

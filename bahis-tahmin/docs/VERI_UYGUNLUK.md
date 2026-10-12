@@ -4,6 +4,16 @@ Sürüm geçmişi: `veri-uygunluk-v1` (S3-GATE-01) → `veri-uygunluk-v2` (S3-GA
 katılımcılarla doğrulanan takvim aralığı, "yerel analiz" istisnası olmadan işlem kapsamlı kaynak hakları). v1
 sonuçları karar denetiminde v2 ile eşleşmez (`BAGLAM_UYUSMUYOR`); eski kayıtlar olduğu gibi okunur.
 
+> **VERI-01 (veri denetimi modu ve kişisel kullanım beyanı).** Bu belgedeki kurallar **sıkı** moddur (`siki`,
+> `veri-uygunluk-v2`; değişmedi). Uygulama ve CLI varsayılanı **standart** moddur (`veri-uygunluk-v3-standart`).
+> Standart modda neden kodları ve güncellik aynı hesaplanır; yalnızca engel düzeyi değişir:
+> - yalnızca kanıt eksikliği (UNKNOWN güncellik) tahmini engellemez;
+> - bilinen eksik veri ve az geçmiş yalnızca bahis adayını engeller;
+> - yapısal engeller aynen kalır.
+>
+> Ayrıca kullanıcı, indirme onayı verdiği kaynak için kişisel (ticari olmayan) kullanım beyanı verebilir; beyan sonuç
+> kullanımı, model eğitimi ve model kullanımı alanlarını açar. Ayrıntılar: [`VERI_01.md`](VERI_01.md).
+
 Amaç: güncel olmayan, eksikliği bilinen veya uygunluğu doğrulanamayan verinin uygulamanın **hiçbir kullanıcıya
 dönük yolunda** güvenilir tahmin veya bahis adayı gibi sunulmasını engellemek. Kod: `bahis_tahmin/eligibility.py`
 (tek merkezi kontrol; ekranlar ve CLI kendi kopyalarını kurmaz). Bu kontrol olasılık hesaplamaz ve modelin
@@ -219,7 +229,7 @@ deposu, motor, kaynak dosyalarının değişiklik zamanı/boyutu, onaylar ve gü
 ## Bilinen sınırlar
 
 - openfootball 2026-27'de 22 ligin yalnızca 8'i için dosya sunar; diğer liglerde güncellik **doğrulanamaz**
-  (`KAYNAK_KAPSAMI_YOK`) ve tahmin gösterilmez. Başka bir tam takvim kaynağı eklenmeden bu ligler açılmaz.
+  (`KAYNAK_KAPSAMI_YOK`). Sıkı modda tahmin gösterilmez; standart modda (VERI-01) gösterilir ve açıklamada yazılır.
 - Önceki sezon dosyası önbellekte yoksa (veri güncellemesi yalnızca içinde bulunulan sezonu indirir; yeni toplu
   indirme eklenmedi) 365 günlük pencere kanıtlanamaz: UNKNOWN (`KAYNAK_ARALIK_DISI`).
 - Hem kaynakta hem depoda bulunmayan sezon sonu aşamaları (play-off) tespit edilemez; köprü yalnızca ikisinin de
@@ -227,7 +237,8 @@ deposu, motor, kaynak dosyalarının değişiklik zamanı/boyutu, onaylar ve gü
 - Maç bitiş saatleri bilinmediği için aynı günün sonuçları kullanılmaz; gece eğitilen bir model, durum o gün
   içindeki maçları içeriyorsa ve geçmiş bir an için değerlendiriliyorsa engellenir.
 - Kesin kimlik kuralı gerçek openfootball adlarının bir kısmını (ör. "X City FC" ↔ "X") yalnızca öneriye düşürür;
-  bunlar için doğrulanmış takma ad gerekir (öneri kimlik kanıtı değildir).
+  bunlar için doğrulanmış takma ad gerekir (öneri kimlik kanıtı değildir). VERI-01'de maç düzeyinde kanıtla 135 takma
+  ad eklendi; 2026-27 dosyalarındaki bütün adlar eşleşiyor.
 - S3-GATE-01'den önce eğitilmiş model dosyalarında durum köken bilgisi yoktur (`DURUM_KOKENI_YOK`); bu modellerle
   tahmin gösterilmez, yeniden eğitim gerekir (otomatik eğitim başlatılmaz).
 - S1/S2 dizi araştırması ve geriye dönük test ekranları geçmiş veri üzerinde araştırmadır; bu kontrolle yeniden
