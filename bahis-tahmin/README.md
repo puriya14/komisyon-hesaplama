@@ -116,6 +116,7 @@ dokunmaz (`tests/conftest.py`: `BAHIS_TAHMIN_HOME` geçici dizine yönlendirilir
 - [`docs/S5_GITHUB.md`](docs/S5_GITHUB.md) — GitHub veri profili, sürümlü önbellek, tarihsel arşiv ve kaynak/işlem bazında kullanım kapsamı
 - [`docs/S6_CALISMA.md`](docs/S6_CALISMA.md) — kayıtlı araştırmalar, revizyon/çalıştırma/not sözleşmesi, iki grup karşılaştırması ve arayüz servis sözleşmesi
 - [`docs/S6_OLAY.md`](docs/S6_OLAY.md) — çoklu olay öncesi/sonrası karşılaştırması: giriş yolları, pencere ve sayma kuralları, servis imzası
+- [`docs/S6_PERF.md`](docs/S6_PERF.md) — arşiv görünümü hızlandırması: değişen ve değişmeyen davranış, eşdeğerlik kanıtı, ölçüm aracı (`tools/perf_arsiv.py`)
 - `reports/s5_github_01/` — S5-GITHUB-01 toplu sonuç raporu (yalnızca sayılar; maç satırı yok)
 - `reports/s4_pilot_01/` — S4-PILOT-01 toplu sonuç raporu (yalnızca sayılar; maç satırı ve tahmin listesi yok)
 - `reports/s3_gate_02/` — S3-GATE-02 raporu ve dondurulmuş ileriye dönük ölçüm protokolü v3

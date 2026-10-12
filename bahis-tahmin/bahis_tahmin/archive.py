@@ -716,49 +716,67 @@ def unified(rows: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFram
     ok = ok.sort_values(["league", "_day", "k_home", "k_away", "_prio", "_blok", "_time", "_sid", "fthg", "ftag",
                          "hthg", "htag", "xg_h", "xg_a", "sut_h", "sut_a"], kind="mergesort", na_position="last")
     out, conflicts = [], []
+    # Maç grupları: groupby(sort=True) ile aynı gruplar, aynı grup sırası ve grup içinde aynı (öncelik) satır
+    # sırası; anahtarı eksik satır gruba girmez (ngroup NaN). Grup başına küçük DataFrame seçimi yerine sütun
+    # listeleri kullanılır (S6-PERF-03); alan kuralları değişmedi.
+    gid = ok.groupby(["league", "_day", "k_home", "k_away"], sort=True).ngroup().to_numpy(dtype=float,
+                                                                                           na_value=np.nan)
+    pos = np.flatnonzero(np.isfinite(gid) & (gid >= 0))
+    pos = pos[np.argsort(gid[pos], kind="stable")]
+    starts = np.flatnonzero(np.r_[True, gid[pos][1:] != gid[pos][:-1]]) if len(pos) else np.zeros(0, dtype=int)
+    col = {c: ok[c].tolist() for c in ("league", "_day", "k_home", "k_away", "season", "kaynak", "blok", "asil_kaynak",
+                                        "fthg", "ftag", "hthg", "htag", "iy_mantiksal", "_time", "_sid", "_blok",
+                                        "xg_h", "xg_a", "sut_h", "sut_a")}
+    src = col["kaynak"]
 
     def pairs(g, a, b):
-        return {(x, y) for x, y in zip(g[a], g[b]) if pd.notna(x) and pd.notna(y)}
+        xa, xb = col[a], col[b]
+        return {(xa[i], xb[i]) for i in g if pd.notna(xa[i]) and pd.notna(xb[i])}
 
     def first_pair(g, a, b):
         """İki alanı birlikte dolu ilk satır (öncelik sırasıyla): (değer_a, değer_b, kaynak)."""
-        both = g[g[a].notna() & g[b].notna()]
-        if both.empty:
-            return np.nan, np.nan, None
-        return both[a].iloc[0], both[b].iloc[0], both["kaynak"].iloc[0]
+        xa, xb = col[a], col[b]
+        for i in g:
+            if pd.notna(xa[i]) and pd.notna(xb[i]):
+                return xa[i], xb[i], src[i]
+        return np.nan, np.nan, None
 
-    for (lg, day, h, a), g in ok.groupby(["league", "_day", "k_home", "k_away"], sort=True):
+    for s0, s1 in zip(starts.tolist(), [*starts[1:].tolist(), len(pos)]):
+        g = pos[s0:s1].tolist()  # bu maçın satırları (konum), öncelik sırasıyla
+        i0 = g[0]
+        lg, day, h, a = col["league"][i0], col["_day"][i0], col["k_home"][i0], col["k_away"][i0]
         ft, ht = pairs(g, "fthg", "ftag"), pairs(g, "hthg", "htag")
-        real_ht = pairs(g[~g["iy_mantiksal"].astype(bool)], "hthg", "htag")
+        real_ht = pairs([i for i in g if not bool(col["iy_mantiksal"][i])], "hthg", "htag")
         status = "CELISKI" if (len(ft) > 1 or len(ht) > 1) else "TAMAM"
         mid = event_id(lg, day, h, a)
         if status == "CELISKI":
-            for _, x in g.iterrows():
-                conflicts.append({"mac_kimligi": mid, "kaynak": x["kaynak"], "blok": x["blok"],
-                                  "asil_kaynak": x["asil_kaynak"], "ms": (x["fthg"], x["ftag"]),
-                                  "iy": (x["hthg"], x["htag"])})
+            for i in g:
+                conflicts.append({"mac_kimligi": mid, "kaynak": src[i], "blok": col["blok"][i],
+                                  "asil_kaynak": col["asil_kaynak"][i], "ms": (col["fthg"][i], col["ftag"][i]),
+                                  "iy": (col["hthg"][i], col["htag"][i])})
         f = next(iter(ft)) if len(ft) == 1 else (np.nan, np.nan)
         hh = next(iter(ht)) if len(ht) == 1 else (np.nan, np.nan)
-        srcs = sorted(set(g["kaynak"]))
-        ms_src = sorted(set(g.loc[g["fthg"].notna() & g["ftag"].notna(), "kaynak"]))
-        iy_src = sorted(set(g.loc[g["hthg"].notna() & g["htag"].notna(), "kaynak"]))
-        timed = g[g["_time"] != ""]
-        t, t_src = (timed["_time"].iloc[0], timed["kaynak"].iloc[0]) if len(timed) else ("", None)
+        srcs = sorted({src[i] for i in g})
+        ms_src = sorted({src[i] for i in g if pd.notna(col["fthg"][i]) and pd.notna(col["ftag"][i])})
+        iy_src = sorted({src[i] for i in g if pd.notna(col["hthg"][i]) and pd.notna(col["htag"][i])})
+        timed = [i for i in g if col["_time"][i] != ""]
+        t, t_src = (col["_time"][timed[0]], src[timed[0]]) if timed else ("", None)
         xh, xa, x_src = first_pair(g, "xg_h", "xg_a")
         sh, sa, s_src = first_pair(g, "sut_h", "sut_a")
         shown = [set(ms_src) if status == "TAMAM" and ms_src else None,
                  set(iy_src) if status == "TAMAM" and iy_src else None,
                  {t_src} if t_src else None, {x_src} if x_src else None, {s_src} if s_src else None]
-        sid = sorted({v for v in g["_sid"] if v})
-        out.append({"mac_kimligi": mid, "league": lg, "season": g["season"].iloc[0], "date": day, "time": t,
+        sid = sorted({col["_sid"][i] for i in g if col["_sid"][i]})
+        origins = {col["asil_kaynak"][i] for i in g}
+        out.append({"mac_kimligi": mid, "league": lg, "season": col["season"][i0], "date": day, "time": t,
                     "home": h, "away": a,
                     "fthg": f[0] if status == "TAMAM" else np.nan, "ftag": f[1] if status == "TAMAM" else np.nan,
                     "hthg": hh[0] if status == "TAMAM" else np.nan, "htag": hh[1] if status == "TAMAM" else np.nan,
                     "iy_mantiksal": bool(status == "TAMAM" and len(ht) == 1 and not real_ht),
-                    "kaynaklar": ",".join(srcs), "asil_kaynaklar": ",".join(sorted(set(g["asil_kaynak"]))),
-                    "bagimsiz_kaynak": len(set(g["asil_kaynak"])), "saglayici_mac_id": ",".join(sid) or None,
-                    "xg_h": xh, "xg_a": xa, "sut_h": sh, "sut_a": sa, "durum": status, "kaynak_satiri": int(len(g)),
-                    "bloklar": ",".join(str(int(b)) for b in sorted(set(g["_blok"])) if b >= 0),
+                    "kaynaklar": ",".join(srcs), "asil_kaynaklar": ",".join(sorted(origins)),
+                    "bagimsiz_kaynak": len(origins), "saglayici_mac_id": ",".join(sid) or None,
+                    "xg_h": xh, "xg_a": xa, "sut_h": sh, "sut_a": sa, "durum": status, "kaynak_satiri": len(g),
+                    "bloklar": ",".join(str(int(b)) for b in sorted({col["_blok"][i] for i in g}) if b >= 0),
                     "ms_kaynaklari": ",".join(ms_src), "iy_kaynaklari": ",".join(iy_src), "saat_kaynagi": t_src,
                     "xg_kaynagi": x_src, "sut_kaynagi": s_src,
                     "alan_birlesimi": bool(len(srcs) > 1 and any(s is not None and s != set(srcs) for s in shown))})
