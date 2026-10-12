@@ -1,7 +1,8 @@
-"""ESPN'in herkese açık skor tablosu uç noktası (KAYNAK-04).
+"""ESPN'in herkese açık skor tablosu uç noktası (KAYNAK-04, KAYNAK-05).
 
-football-data.co.uk'a ve openfootball'a ulaşılamayan ligler (Serie B, La Liga 2, Ligue 2) için fikstür, eksik dönem
-sonuçları ve sezon takvimi.
+Verisi football-data.co.uk'tan gelmeyen Serie B, La Liga 2, Ligue 2, Süper Lig ve 2. Bundesliga için fikstür, eksik
+dönem sonuçları ve sezon takvimi. ESPN'den veri gelen ligde openfootball kullanılmaz; ESPN'e ulaşılamazsa openfootball
+yedeği (FIKSTUR-03) çalışır.
 
 **Kullanım koşulları.** Uç nokta belgelenmemiştir ve açık bir lisans metni yoktur. Bu yüzden kaynak yalnızca kullanıcının
 indirme onayıyla kullanılır. Sonuçlar model eğitimi ve tahminde yalnızca kişisel (ticari olmayan) kullanım beyanıyla
@@ -40,8 +41,9 @@ ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports/soccer"
 ESPN_LABEL = "espn"  # veri deposu ve fikstür kaynak etiketi
 ESPN_PARSER = "espn-scoreboard-v1"
 ESPN_MATCHING = "espn-eslesme-v1"
-# Lig -> ESPN lig kodu. Yalnızca başka güncel kaynağı olmayan ve kullanıcının istediği ligler.
-ESPN_LEAGUES: dict[str, str] = {"I2": "ita.2", "SP2": "esp.2", "F2": "fra.2"}
+# Lig -> ESPN lig kodu. Kullanıcının istediği ligler: KAYNAK-04 (başka güncel kaynağı olmayan Serie B, La Liga 2,
+# Ligue 2) ve KAYNAK-05 (openfootball metin dosyası 11 Eylül'de kalan Süper Lig ve 2. Bundesliga).
+ESPN_LEAGUES: dict[str, str] = {"I2": "ita.2", "SP2": "esp.2", "F2": "fra.2", "T1": "tur.1", "D2": "ger.2"}
 
 NORMAL_FINISH = frozenset({"STATUS_FULL_TIME", "STATUS_FINAL"})
 NOT_PLAYED = {"STATUS_POSTPONED": "postponed", "STATUS_CANCELED": "cancelled", "STATUS_CANCELLED": "cancelled",

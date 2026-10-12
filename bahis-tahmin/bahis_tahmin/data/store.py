@@ -316,21 +316,27 @@ class DataStore:
         matches, renames = unify_spellings(matches)
         if renames:
             matches = self._clean_matches(matches)
+        # KAYNAK-04/05: verisi football-data'dan gelmeyen ESPN liglerinde ESPN (yalnızca kullanıcı onayıyla; GitHub
+        # profilinde yok). ESPN'den veri gelen ligde openfootball (sonuç, fikstür, takvim) kullanılmaz: geride kalmış bir
+        # takvim, ESPN'in güncel tarihleriyle çelişip yanlış "sonuç bilinmiyor" uyarısı ve çift fikstür üretir.
+        espn_fx, espn_unmatched, espn_meta = None, [], {}
+        if "espn" in allowed and not github and not matches.empty:
+            progress(86, "ESPN verileri alınıyor...")
+            matches, espn_fx, espn_unmatched, espn_meta = self._from_espn(dl, leagues, matches, today, fixture_days,
+                                                                          report, force)
+        served = frozenset(report.espn)
+        self._drop_espn_calendars(served)
         # VERI-02: geride kalan ligleri openfootball'un oynanmış maç sonuçlarıyla tamamla (fikstürle aynı dosya)
         completion = []
         if "openfootball" in allowed and not matches.empty:
-            matches, completion = self._complete_from_openfootball(dl, gh, leagues, matches, today, report, force)
-        # KAYNAK-04: başka güncel kaynağı olmayan ligler için ESPN (yalnızca kullanıcı onayıyla; GitHub profilinde yok)
-        espn_fx, espn_unmatched, espn_meta = None, [], {}
-        if "espn" in allowed and not github and not matches.empty:
-            progress(90, "ESPN verileri alınıyor...")
-            matches, espn_fx, espn_unmatched, espn_meta = self._from_espn(dl, leagues, matches, today, fixture_days,
-                                                                          report, force)
+            matches, completion = self._complete_from_openfootball(dl, gh, leagues, matches, today, report, force,
+                                                                   skip=served)
 
         progress(92, "Yaklaşan maçlar (fikstür) alınıyor...")
         self._last_unmatched = []
         fixtures = self._update_fixtures(dl, leagues, matches, today, fixture_days, report, force,
-                                         allowed - {"football-data"} if github else allowed, gh, espn_fx)
+                                         allowed - {"football-data"} if github else allowed, gh, espn_fx,
+                                         skip_openfootball=served)
         self._last_unmatched += espn_unmatched
 
         self.matches = matches.reset_index(drop=True)
@@ -427,9 +433,9 @@ class DataStore:
             return _OFData(data, raw, f.label(season), parse)
         return None
 
-    def _complete_from_openfootball(self, dl, gh, leagues, matches, today, report, force):
+    def _complete_from_openfootball(self, dl, gh, leagues, matches, today, report, force, skip=frozenset()):
         """Ligin depodaki son maç gününden sonra oynanmış, depoda olmayan maçları openfootball sezon dosyasından ekler
-        (``data.completion``). Döner: (veri, köken kayıtları)."""
+        (``data.completion``). ``skip``: bu güncellemede ESPN'den beslenen ligler. Döner: (veri, köken kayıtları)."""
         from ..eligibility import _norm_season
         from .completion import COMPLETION_LABEL, build_record, select_rows
 
@@ -446,7 +452,7 @@ class DataStore:
         for code in leagues:
             lg = LEAGUES[code]
             g = base[base["league"] == code]
-            if not lg.openfootball or g.empty:
+            if not lg.openfootball or g.empty or code in skip:
                 continue
             last = pd.Timestamp(g["date"].max()).date()
             cur = openfootball_season(today, lg.calendar_year)
@@ -478,10 +484,21 @@ class DataStore:
         out = self._clean_matches(pd.concat([base] + added, ignore_index=True))
         return out, records
 
+    def _drop_espn_calendars(self, served) -> None:
+        """Bu güncellemede ESPN'den beslenmeyen liglerin eski ESPN takvimleri silinir (onay geri alındıysa, ESPN'e
+        ulaşılamadıysa veya GitHub profilindeyse eski takvim uygunluk kanıtı olarak kullanılmaz)."""
+        from .espn import ESPN_LEAGUES
+
+        root = self.raw_dir / "espn"
+        for code in ESPN_LEAGUES:
+            if code not in served:
+                for p in root.glob(f"*/{code}.json"):
+                    p.unlink(missing_ok=True)
+
     def _from_espn(self, dl, leagues, matches, today, days, report, force):
-        """KAYNAK-04: football-data'dan ve openfootball'dan güncel verisi gelmeyen ligler için ESPN skor tablosu
-        (``data.espn``). Bir önceki sezonun başından fikstür penceresinin sonuna kadar aylık istek atılır; tamamlanmış
-        ayların yanıtları önbellekte kalır. Takım adları yalnızca kanıtla eşlenir.
+        """KAYNAK-04/05: verisi football-data'dan gelmeyen ESPN ligleri için ESPN skor tablosu (``data.espn``). Bir
+        önceki sezonun başından fikstür penceresinin sonuna kadar aylık istek atılır; tamamlanmış ayların yanıtları
+        önbellekte kalır. Takım adları yalnızca kanıtla eşlenir. Veri gelen lig ``report.espn``'e yazılır.
 
         Döner: (veri, fikstür satırları | None, eşleşmeyen fikstürler, eşleme kayıtları). Önceki güncellemenin ESPN
         satırları her seferinde yeniden kurulur."""
@@ -505,8 +522,6 @@ class DataStore:
             lg = LEAGUES[code]
             cal = lg.calendar_year
             of_cur = openfootball_season(today, cal)
-            if lg.openfootball and self._openfootball_file(dl, None, code, of_cur, force, report) is not None:
-                continue  # openfootball'da güncel sezon dosyası var: ESPN gerekmez
             base = base_all[base_all["league"] == code]
             if base.empty:
                 continue
@@ -534,8 +549,11 @@ class DataStore:
                 events.update({ev.event_id: ev for ev in pr.events})
             if not events:
                 report.warnings.append(f"{lg.label}: ESPN'den veri alınamadı" + (f" ({errors[0]})" if errors else "")
-                                       + "; bu lig için yaklaşan maç ve yeni sonuç eklenmedi.")
+                                       + "; bu lig için ESPN kullanılmadı (varsa openfootball yedeği kullanıldı).")
                 continue
+            if errors:
+                report.warnings.append(f"{lg.label}: ESPN'den {len(errors)} aylık yanıt alınamadı ({errors[0]}); o "
+                                       "dönemin maçları eklenmedi ve takvimde eksik kalır.")
             evs = sorted(events.values(), key=lambda e: (e.date, e.time, e.event_id))
             cur = [e for e in evs if e.date >= cur_start]
             tm = map_teams(evs, base, code, season_for_date(today, cal), cur)
@@ -609,7 +627,7 @@ class DataStore:
         return out, fx, unmatched, meta
 
     def _update_fixtures(self, dl, leagues, matches, today, days, report, force, allowed, gh=None,
-                         extra_fixtures: pd.DataFrame | None = None) -> pd.DataFrame:
+                         extra_fixtures: pd.DataFrame | None = None, skip_openfootball=frozenset()) -> pd.DataFrame:
         lo = pd.Timestamp(today)
         hi = pd.Timestamp(today) + pd.Timedelta(days=days)
         frames = []
@@ -634,7 +652,7 @@ class DataStore:
         extra = []
         for code in leagues if "openfootball" in allowed else ():
             lg = LEAGUES[code]
-            if not lg.openfootball:
+            if not lg.openfootball or code in skip_openfootball:  # ESPN'den beslenen lig: fikstür ESPN'den
                 continue
             last_fd = fd.loc[fd["league"] == code, "date"].max()
             known = self._recent_teams(matches, code)

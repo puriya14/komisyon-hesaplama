@@ -1,5 +1,16 @@
 # KAYNAK-04 — Serie B, La Liga 2 ve Ligue 2 için ESPN (onaylı kaynak)
 
+> **KAYNAK-05 eki.** Süper Lig (`tur.1`) ve 2. Bundesliga (`ger.2`) da ESPN liglerine eklendi. Bu iki ligin
+> openfootball metin dosyalarında 11 Eylül'den sonra sonuç yok (FIKSTUR-03).
+>
+> Kural: Ligin verisi football-data'dan gelmiyorsa ve ESPN onaylıysa önce ESPN denenir. ESPN'den veri gelen ligde o
+> güncellemede openfootball'un sonuçları, fikstürleri ve takvimi kullanılmaz; aynı sezon için ESPN takvimi varsa
+> uygunluk kontrolü openfootball takvimini okumaz. Böylece geride kalmış bir takvim yanlış "son maç sonucu
+> bilinmiyor" uyarısı üretmez ve aynı maç iki farklı tarihte listelenmez.
+>
+> ESPN'e ulaşılamazsa veya onay geri alınırsa openfootball yedeği eskisi gibi çalışır. Bu durumda eski ESPN takvimleri
+> silinir ve ESPN satırları bir sonraki güncellemede veriden kalkar. Testler: `tests/test_kaynak_05.py`.
+
 ## Neden
 
 football-data.co.uk erişilemediğinde bu üç ligin yaklaşan maçı yoktu ve verisi GitHub yedeğinde 30–31 Ağustos'ta
@@ -21,8 +32,8 @@ Kullanıcı, ESPN'in herkese açık skor tablosu uç noktasını **onayla açıl
 - **Kişisel kullanım beyanı.** Sonuçlar model eğitimi ve tahminde yalnızca bu beyanla kullanılır (VERI-01 ile aynı
   kural). Beyan ticari kullanım veya yeniden dağıtım hakkı vermez.
 - **GitHub veri profili.** Bu profilde ESPN kullanılmaz.
-- **Ne zaman kullanılır.** Yalnızca ligin verisi football-data'dan gelmiyorsa ve openfootball'da güncel sezon dosyası
-  yoksa.
+- **Ne zaman kullanılır.** Yalnızca ligin verisi football-data'dan gelmiyorsa. KAYNAK-05'ten beri ESPN'den veri gelen
+  ligde openfootball kullanılmaz (yukarıdaki ek).
 
 Onay penceresinin sürümü 3'e çıktı (`CONSENT_SCHEMA`). Mevcut kullanıcılara pencere bir kez yeniden gösterilir ve ESPN
 için iki kutu (indirme onayı, kişisel kullanım beyanı) çıkar. Komut satırında:

@@ -57,7 +57,8 @@ lisanslı; içerik football-data.co.uk ve ClubElo kaynaklıdır (asıl kaynağı
 football.json'da güncel sezon dosyası olmayan liglerde (ör. Süper Lig) openfootball'un aynı lisanslı ulusal metin
 depoları (<a href="https://github.com/openfootball/europe">europe</a> ve diğerleri) okunur.</li>
 <li><a href="https://www.espn.com/soccer/">ESPN skor tablosu</a> – resmi olmayan, belgelenmemiş uç nokta; açık lisans
-metni yok. Yalnızca Serie B, La Liga 2 ve Ligue 2 için, başka güncel kaynak yokken fikstür, sonuç ve sezon takvimi.
+metni yok. Yalnızca Serie B, La Liga 2, Ligue 2, Süper Lig ve 2. Bundesliga için, verileri football-data.co.uk'tan
+alınamadığında fikstür, sonuç ve sezon takvimi (bu liglerde openfootball yerine).
 <b>Kullanıcı onayı olmadan istek gönderilmez</b>; model eğitimi ve tahmin için ayrıca kişisel kullanım beyanı
 gerekir. Takım adları yalnızca maç kanıtıyla eşlenir.</li>
 </ul>

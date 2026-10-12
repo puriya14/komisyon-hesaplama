@@ -1681,6 +1681,7 @@ def cached_coverages(raw_dir, leagues, today: dt.date, known_teams_by_league: di
     (lig, sezon) -> o sezonun bağımsız katılımcıları (veri deposu); yoksa takvim tamlığı kanıtlanmaz."""
     from pathlib import Path
 
+    from .data.espn import ESPN_LABEL, ESPN_LEAGUES
     from .data.leagues import LEAGUES, openfootball_season
 
     out: dict[str, list[SourceCoverage]] = {}
@@ -1691,6 +1692,8 @@ def cached_coverages(raw_dir, leagues, today: dt.date, known_teams_by_league: di
         # 365 günlük pencere sezon arasında üç sezona dokunabilir (yalnızca önbellekteki dosyalar; indirme yok)
         for season in sorted({openfootball_season(today - dt.timedelta(days=d), lg.calendar_year)
                               for d in (0, 365, 730)}):
+            if code in ESPN_LEAGUES and (Path(raw_dir) / "espn" / season / f"{code}.json").is_file():
+                continue  # KAYNAK-05: ligi ESPN besliyor; geride kalmış openfootball takvimi kullanılmaz
             path = Path(raw_dir) / "openfootball" / season / f"{lg.openfootball}.json"
             if not path.is_file():  # FIKSTUR-03: football.json'da yoksa Football.TXT dönüşümü (aynı biçim)
                 path = path.with_name(f"{lg.openfootball}.txt.json")
@@ -1702,8 +1705,6 @@ def cached_coverages(raw_dir, leagues, today: dt.date, known_teams_by_league: di
                 path.read_bytes(), code, label, at, known_teams_by_league.get(code, ()),
                 (participants_by_season or {}).get((code, label))))
     # KAYNAK-04: ESPN sezon takvimleri (adlar güncelleme sırasında kanıtla eşlenmiş; eşleşmeyenler eşleşmez kalır)
-    from .data.espn import ESPN_LABEL, ESPN_LEAGUES
-
     for code in leagues:
         lg = LEAGUES.get(code)
         if lg is None or code not in ESPN_LEAGUES:
