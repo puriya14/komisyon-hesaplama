@@ -37,8 +37,17 @@ _LATE_EARLY_DAYS = 45
 _MAX_HANDOVER_DAYS = 60
 
 
-def detect_intra_season_splits(matches: pd.DataFrame) -> dict[tuple[str, str], str]:
-    """Katman 1: sezon ortası ad ayrılmaları {(ülke, yeni ad): eski ad}. Yalnızca ad/lig/tarih kullanır."""
+def detect_intra_season_splits(matches: pd.DataFrame,
+                               rejected: list | None = None) -> dict[tuple[str, str], str]:
+    """Katman 1: sezon ortası ad ayrılmaları {(ülke, yeni ad): eski ad}. Yalnızca ad/lig/tarih kullanır.
+
+    DIZI-02 ek koşulları (yanlış eşleme iki farklı kulübün geçmişini birleştirir ve aynı takıma aynı gün iki maç
+    yazar):
+      * Lig-sezonda sezona erken veda eden ve geç katılan takım TEK olmalı. Birden çok takım birlikte ayrılıp
+        katılıyorsa bu bir sezon sınırıdır (ör. sezon etiketi iki gerçek sezonu kapsıyor: düşen ve çıkan kulüpler).
+      * Aday, ülkenin BÜTÜN maçlarıyla doğrulanır: iki ad herhangi bir sezonda aynı gün maç oynamışsa veya
+        birbirleriyle karşılaşmışsa aynı kulüp olamaz. Eşleme zincirleri de grup olarak denetlenir.
+    Reddedilenler verilirse ``rejected`` listesine (ülke, yeni ad, eski ad, neden) olarak eklenir."""
     from ..data.leagues import LEAGUES
 
     tm = pd.concat([
@@ -53,13 +62,70 @@ def detect_intra_season_splits(matches: pd.DataFrame) -> dict[tuple[str, str], s
         early = span[(s1 - span["max"]).dt.days > _LATE_EARLY_DAYS]
         late = span[(span["min"] - s0).dt.days > _LATE_EARLY_DAYS]
         country = LEAGUES[lg].country if lg in LEAGUES else lg
+        found = []
         for a, ra in early.iterrows():
             for b, rb in late.iterrows():
                 if a == b or not (ra["max"] < rb["min"]) or (rb["min"] - ra["max"]).days > _MAX_HANDOVER_DAYS:
                     continue
                 if b in opps[a] or a in opps[b]:
                     continue  # birbirleriyle oynadılarsa aynı kulüp olamaz
-                out[(country, b)] = a
+                found.append((a, b))
+        if not found:
+            continue
+        if len(early) > 1 or len(late) > 1:
+            if rejected is not None:
+                rejected.extend((country, b, a, f"{lg} {se}: {len(early)} takım erken ayrılıyor, {len(late)} takım geç "
+                                                 "katılıyor (sezon sınırı; ad değişikliği değil)") for a, b in found)
+            continue
+        for a, b in found:
+            out[(country, b)] = a
+    return _validated_splits(matches, out, rejected)
+
+
+def _validated_splits(matches: pd.DataFrame, cand: dict[tuple[str, str], str],
+                      rejected: list | None = None) -> dict[tuple[str, str], str]:
+    """Aday ayrılmaları ülke genelinde doğrular: eşlenen adların (zincir dahil) hiçbir maç günü ortak olmamalı ve
+    birbirleriyle hiç karşılaşmamış olmalılar. Aksi halde eşleme aynı takıma aynı gün iki maç (veya kendisiyle maç)
+    yazar; takım-maç tablosu kurulamaz ve iki kulübün geçmişi karışır."""
+    if not cand:
+        return {}
+    from ..data.leagues import LEAGUES
+
+    country = matches["league"].map(lambda c: LEAGUES[c].country if c in LEAGUES else c)
+    days: dict[tuple[str, str], set] = {}
+    met: set[tuple[str, str, str]] = set()
+    for c, h, a, d in zip(country, matches["home"], matches["away"], matches["date"]):
+        days.setdefault((c, h), set()).add(d)
+        days.setdefault((c, a), set()).add(d)
+        met.add((c, h, a))
+        met.add((c, a, h))
+    group: dict[tuple[str, str], tuple[str, str]] = {}  # (ülke, ad) -> grup kökü
+
+    def root(k):
+        while group.get(k, k) != k:
+            k = group[k]
+        return k
+
+    members: dict[tuple[str, str], set[str]] = {}
+    out: dict[tuple[str, str], str] = {}
+    for (c, new), old in sorted(cand.items()):
+        ra, rb = root((c, old)), root((c, new))
+        if ra == rb:
+            out[(c, new)] = old
+            continue
+        ga = members.get(ra, {old})
+        gb = members.get(rb, {new})
+        clash = next((f"{x} ile {y} aynı gün maç oynamış" for x in ga for y in gb
+                      if days.get((c, x), set()) & days.get((c, y), set())), None)
+        clash = clash or next((f"{x} ile {y} karşılaşmış" for x in ga for y in gb if (c, x, y) in met), None)
+        if clash:
+            if rejected is not None:
+                rejected.append((c, new, old, clash))
+            continue
+        group[rb] = ra
+        members[ra] = ga | gb
+        members.pop(rb, None)
+        out[(c, new)] = old
     return out
 
 
@@ -68,12 +134,14 @@ class AliasMap:
 
     def __init__(self, splits: dict[tuple[str, str], str] | None = None):
         self.splits = dict(splits or {})
+        self.rejected_splits: list[tuple[str, str, str, str]] = []  # doğrulamadan geçmeyen katman 1 adayları
         self.table = {k: v for k, v in self.splits.items()}
         self.table.update({k: v[0] for k, v in MANUAL_ALIASES.items()})
 
     @classmethod
     def from_matches(cls, matches: pd.DataFrame) -> "AliasMap":
-        splits = detect_intra_season_splits(matches)
+        rejected: list = []
+        splits = detect_intra_season_splits(matches, rejected)
         # VERI-01: veri deposu aynı adın yazımlarını (ör. "Nottm Forest" / "Nott'm Forest") tek yazıma indirir; o
         # zaman katman 1 ayrılmayı göremez. Kimlik aynı olduğu için ön-kayıtlı tablo (ve özeti) korunur: iki yazımdan
         # yalnızca biri veride kalmışsa beklenen ayrılma aynen eklenir.
@@ -87,7 +155,9 @@ class AliasMap:
             names = present.get(country, set())
             if (country, new) not in splits and (new in names) != (old in names):
                 splits[(country, new)] = old
-        return cls(splits)
+        am = cls(splits)
+        am.rejected_splits = rejected
+        return am
 
     def canonical(self, name: str, country: str) -> str:
         seen = set()

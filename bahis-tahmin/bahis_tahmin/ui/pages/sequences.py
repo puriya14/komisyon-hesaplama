@@ -410,6 +410,26 @@ class SequencesPage(Page):
         lay.addWidget(cv)
         return w
 
+    @staticmethod
+    def _rejected_html(tm) -> str:
+        """Otomatik kuralın aday bulup doğrulamada reddettiği eşlemeler (farklı kulüpler birleştirilmez) ve ülkeyle
+        ayrılan aynı adlı kulüpler (DIZI-02)."""
+        if tm is None:
+            return ""
+        rej = tm.attrs.get("rejected_splits") or []
+        scoped = tm.attrs.get("country_scoped_names") or []
+        out = ""
+        if rej:
+            items = "".join(f"<li>{escape(str(c))}: {escape(str(new))} ≠ {escape(str(old))} — {escape(str(why))}</li>"
+                            for c, new, old, why in rej[:12])
+            more = f"<li>… ve {len(rej) - 12} aday daha</li>" if len(rej) > 12 else ""
+            out += (f"<b>Otomatik kuralın reddettiği eşlemeler ({len(rej)})</b> — farklı kulüpler oldukları için "
+                    f"birleştirilmedi:<ul>{items}{more}</ul>")
+        if scoped:
+            out += ("<b>Farklı ülkelerde aynı adı taşıyan kulüpler</b> ayrı tutuldu (ad yanına ülke eklendi): "
+                    + escape(", ".join(scoped)) + "<br>")
+        return out
+
     def refresh_method(self) -> None:
         tm = self.ctl.seq_table
         blocked = "".join(f"<li><b>{k}</b>: {v}</li>" for k, v in C.DATA_QUALITY_BLOCKED_ITEMS.items())
@@ -424,6 +444,7 @@ class SequencesPage(Page):
             f"<b>İncelenemeyenler (DATA_QUALITY_BLOCKED):</b><ul>{blocked}</ul>"
             f"<b>Takım kimliği eşlemesi</b> (yalnızca bu modül):<ul>{auto}{manual}</ul>"
             f"Bilerek eşlenmeyen (ardıl/yeniden kurulmuş kulüpler): {', '.join(REJECTED)}<br>"
+            + self._rejected_html(tm)
             + (f"<b>Hükmen olabilir satırlar:</b> {tm.attrs.get('n_awarded', 0)} maç (sonuç karar anında bilinmiyor sayılır) · "
                f"veri sonu: {tm.attrs.get('data_end')}" if tm is not None else ""))
         if tm is None:

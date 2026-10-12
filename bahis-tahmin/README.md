@@ -122,6 +122,7 @@ dokunmaz (`tests/conftest.py`: `BAHIS_TAHMIN_HOME` geçici dizine yönlendirilir
 - [`docs/DIZI_ARASTIRMA_DUZELTMELER.md`](docs/DIZI_ARASTIRMA_DUZELTMELER.md) — sonuç belgesinin kanıt denetimi: düzeltme ve daraltma kaydı (S2-KABUL-01)
 - [`docs/ILERIYE_DONUK_OLCUM.md`](docs/ILERIYE_DONUK_OLCUM.md) — A/B/C için ileriye dönük ölçüm protokolü ve elle günlük akış
 - [`docs/VERI_01.md`](docs/VERI_01.md) — "birçok maçta veri bulunamadı" düzeltmesi: kişisel kullanım beyanı, doğrulanmış takım takma adları, standart/sıkı veri denetimi
+- [`docs/DIZI_02.md`](docs/DIZI_02.md) — dizi araştırması takım-maç tablosu: "aynı gün iki maç" hatası ve kimlik kuralı doğrulaması
 - [`docs/VERI_UYGUNLUK.md`](docs/VERI_UYGUNLUK.md) — ortak veri uygunluk kontrolü (güncellik, kapsam, takım kimliği, zaman, işlem kapsamlı haklar; politika v2, S3-GATE-02)
 - [`docs/S4_PILOT.md`](docs/S4_PILOT.md) — tek ligde gerçek veri pilotu: komutlar, yalıtım, kaynak kökeni, katılımcı referansı
 - [`docs/S5_GITHUB.md`](docs/S5_GITHUB.md) — GitHub veri profili, sürümlü önbellek, tarihsel arşiv ve kaynak/işlem bazında kullanım kapsamı

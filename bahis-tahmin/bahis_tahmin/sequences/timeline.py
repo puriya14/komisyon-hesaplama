@@ -87,6 +87,7 @@ def build_team_matches(matches: pd.DataFrame, alias_map: AliasMap | None = None,
     country = m["league"].map(lambda c: LEAGUES[c].country if c in LEAGUES else c)
     home_c = [alias_map.canonical(t, c) for t, c in zip(m["home"], country)]
     away_c = [alias_map.canonical(t, c) for t, c in zip(m["away"], country)]
+    home_c, away_c, collided = _country_scoped_names(home_c, away_c, list(country))
     codes = htft_frame(m)
     awarded = possible_awarded(m, sensitive_awarded)
     labs = label_frame(m, PRIMARY_YES)
@@ -129,7 +130,10 @@ def build_team_matches(matches: pd.DataFrame, alias_map: AliasMap | None = None,
     tm = tm.sort_values(["team", "date"], kind="mergesort").reset_index(drop=True)
     dup = tm.duplicated(["team", "date"])
     if dup.any():
-        raise ValueError(f"Aynı takımın aynı gün birden fazla maçı var ({int(dup.sum())}); sıra belirsiz")
+        ex = tm.loc[dup, ["team", "league", "date"]].drop_duplicates("team").head(3)
+        examples = ", ".join(f"{r.team} ({r.league} {pd.Timestamp(r.date).date()})" for r in ex.itertuples())
+        raise ValueError(f"Aynı takımın aynı gün birden fazla maçı var ({int(dup.sum())}); sıra belirsiz. "
+                         f"Örnekler: {examples}")
     tm["row_id"] = np.arange(len(tm))
     tm["mirror_row"] = _mirror_rows(tm)
     tm["season_ord"] = tm.groupby(["team", "season"]).cumcount() + 1
@@ -137,8 +141,26 @@ def build_team_matches(matches: pd.DataFrame, alias_map: AliasMap | None = None,
     _sequence_flags(tm, data_end)
     tm.attrs.update({"alias_version": ALIAS_VERSION, "alias_sha256": alias_map.sha256(), "n_awarded": int(awarded.sum()),
                      "data_end": str(data_end.date()),
-                     "intra_season_splits": {f"{k[0]}|{k[1]}": v for k, v in alias_map.splits.items()}})
+                     "intra_season_splits": {f"{k[0]}|{k[1]}": v for k, v in alias_map.splits.items()},
+                     "rejected_splits": [list(r) for r in getattr(alias_map, "rejected_splits", [])],
+                     "country_scoped_names": sorted(collided)})
     return tm
+
+
+def _country_scoped_names(home: list, away: list, country: list) -> tuple[list, list, set]:
+    """Farklı ülkelerde aynı adı taşıyan kulüpler ayrı takımdır (ör. iki ayrı "Nacional"): bu adlar
+    "Ad (Ülke)" biçiminde ayrılır; aksi halde aynı gün iki maç ya da iki kulübün karışmış geçmişi oluşur.
+    Tek ülkede geçen adlara dokunulmaz."""
+    seen: dict[str, set] = {}
+    for c, h, a in zip(country, home, away):
+        seen.setdefault(h, set()).add(c)
+        seen.setdefault(a, set()).add(c)
+    collided = {n for n, cs in seen.items() if len(cs) > 1}
+    if not collided:
+        return home, away, set()
+    home = [f"{h} ({c})" if h in collided else h for h, c in zip(home, country)]
+    away = [f"{a} ({c})" if a in collided else a for a, c in zip(away, country)]
+    return home, away, collided
 
 
 def _team_results(tm: pd.DataFrame) -> None:
