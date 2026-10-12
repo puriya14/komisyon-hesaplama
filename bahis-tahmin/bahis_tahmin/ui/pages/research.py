@@ -893,23 +893,19 @@ class GroupForm(QWidget):
         ol.addLayout(hl, 5, 0, 1, 2)
         ol.setColumnStretch(1, 1)
         self.team_note = plain_label("", "muted")
-        r = 0
-        for text, w in (("Lig:", self.cb_league), ("Takım:", self.cb_team), ("Ev / deplasman:", self.cb_side),
-                        ("Başlangıç tarihi:", self.ed_from), ("Bitiş tarihi:", self.ed_to)):
+        self.lst_seasons.setToolTip("Birden çok sezon seçilebilir; hiçbiri seçilmezse bütün sezonlar.")
+        r = 0  # iki sütun: dar pencerede ve büyük yazıda yatay taşmaz
+        for text, w in (("Lig:", self.cb_league), ("Sezonlar:", self.lst_seasons), ("Takım:", self.cb_team),
+                        ("Ev / deplasman:", self.cb_side), ("Başlangıç tarihi:", self.ed_from),
+                        ("Bitiş tarihi:", self.ed_to)):
             lbl = QLabel(text)
             lbl.setBuddy(w)
-            lay.addWidget(lbl, r, 0)
+            lay.addWidget(lbl, r, 0, Qt.AlignTop if w is self.lst_seasons else Qt.Alignment())
             lay.addWidget(w, r, 1)
             r += 1
         lay.addWidget(self.team_note, r, 0, 1, 2)
-        sl = QLabel("Sezonlar (birden çok seçilebilir; boşsa tümü):")
-        sl.setWordWrap(True)
-        sl.setBuddy(self.lst_seasons)
-        lay.addWidget(sl, 0, 2)
-        lay.addWidget(self.lst_seasons, 1, 2, 4, 1)
-        lay.addWidget(out_box, r + 1, 0, 1, 3)
+        lay.addWidget(out_box, r + 1, 0, 1, 2)
         lay.setColumnStretch(1, 1)
-        lay.setColumnStretch(2, 1)
         self.cb_league.currentIndexChanged.connect(self._emit)
         self.lst_seasons.itemChanged.connect(self._emit)
         self.cb_team.currentTextChanged.connect(self._team_changed)
@@ -1211,7 +1207,8 @@ class ResearchPage(Page):
         self.ed_tags = QLineEdit()
         self.ed_tags.setPlaceholderText("virgülle ayırın")
         self.ed_tags.setAccessibleName("Etiketler")
-        self.lbl_form_source = plain_label("", "muted")
+        self.lbl_form_source = plain_label("", "muted", fill=False)
+        self.lbl_form_source.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)  # form alanını doldurur
         mk = QHBoxLayout()
         self.chk_markets = {}
         for k in C.MARKETS:
@@ -1259,6 +1256,7 @@ class ResearchPage(Page):
         for sig in (self.ed_title.textChanged, self.ed_desc.textChanged, self.ed_tags.textChanged, self.g1.changed,
                     self.g2.changed):
             sig.connect(self._form_changed)
+        _compact(w)
         return w
 
     def _build_tab_groups(self) -> QWidget:

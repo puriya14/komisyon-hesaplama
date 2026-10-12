@@ -106,7 +106,12 @@ Bozuk veya uyumsuz dosyanın üzerine yazılmaz. Sayfa nedeni ve yolu gösterir.
 
 ## Testler ve kabul
 
-`tests/test_s7_ui.py` 22 zorunlu senaryoyu ve en küçük pencere boyutu denetimini kapsar. Boyut denetimi uzun ve boşluksuz klasör yollarını da içerir: uzun yol sayfayı yatay taşırmaz; kırpılırsa tam metin ipucunda görünür. Testler şunlarla çalışır:
+`tests/test_s7_ui.py` 22 zorunlu senaryoyu ve en küçük pencere boyutu (1024×680) denetimini kapsar. Boyut denetimi şunları da içerir:
+
+- uzun ve boşluksuz klasör yolları: sayfayı yatay taşırmaz; kırpılırsa tam metin ipucunda görünür;
+- standart yazı genişliğinin 1,5 katı büyük yazı: düğme satırları alt satıra geçer.
+
+Büyük yazı adımı platformun gerçek yazı genişliğine göre seçilir. Windows ekransız CI ortamında varsayılan yazı zaten yaklaşık iki kat geniş çizildiği için orada varsayılan adım bunu kapsar. Testler şunlarla çalışır:
 
 - gerçek servisler;
 - geçici klasörde sahte HTTP ile hazırlanmış sentetik arşiv;

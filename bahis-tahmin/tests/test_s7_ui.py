@@ -1069,8 +1069,12 @@ def test_min_size_has_no_horizontal_page_overflow(app, ui, paths, archive_dir):
     from bahis_tahmin.ui import theme
 
     try:
-        # Varsayılan yazı ve 1,5 kat büyük yazı (ör. Windows "metni büyüt"): düğme satırları alt satıra geçer
-        for pt in (10, 15):
+        # Varsayılan yazı ve standart (96 DPI) yazı genişliğinin 1,5 katı (ör. Windows "metni büyüt"): düğme satırları
+        # alt satıra geçer. Büyük adım platformun gerçek yazı genişliğine göre seçilir; platformun varsayılan yazısı
+        # zaten 1,5 katı veya daha genişse (ör. Windows ekransız CI) varsayılan adım bunu kapsar.
+        for pt in (10, large_text_pt(page)):
+            if pt is None:
+                continue
             app.setStyleSheet(theme.STYLE.replace("font-size: 10pt", f"font-size: {pt}pt"))
             for i in range(page.tabs.count()):
                 page.tabs.setCurrentIndex(i)
@@ -1078,8 +1082,23 @@ def test_min_size_has_no_horizontal_page_overflow(app, ui, paths, archive_dir):
                     app.processEvents()
                 assert scroll.horizontalScrollBar().maximum() == 0, overflow_report(page, scroll, f"{pt}pt, sekme {i}")
                 assert page.width() <= win.width()
+                labels = [lb for lb in page.findChildren(QLabel) if lb.isVisible() and lb.text().strip()]
+                bad = [(lb.text()[:40], lb.width(), lb.height()) for lb in labels
+                       if lb.width() < min(40, lb.fontMetrics().horizontalAdvance(lb.text().splitlines()[0]))
+                       or (lb.height() > 400 and lb.width() < 200)]  # metin görünür; daralıp şişen etiket yok
+                assert not bad, (pt, i, bad)
     finally:
         app.setStyleSheet(theme.STYLE)
+
+
+def large_text_pt(page, target: float = 1.5) -> float | None:
+    """Yazının standart genişliğin ``target`` katı olacağı punto (varsayılan 10pt yazı genişliğinden ölçülür). Standart:
+    10pt / 96 DPI ≈ 13,3 px yazıda karakter başına yarım em. Varsayılan yazı zaten o kadar genişse None."""
+    btn = page.btn_create_ws
+    text = btn.text()
+    scale = btn.fontMetrics().horizontalAdvance(text) / (len(text) * 13.333 * 0.5)
+    pt = round(10 * target / scale, 1)
+    return pt if pt > 10 else None
 
 
 def overflow_report(page, scroll, where: str) -> str:
