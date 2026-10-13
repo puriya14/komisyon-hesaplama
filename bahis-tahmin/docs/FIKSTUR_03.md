@@ -132,8 +132,8 @@ bilmiyor. Tahmin gösterilir ama bahis adayı olmaz. Kaynak güncellenince uyar�
 ## Bilinen sınırlar
 
 - **2026-27 dosyası olmayan ligler.** openfootball'da I2, SP2, F2, E2, E3, EC ve SC1–SC3 için 2026-27 dosyası yok.
-  Bu liglerde yaklaşan maç yalnızca football-data'dan gelir. Dosya eklenirse uygulama kendiliğinden kullanır
-  (`TXT_FILES`).
+  Bu liglerde yaklaşan maç football-data'dan, o erişilemezse ESPN onaylıysa ESPN'den gelir (KAYNAK-06). Dosya
+  eklenirse uygulama kendiliğinden kullanır (`TXT_FILES`).
 - **Geride kalan kaynak.** Türkiye ve 2. Bundesliga dosyaları geride (KAYNAK-05: ESPN onaylıysa bu iki lig ESPN'den
   beslenir; bkz. [`KAYNAK_04.md`](KAYNAK_04.md)). Türkiye'de 7. hafta "11 Ekim" tarihli
   görünüyor ama oynanmamış; 8. hafta 18 Ekim'de saatsiz listeleniyor. Gerçek maç günü farklı olabilir; güncelleme

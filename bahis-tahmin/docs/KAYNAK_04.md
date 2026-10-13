@@ -1,5 +1,8 @@
 # KAYNAK-04 — Serie B, La Liga 2 ve Ligue 2 için ESPN (onaylı kaynak)
 
+> **KAYNAK-06.** ESPN artık uygulamanın bütün liglerinde aynı kuralla kullanılır; ayrıntılar ve yeni güvenlik
+> önlemleri: [`KAYNAK_06.md`](KAYNAK_06.md).
+>
 > **KAYNAK-05 eki.** Süper Lig (`tur.1`) ve 2. Bundesliga (`ger.2`) da ESPN liglerine eklendi. Bu iki ligin
 > openfootball metin dosyalarında 11 Eylül'den sonra sonuç yok (FIKSTUR-03).
 >

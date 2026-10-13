@@ -1,8 +1,8 @@
-"""ESPN'in herkese açık skor tablosu uç noktası (KAYNAK-04, KAYNAK-05).
+"""ESPN'in herkese açık skor tablosu uç noktası (KAYNAK-04, KAYNAK-05, KAYNAK-06).
 
-Verisi football-data.co.uk'tan gelmeyen Serie B, La Liga 2, Ligue 2, Süper Lig ve 2. Bundesliga için fikstür, eksik
-dönem sonuçları ve sezon takvimi. ESPN'den veri gelen ligde openfootball kullanılmaz; ESPN'e ulaşılamazsa openfootball
-yedeği (FIKSTUR-03) çalışır.
+Verisi football-data.co.uk'tan gelmeyen bütün ligler için (``ESPN_LEAGUES``) fikstür, eksik dönem sonuçları ve sezon
+takvimi. ESPN'den veri gelen ligde openfootball kullanılmaz; ESPN'e ulaşılamazsa veya takım adları yeterince
+eşlenemezse openfootball yedeği (FIKSTUR-03) çalışır.
 
 **Kullanım koşulları.** Uç nokta belgelenmemiştir ve açık bir lisans metni yoktur. Bu yüzden kaynak yalnızca kullanıcının
 indirme onayıyla kullanılır. Sonuçlar model eğitimi ve tahminde yalnızca kişisel (ticari olmayan) kullanım beyanıyla
@@ -23,6 +23,9 @@ kullanılabilir (``source_registry``). GitHub veri profilinde kullanılmaz.
 3. Güncel sezonda maç kanıtı yetmeyen adlar için sezon kadrosu kısıtı: iki kaynağın kadrosu aynı büyüklükte, diğer
    bütün adlar kanıtla eşleşmiş ve kalan her ad bütün oylarıyla kalan takımlardan tekine işaret ediyor. Tek ad tek
    takım kaldıysa eleme ile eşlenir.
+4. Veri deposu güncel sezona hiç ulaşmıyorsa (KAYNAK-06; ör. ek ligler, yedek veri seti 2024'te kalmış) lige deponun
+   son maçından SONRA katılmış ad: önce aynı ülkenin depo adlarında aynı ad aranır; yoksa ESPN adıyla YENİ takım
+   olarak eklenir (depodaki hiçbir takımla birleştirilmez; ad bir depo adıyla çakışıyorsa eklenmez).
 
 Aynı ad kanıtla çelişirse ya da iki ad aynı takıma düşerse eşleme yapılmaz. Eşleşmeyen adın maçı fikstürde nedenli
 "tahmin yok" olarak gösterilir ve sonucu veriye eklenmez. Benzerlikle eşleme yapılmaz.
@@ -41,9 +44,22 @@ ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports/soccer"
 ESPN_LABEL = "espn"  # veri deposu ve fikstür kaynak etiketi
 ESPN_PARSER = "espn-scoreboard-v1"
 ESPN_MATCHING = "espn-eslesme-v1"
-# Lig -> ESPN lig kodu. Kullanıcının istediği ligler: KAYNAK-04 (başka güncel kaynağı olmayan Serie B, La Liga 2,
-# Ligue 2) ve KAYNAK-05 (openfootball metin dosyası 11 Eylül'de kalan Süper Lig ve 2. Bundesliga).
-ESPN_LEAGUES: dict[str, str] = {"I2": "ita.2", "SP2": "esp.2", "F2": "fra.2", "T1": "tur.1", "D2": "ger.2"}
+# Lig -> ESPN lig kodu. KAYNAK-04 (Serie B, La Liga 2, Ligue 2), KAYNAK-05 (Süper Lig, 2. Bundesliga), KAYNAK-06
+# (diğer bütün ligler). Kodlar ESPN'in lig listesinin topluluk derlemesinden doğrulandı (pseudo-r/Public-ESPN-API,
+# docs/sports/soccer.md); Alman küme düşme/yükselme play-off'ları ayrı ESPN kodlarındadır, bu kodlara karışmaz.
+ESPN_LEAGUES: dict[str, str] = {
+    "T1": "tur.1",
+    "E0": "eng.1", "E1": "eng.2", "E2": "eng.3", "E3": "eng.4", "EC": "eng.5",
+    "SC0": "sco.1", "SC1": "sco.2", "SC2": "sco.3", "SC3": "sco.4",
+    "D1": "ger.1", "D2": "ger.2", "I1": "ita.1", "I2": "ita.2", "SP1": "esp.1", "SP2": "esp.2",
+    "F1": "fra.1", "F2": "fra.2", "N1": "ned.1", "B1": "bel.1", "P1": "por.1", "G1": "gre.1",
+    "ARG": "arg.1", "AUT": "aut.1", "BRA": "bra.1", "CHN": "chn.1", "DNK": "den.1", "FIN": "fin.1", "IRL": "irl.1",
+    "JPN": "jpn.1", "MEX": "mex.1", "NOR": "nor.1", "POL": "pol.1", "ROU": "rou.1", "RUS": "rus.1", "SWE": "swe.1",
+    "SWZ": "sui.1", "USA": "usa.1",
+}
+# Bu ligler o listede yok; kod ESPN'in ülke.kademe düzenine göre yazıldı. Yanlışsa ESPN bu ligi vermez, rapor bunu
+# yazar ve lig için ESPN kullanılmaz (openfootball yedeği varsa o çalışır).
+UNVERIFIED: frozenset[str] = frozenset({"FIN", "POL", "ROU", "SWZ"})
 
 NORMAL_FINISH = frozenset({"STATUS_FULL_TIME", "STATUS_FINAL"})
 NOT_PLAYED = {"STATUS_POSTPONED": "postponed", "STATUS_CANCELED": "cancelled", "STATUS_CANCELLED": "cancelled",
@@ -51,6 +67,12 @@ NOT_PLAYED = {"STATUS_POSTPONED": "postponed", "STATUS_CANCELED": "cancelled", "
 MIN_N, MIN_SHARE = 3, 0.90  # maç kanıtı eşikleri (VERI-01 ile aynı)
 EVIDENCE_DAYS = 1  # maç kanıtında tarih toleransı
 PAIR_DAYS = 3  # depoda aynı eşleşme varsa sonuç eklenmez (tamamlama ile aynı tolerans)
+# KAYNAK-06: veri deposu bir önceki sezonun başından da gerideyse istekler deponun son maçından bu kadar gün önceden
+# başlar (adlar ancak iki kaynağın ortak döneminin maçlarıyla eşlenebilir); en fazla MAX_BACK_DAYS geriye gidilir.
+OVERLAP_DAYS = 120
+MAX_BACK_DAYS = 3 * 365
+MIN_MAPPED_SHARE = 0.5  # ortak dönemdeki ESPN adlarının en az bu kadarı eşlenmeli; yoksa lig için ESPN kullanılmaz
+MAX_FAILS = 3  # henüz hiç maç alınamamışken art arda bu kadar aylık istek başarısızsa lig bırakılır
 
 SKIP_REASONS = {
     "BICIM_BILINMIYOR": "olay kaydı beklenen biçimde değil",
@@ -230,17 +252,81 @@ def _votes(events, base: pd.DataFrame):
     return votes
 
 
-def map_teams(events, base: pd.DataFrame, league: str, season_label: str, current) -> TeamMap:
+def _one_to_one(tm: TeamMap, span: dict) -> None:
+    """Birebirlik: aynı takıma düşen adlar ancak kullanıldıkları dönemler hiç çakışmıyorsa (takımın ESPN'deki adı
+    değişmiş) eşlenmiş kalır. Aynı dönemde iki ad aynı takımsa hangisinin o takım olduğu bilinemez: ikisi de eşlenmez."""
+    by_team: dict = {}
+    for n, t in tm.mapping.items():
+        by_team.setdefault(t, []).append(n)
+    for t, ns in by_team.items():
+        if len(ns) < 2:
+            continue
+        ns = sorted(ns, key=lambda n: span.get(n, (dt.date.min, dt.date.min)))
+        if all(n in span for n in ns) and all(span[a][1] < span[b][0] for a, b in zip(ns, ns[1:])):
+            for n in ns:
+                tm.basis[n] = f"{tm.basis.get(n, '')} + ad_degisikligi"
+            continue
+        for n in ns:
+            del tm.mapping[n]
+            tm.basis.pop(n, None)
+            tm.unmapped[n] = ("TERS_CAKISMA", (t,))
+
+
+def share_mappings(maps: dict) -> None:
+    """Ligler arası kanıt (KAYNAK-06): ESPN adı ligden bağımsızdır; bir ligde kanıtla eşlenmiş ad, aynı ülkenin başka bir
+    liginde kanıtı olmayan (``KANIT_YOK``) ya da yeni takım sayılmış aynı ad için kullanılır (ör. lige yükselen takımın
+    alt ligdeki geçen sezon maçları). ``maps``: lig -> (ülke, TeamMap); yerinde günceller. Hedef takım o ligde başka bir
+    ada verilmişse ya da diğer ligler farklı takımlar gösteriyorsa kullanılmaz."""
+    strong: dict = {}  # (ülke, ESPN adı) -> {takım: [lig]}
+    for code, (country, tm) in maps.items():
+        for n, t in tm.mapping.items():
+            if not tm.basis.get(n, "").startswith(("yeni_takim", "diger_lig")):
+                strong.setdefault((country, n), {}).setdefault(t, []).append(code)
+    for code, (country, tm) in maps.items():
+        used = set(tm.mapping.values())
+        todo = sorted({n for n, (why, _) in tm.unmapped.items() if why == "KANIT_YOK"}
+                      | {n for n, b in tm.basis.items() if b.startswith("yeni_takim")})
+        for n in todo:
+            other = {t: cs for t, cs in strong.get((country, n), {}).items() if code not in cs}
+            if len(other) != 1:
+                continue
+            t, cs = next(iter(other.items()))
+            old = tm.mapping.get(n)
+            if t in used and old != t:
+                continue
+            tm.unmapped.pop(n, None)
+            used.discard(old)
+            tm.mapping[n], tm.basis[n] = t, f"diger_lig ({cs[0]}: {maps[cs[0]][1].basis.get(n, '')})"
+            used.add(t)
+
+
+def map_teams(events, base: pd.DataFrame, league: str, season_label: str, current,
+              new_after: dt.date | None = None, wider=()) -> TeamMap:
     """ESPN adlarını kanıtla veri deposu adlarına çevirir (modül açıklaması). ``base``: ligin depo satırları (ESPN ve
-    tamamlama satırları hariç); ``current``: güncel sezonun ESPN olayları (kadro kısıtı için)."""
-    from .teams import resolve_teams
+    tamamlama satırları hariç); ``current``: güncel sezonun ESPN olayları (kadro kısıtı için).
+
+    ``new_after`` (yalnızca depo güncel sezona hiç ulaşmıyorsa verilir): bu günden sonra lige katılmış, maç kanıtı
+    olamayacak adlar için kural 4; ``wider``: aynı ülkenin bütün depo adları (lige yükselen takımın eski adı)."""
+    from dataclasses import replace
+
+    from .teams import BELIRSIZ, KESIN, norm_key, resolve_teams
 
     tm = TeamMap()
     names = sorted({e.home for e in events} | {e.away for e in events})
+    span: dict = {}  # ESPN adı -> (ilk, son) maç günü
+    for e in events:
+        for n in (e.home, e.away):
+            a, b = span.get(n, (e.date, e.date))
+            span[n] = (min(a, e.date), max(b, e.date))
     seasons = sorted(base["season"].dropna().astype(str).unique())[-2:]
     recent = base[base["season"].astype(str).isin(seasons)]
     known = sorted(set(recent["home"]) | set(recent["away"]))
     res = resolve_teams(names, known, league, ESPN_LABEL)
+    for n, m in res.items():
+        # Birden çok ESPN adı aynı depo adına düşüyor (ör. "Aberdeen FC" / "Aberdeen"): ad değişikliği olabilir; karar
+        # aşağıdaki birebirlik denetiminde adların kullanıldığı dönemlere göre verilir
+        if m.basis == "ters_cakisma" and len(m.candidates) == 1:
+            res[n] = replace(m, team=m.candidates[0], status=KESIN, basis="ayni_ad_coklu")
     votes = _votes(events, base)
 
     def tops(n):
@@ -263,35 +349,49 @@ def map_teams(events, base: pd.DataFrame, league: str, season_label: str, curren
             tm.mapping[n], tm.basis[n] = m.team, m.basis
         elif top is not None and nm >= MIN_N and share >= MIN_SHARE and hs == aw == top:
             tm.mapping[n], tm.basis[n] = top, f"mac_kaniti {nm} mac, %{100 * share:.0f}"
-    # Kadro kısıtı (güncel sezon)
+    # Kadro kısıtı (güncel sezon). Kalan takımlar, güncel sezonun ESPN adlarına verilmemiş takımlardır (eski bir ESPN
+    # adı aynı takıma bağlı olabilir: ad değişikliği, birebirlik denetiminde dönemlere göre çözülür).
     cur_names = sorted({e.home for e in current} | {e.away for e in current})
     cur_store = base[base["season"].astype(str) == str(season_label)]
     roster = sorted(set(cur_store["home"]) | set(cur_store["away"]))
     rem_n = [n for n in cur_names if n not in tm.mapping and n not in tm.unmapped]
-    rem_t = [t for t in roster if t not in set(tm.mapping.values())]
+    taken_cur = {tm.mapping[n] for n in cur_names if n in tm.mapping}
+    rem_t = [t for t in roster if t not in taken_cur]
     if roster and len(cur_names) == len(roster) and rem_n and len(rem_n) == len(rem_t):
         pick = {}
         for n in rem_n:
             v = votes.get(n)
             tot = (v["h"] + v["a"]) if v else Counter()
             inside = {t: c for t, c in tot.items() if t in rem_t}
-            if len(rem_n) == 1 and set(tot) <= {rem_t[0]}:
-                pick[n] = (rem_t[0], f"kadro_eleme ({sum(tot.values())} oy)")
-            elif len(inside) == 1 and sum(inside.values()) == sum(tot.values()):
+            if len(inside) == 1 and sum(inside.values()) == sum(tot.values()):
                 pick[n] = (next(iter(inside)), f"kadro_kisiti ({sum(tot.values())} oy)")
+        # Geriye tek ad ve tek takım kaldıysa (adın oyu varsa hepsi o takımda) eleme ile
+        left_n = [n for n in rem_n if n not in pick]
+        left_t = [t for t in rem_t if t not in {p[0] for p in pick.values()}]
+        if len(left_n) == 1 and len(left_t) == 1:
+            v = votes.get(left_n[0])
+            tot = (v["h"] + v["a"]) if v else Counter()
+            if set(tot) <= {left_t[0]}:
+                pick[left_n[0]] = (left_t[0], f"kadro_eleme ({sum(tot.values())} oy)")
         if len(pick) == len(rem_n) and len({p[0] for p in pick.values()}) == len(pick):
             for n, (t, why) in pick.items():
                 tm.mapping[n], tm.basis[n] = t, why
-    # Birebirlik: iki ad aynı takıma düşüyorsa hangisinin o takım olduğu bilinemez
-    by_team: dict = {}
-    for n, t in tm.mapping.items():
-        by_team.setdefault(t, []).append(n)
-    for t, ns in by_team.items():
-        if len(ns) > 1:
-            for n in ns:
-                del tm.mapping[n]
-                tm.basis.pop(n, None)
-                tm.unmapped[n] = ("TERS_CAKISMA", (t,))
+    # Depo güncel sezona ulaşmıyorsa: deponun son maçından sonra lige katılmış adlar (kural 4)
+    if new_after is not None:
+        fresh = [n for n in names if n not in tm.mapping and n not in tm.unmapped and n not in votes
+                 and span[n][0] > new_after]
+        if fresh:
+            used = set(tm.mapping.values())
+            pool = sorted({str(t) for t in wider} | set(base["home"].astype(str)) | set(base["away"].astype(str)))
+            taken = {norm_key(t) for t in pool}
+            wide = resolve_teams(fresh, [t for t in pool if t not in used], league, ESPN_LABEL)
+            for n in fresh:
+                w = wide[n]
+                if w.exact:
+                    tm.mapping[n], tm.basis[n] = w.team, f"ulke_ici_ayni_ad ({w.basis})"
+                elif w.status != BELIRSIZ and norm_key(n) not in taken:
+                    tm.mapping[n], tm.basis[n] = n, f"yeni_takim (depoda yok; ilk ESPN maçı {span[n][0]})"
+    _one_to_one(tm, span)
     for n in names:
         if n not in tm.mapping and n not in tm.unmapped:
             tm.unmapped[n] = ("KANIT_YOK", tuple(res[n].suggestions or res[n].candidates))

@@ -155,16 +155,16 @@ SOURCES: dict[str, SourceInfo] = {
         license_summary=(
             "site.api.espn.com skor tablosu uç noktası belgelenmemiştir; açık bir lisans veya veri kullanım metni "
             "bulunamadı (2026-10-12 denetimi; uç noktaya bu ortamdan erişilemedi). Sitenin genel kullanım koşulları "
-            "espn.com sayfa altındaki 'Terms of Use' bağlantısındadır. Yalnızca Serie B, La Liga 2, Ligue 2, Süper Lig "
-            "ve 2. Bundesliga için, verileri football-data.co.uk'tan alınamadığında fikstür, sonuç ve sezon takvimi "
-            "alınır."
+            "espn.com sayfa altındaki 'Terms of Use' bağlantısındadır. Yalnızca verileri football-data.co.uk'tan "
+            "alınamayan ligler için fikstür, sonuç ve sezon takvimi alınır."
         ),
         commercial_use="Doğrulanamadı (açık izin yok).",
         automated_download="Doğrulanamadı; lig başına aylık, önbellekli ve seyrek istek.",
         model_training="Doğrulanamadı.",
         redistribution="İzin varsayılmaz: veriler yalnızca kullanıcının bilgisayarında tutulur.",
-        coverage=("Serie B, La Liga 2, Ligue 2, Süper Lig, 2. Bundesliga: fikstür, normal süre sonucu, varsa devre "
-                  "skorları; oran ve istatistik yok. Takım adları yalnızca maç kanıtıyla eşlenir."),
+        coverage=("Uygulamanın bütün ligleri (İsviçre, Finlandiya, Polonya ve Romanya'nın ESPN kodu önceden "
+                  "doğrulanamadı): fikstür, normal süre sonucu, varsa devre skorları; oran ve istatistik yok. Takım "
+                  "adları yalnızca maç kanıtıyla eşlenir."),
         cost="Ücretsiz (anahtar gerekmez)",
         requires_consent=True,
     ),

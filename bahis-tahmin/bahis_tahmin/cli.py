@@ -1168,7 +1168,7 @@ def main(argv: list[str] | None = None) -> int:
     u.add_argument("--force", action="store_true")
     u.add_argument("--no-mirror", action="store_true", help="GitHub yedek veri setini kullanma")
     u.add_argument("--accept-terms", help="kullanım koşullarını okuyup onayladığınız kaynaklar, ör. football-data "
-                                          "(Serie B, La Liga 2, Ligue 2, Süper Lig, 2. Bundesliga için ESPN: espn)")
+                                          "(football-data'ya ulaşılamadığında ligler için ESPN: espn)")
     u.add_argument("--kisisel-kullanim", metavar="KAYNAKLAR",
                    help="kişisel, ticari olmayan kullanım beyanı verdiğiniz kaynaklar (indirme onayı da gerekir), "
                         "ör. football-data,github-mirror; beyan olmadan bu verilerle model eğitilmez")
