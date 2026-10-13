@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% from "macros.html" import card, frame_table %}
+{% block title %}Geriye Dönük Test{% endblock %}
+{% block content %}
+<h1>Geriye Dönük Test</h1>
+<p class="sub">Model her sezonu, o sezonun maçlarını hiç görmeden tahmin etti. Burada bu tahminlerle bir bahis
+  stratejisi uygulansaydı ne olacağını görürsünüz.</p>
+{% if not ready %}
+<p class="muted">Model eğitilince kullanılabilir.</p>
+{% else %}
+<form method="get" action="{{ url_for('views.test') }}" class="panel">
+  <input type="hidden" name="calistir" value="1">
+  <div class="form-grid">
+    <label>Oran türü <select name="oran">{% for k, v in odds_labels.items() %}<option value="{{ k }}" {% if k == form.oran %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></label>
+    <label>Olasılık kaynağı <select name="kaynak"><option value="final" {% if form.kaynak == 'final' %}selected{% endif %}>Model + piyasa (nihai olasılık)</option><option value="model" {% if form.kaynak == 'model' %}selected{% endif %}>Yalnızca model</option></select></label>
+    <label>Min. beklenen değer <input type="number" name="ev" min="0" max="0.5" step="0.01" value="{{ '%.2f'|format(form.ev) }}"></label>
+    <label>Min. olasılık <input type="number" name="olasilik" min="0" max="0.95" step="0.05" value="{{ '%.2f'|format(form.olasilik) }}"></label>
+    <label>Min. oran <input type="number" name="min_oran" min="1.01" max="20" step="0.05" value="{{ '%.2f'|format(form.min_oran) }}"></label>
+    <label>Maks. oran <input type="number" name="max_oran" min="1.05" max="50" step="0.5" value="{{ '%.2f'|format(form.max_oran) }}"></label>
+    <label>Bahis miktarı <select name="miktar"><option value="flat" {% if form.miktar == 'flat' %}selected{% endif %}>Sabit (kasanın %1'i)</option><option value="kelly" {% if form.miktar == 'kelly' %}selected{% endif %}>Kelly (kesirli)</option></select></label>
+    <label>Kelly kesri <input type="number" name="kelly" min="0.05" max="1" step="0.05" value="{{ '%.2f'|format(form.kelly) }}"></label>
+    <label>Başlangıç kasası <input type="number" name="kasa" min="10" step="100" value="{{ '%.0f'|format(form.kasa) }}"></label>
+  </div>
+  <div class="checks"><span class="muted">Marketler:</span>
+    <label class="check"><input type="checkbox" name="m_1x2" value="1" {% if form.m_1x2 %}checked{% endif %}> 1X2</label>
+    <label class="check"><input type="checkbox" name="m_ou" value="1" {% if form.m_ou %}checked{% endif %}> 2.5 Alt/Üst</label></div>
+  <details><summary>Ligler ve sezonlar ({{ form.ligler|length }} lig, {{ form.sezonlar|length }} sezon)</summary>
+    <div class="checks">{% for c in all_leagues %}<label class="check"><input type="checkbox" name="lig" value="{{ c }}" {% if c in form.ligler %}checked{% endif %}> {{ c|lig_tam }}</label>{% endfor %}</div>
+    <div class="checks">{% for y in all_seasons %}<label class="check"><input type="checkbox" name="sezon" value="{{ y }}" {% if y in form.sezonlar %}checked{% endif %}> {{ y }}/{{ '%02d'|format((y + 1) % 100) }}</label>{% endfor %}</div>
+  </details>
+  <button class="btn primary" type="submit">Testi Çalıştır</button>
+</form>
+{% if ran %}
+{% set n = sm.get('bahis', 0) %}
+<div class="cards">
+  {{ card("Bahis sayısı", n|binlik, (sm.get('kazanan', 0)|binlik ~ ' kazanan') if n else 'Bahis yok') }}
+  {% if n %}
+  {{ card("İsabet", sm.isabet|pct, 'ortalama oran ' ~ sm.ort_oran|num) }}
+  {{ card("Getiri (ROI)", sm.birim_roi|spct, '%95 güven aralığı: ' ~ sm.roi_ci_low|spct ~ ' … ' ~ sm.roi_ci_high|spct, 'good' if sm.birim_roi > 0 else 'bad') }}
+  {{ card("Kâr / zarar", '%+.0f'|format(sm.kar) ~ ' ' ~ cur, 'kasa ' ~ sm.baslangic|binlik ~ ' → ' ~ sm.bitis|binlik, 'good' if sm.kar > 0 else 'bad') }}
+  {{ card("En büyük düşüş", sm.max_dusus|pct, 'en uzun kayıp serisi: ' ~ sm.en_uzun_kayip) }}
+  {{ card("Kapanış oranına göre (CLV)", sm.clv|spct if sm.get('clv_n') else '-', (sm.clv_n ~ ' bahiste kapanış oranı biliniyor') if sm.get('clv_n') else 'Kapanış oranı verisi yok') }}
+  {% endif %}
+</div>
+{% if verdict %}<div class="{{ 'warn' if verdict[0] == 'warn' else 'banner' }}">{{ verdict[1] }}</div>{% endif %}
+<div class="charts">{% for c in charts %}<div class="chart-box">{{ c }}</div>{% endfor %}</div>
+{% for title, df, headers, fmts, hidden, bg in tables %}
+{% if loop.last %}<details><summary>{{ title }} ({{ df|length }})</summary>{% else %}<h2>{{ title }}</h2>{% endif %}
+{{ frame_table(df, headers, fmts, hidden, 'Veri yok.', bg) }}
+{% if loop.last %}</details>{% endif %}
+{% endfor %}
+{% endif %}
+<div class="warn"><b>Nasıl okunur?</b> ROI pozitif olsa bile güven aralığı sıfırı içeriyorsa sonuç şans eseri olabilir.
+  'En yüksek oran' seçeneği, onlarca bahis şirketi arasından en iyi oranı alabildiğinizi varsayar; gerçekte bu her zaman
+  mümkün değildir. Geçmiş performans geleceği garanti etmez.</div>
+{% endif %}
+{% endblock %}

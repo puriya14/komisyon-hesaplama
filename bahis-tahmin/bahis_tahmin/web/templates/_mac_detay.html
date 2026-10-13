@@ -1,0 +1,57 @@
+{% from "macros.html" import simple_table %}
+<section class="detail">
+  <h1>{{ d.p.home }} – {{ d.p.away }}</h1>
+  <p class="sub">{{ d.league }} · {{ d.when }}</p>
+  {% if d.blocked %}
+  <p><b>Tahmin gösterilmiyor.</b> {{ d.text }}</p>
+  <div class="warn">Veri durumu: {{ d.label }}. Olasılıklar, skor dağılımı ve değer önerisi ancak veri uygunluğu
+    doğrulanınca gösterilir.</div>
+  {% else %}
+  <div class="probbar" role="img" aria-label="1: {{ d.probs[0]|pct }}, X: {{ d.probs[1]|pct }}, 2: {{ d.probs[2]|pct }}">
+    <div class="seg s1" style="flex: {{ d.probs[0] }}">1 {{ d.p.home if d.p.home|length < 14 else '' }} {{ d.probs[0]|pct }}</div>
+    <div class="seg sx" style="flex: {{ d.probs[1] }}">X {{ d.probs[1]|pct }}</div>
+    <div class="seg s2" style="flex: {{ d.probs[2] }}">2 {{ d.p.away if d.p.away|length < 14 else '' }} {{ d.probs[2]|pct }}</div>
+  </div>
+  <p>Beklenen gol: <b>{{ d.xg }}</b><br>
+    1: <b>{{ d.probs[0]|pct }}</b> · X: <b>{{ d.probs[1]|pct }}</b> · 2: <b>{{ d.probs[2]|pct }}</b><br>
+    2.5 Üst: <b>{{ d.o25|pct }}</b> · KG Var: <b>{{ d.btts|pct }}</b>
+    {% if d.model_vs_market %}<br><span class="muted">Model tek başına: {{ d.model_vs_market[0] }} · Piyasa (marjsız): {{ d.model_vs_market[1] }}</span>{% endif %}
+  </p>
+  {% if d.notes %}<div class="warn">{{ d.notes|join(' ') }}</div>{% endif %}
+  <div class="two-col">
+    <div>
+      <h2>Marketler, adil oranlar ve değer</h2>
+      <div class="table-wrap"><table class="data">
+        <thead><tr><th>Market</th><th class="num">Olasılık</th><th class="num">Adil oran</th><th class="num">Değer için min. oran</th>
+          <th class="num">Oran</th><th class="num">Beklenen değer</th>{% if d.stake %}<th class="num">Önerilen bahis</th>{% endif %}</tr></thead>
+        <tbody>
+        {% for r in d.markets %}
+        <tr><td>{{ r.label }}</td><td class="num" style="{{ r.prob|prob_bg(0.8) }}">{{ r.prob|pct }}</td>
+          <td class="num">{{ r.fair|num }}</td><td class="num">{{ r.need|num }}</td><td class="num">{{ r.odds|num }}</td>
+          <td class="num" style="{{ r.ev|ev_bg }}">{{ r.ev|spct }}</td>
+          {% if d.stake %}<td class="num">{{ '-' if not r.stake else (r.stake|binlik ~ ' ' ~ core.settings.currency) }}</td>{% endif %}</tr>
+        {% endfor %}
+        </tbody>
+      </table></div>
+    </div>
+    <div>
+      <h2>Skor olasılıkları (%)</h2>
+      <p class="muted">Satır: ev sahibi golü · Sütun: deplasman golü</p>
+      <div class="table-wrap"><table class="heat">
+        <thead><tr><th></th>{% for j in range(d.matrix|length) %}<th>{{ j }}</th>{% endfor %}</tr></thead>
+        <tbody>{% for row in d.matrix %}<tr><th>{{ loop.index0 }}</th>
+          {% for v in row %}<td style="{{ (v / d.mat_max)|prob_bg(0.85) }}">{{ '%.1f'|format(100 * v) }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+      </table></div>
+      <p>En olası skorlar: {{ d.top_scores }}</p>
+    </div>
+  </div>
+  {% endif %}
+  <h2>Takım karşılaştırması</h2>
+  <div class="table-wrap"><table class="data compact">
+    <thead><tr><th></th><th>{{ d.p.home }}</th><th>{{ d.p.away }}</th></tr></thead>
+    <tbody>{% for label, a, b in d.compare %}<tr><td class="muted">{{ label }}</td><td>{{ a }}</td><td>{{ b }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  <div class="three-col">
+    {% for title, t in d.forms %}<div><h3>{{ title }}</h3>{{ simple_table(t, 'Maç yok.', False) }}</div>{% endfor %}
+  </div>
+</section>

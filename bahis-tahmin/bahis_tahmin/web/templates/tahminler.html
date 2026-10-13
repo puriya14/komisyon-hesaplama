@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Tahminler{% endblock %}
+{% block content %}
+<h1>Tahminler</h1>
+<p class="sub">Yaklaşan maçlar için model olasılıkları. Ayrıntı için maça tıklayın.</p>
+<form class="filters" method="get" action="{{ url_for('views.tahminler') }}">
+  <label>Lig <select name="lig" data-autosubmit>
+    <option value="">Tüm ligler</option>
+    {% for c in leagues %}<option value="{{ c }}" {% if c == lig %}selected{% endif %}>{{ c|lig_tam }}</option>{% endfor %}
+  </select></label>
+  <label>Tarih <select name="gun" data-autosubmit>
+    {% for label, _ in date_filters %}<option value="{{ loop.index0 }}" {% if loop.index0 == gun %}selected{% endif %}>{{ label }}</option>{% endfor %}
+  </select></label>
+  <label class="check"><input type="checkbox" name="deger" value="1" {% if deger %}checked{% endif %} data-autosubmit> Yalnızca değerli bahisler</label>
+  <label class="grow">Takım ara <input type="search" name="ara" value="{{ ara }}" placeholder="Takım ara..." data-filter-table="tbl-tahmin"></label>
+  <noscript><button class="btn" type="submit">Uygula</button></noscript>
+</form>
+{% if rows %}
+<div class="table-wrap"><table class="data" id="tbl-tahmin">
+  <thead><tr>
+    <th data-sort>Tarih</th><th data-sort>Lig</th><th data-sort>Ev sahibi</th><th data-sort>Deplasman</th>
+    <th data-sort class="num">1</th><th data-sort class="num">X</th><th data-sort class="num">2</th><th>Tahmin</th>
+    <th data-sort class="num">2.5 Üst</th><th data-sort class="num">KG Var</th><th>Beklenen gol</th>
+    <th>Oranlar 1/X/2</th><th data-sort>En iyi değer</th><th data-sort>Veri durumu</th>
+  </tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr>
+    <td data-v="{{ r.date|tarih }}">{{ r.when }}</td>
+    <td title="{{ r.league|lig_tam }}">{{ r.league|lig }}</td>
+    <td>{% if r.key %}<a href="{{ url_for('views.mac', k=r.key) }}">{{ r.home }}</a>{% else %}{{ r.home }}{% endif %}</td>
+    <td>{% if r.key %}<a href="{{ url_for('views.mac', k=r.key) }}">{{ r.away }}</a>{% else %}{{ r.away }}{% endif %}</td>
+    {% for c in ['p1', 'px', 'p2'] %}<td class="num" style="{{ r[c]|prob_bg(0.9) }}" data-v="{{ '' if r[c]|isnan else r[c] }}">{{ r[c]|pct }}</td>{% endfor %}
+    <td class="center">{{ r.pick }}</td>
+    {% for c in ['o25', 'btts'] %}<td class="num" style="{{ r[c]|prob_bg(0.9) }}" data-v="{{ '' if r[c]|isnan else r[c] }}">{{ r[c]|pct }}</td>{% endfor %}
+    <td>{{ r.xg }}</td>
+    <td title="{{ 'Piyasa oranlarıyla harmanlandı (ortalama; yedek veri setinde tek bahisçi)' if r.has_market else 'Oran yok: yalnızca model' }}">{{ r.odds }}</td>
+    <td style="{{ r.value_ev|ev_bg if r.value else '' }}">{{ r.value }}</td>
+    <td title="{{ r.veri_neden }}"><details class="why"><summary>{{ r.veri }}</summary><span>{{ r.veri_neden }}</span></details></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% else %}
+<p class="muted">Gösterilecek maç yok. Fikstür verisi için 'Veri' sayfasından güncelleme yapın.</p>
+{% endif %}
+<p class="muted">{{ footer }}</p>
+<div class="banner"><b>Değer (value) nedir?</b> Bir seçimin oranı, modelin hesapladığı adil orandan yüksekse beklenen
+  kazanç pozitiftir. 'En iyi değer' sütunu, Ayarlar'da seçtiğiniz oran türüne göre hesaplanır. Kendi bahis şirketinizin
+  oranı daha düşükse değer kaybolabilir: maç ayrıntısında her market için 'Değer için min. oran' sütununa bakın.</div>
+{% endblock %}

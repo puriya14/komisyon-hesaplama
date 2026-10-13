@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% from "macros.html" import simple_table %}
+{% block title %}Güç Sıralaması{% endblock %}
+{% block content %}
+<h1>Güç Sıralaması ve Puan Durumu</h1>
+<p class="sub">Elo puanı, beklenen gol gücü, piyasa reytingi ve güncel puan tablosu.</p>
+{% if not leagues %}
+<p class="muted">Henüz veri yok.</p>
+{% else %}
+<form class="filters" method="get" action="{{ url_for('views.guc') }}">
+  <label>Lig <select name="lig" data-autosubmit>{% for c in leagues %}<option value="{{ c }}" {% if c == lig %}selected{% endif %}>{{ c|lig_tam }}</option>{% endfor %}</select></label>
+  <label>Sezon <select name="sezon" data-autosubmit>{% for s in seasons %}<option {% if s == sezon %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></label>
+  <noscript><button class="btn" type="submit">Göster</button></noscript>
+</form>
+<h2>Güç sıralaması</h2>
+{% if ratings %}
+<div class="table-wrap"><table class="data">
+  <thead><tr><th data-sort class="num">#</th><th data-sort>Takım</th><th data-sort class="num">Elo</th><th data-sort class="num">Hücum</th>
+    <th data-sort class="num">Savunma</th><th data-sort class="num">Attığı (beklenen)</th><th data-sort class="num">Yediği (beklenen)</th>
+    <th data-sort class="num">Fark</th><th data-sort class="num">Piyasa reytingi</th><th>Son 5</th></tr></thead>
+  <tbody>{% for r in ratings %}<tr><td class="num" data-v="{{ loop.index }}">{{ loop.index }}</td><td>{{ r.team }}</td>
+    <td class="num" data-v="{{ r.elo }}">{{ r.elo|num(0) }}</td><td class="num">{{ r.attack|num }}</td><td class="num">{{ r.defense|num }}</td>
+    <td class="num">{{ r.xg_for|num }}</td><td class="num">{{ r.xg_against|num }}</td>
+    <td class="num" style="{{ (r.xg_diff / 4)|ev_bg }}" data-v="{{ r.xg_diff }}">{{ '%+.2f'|format(r.xg_diff) if not r.xg_diff|isnan else '-' }}</td>
+    <td class="num">{{ r.market|num }}</td><td>{{ r.form if r.form is not none else '' }}</td></tr>{% endfor %}</tbody>
+</table></div>
+{% if chart %}<div class="chart-box wide">{{ chart }}</div>{% endif %}
+{% else %}<p class="muted">Model eğitilince gösterilir.</p>{% endif %}
+<h2>Puan durumu{% if sezon %} ({{ sezon }}){% endif %}</h2>
+{{ simple_table(table, 'Bu sezon için maç yok.') }}
+<p class="muted">O: oynanan · G/B/M: galibiyet/beraberlik/mağlubiyet · AG/YG: atılan/yenilen gol · AV: averaj</p>
+{% endif %}
+{% endblock %}

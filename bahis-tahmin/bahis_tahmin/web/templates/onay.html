@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf_field with context %}
+{% block title %}Kaynak onayları{% endblock %}
+{% block content %}
+<h1>Veri kaynakları: kullanım koşulları</h1>
+<p>Uygulama geçmiş maç verisini aşağıdaki kaynaklardan <b>sizin bilgisayarınıza</b> indirir. Bu kaynakların yeniden
+  kullanım ve model eğitimi koşulları lisans belgesiyle doğrulanamadı.<br>
+  <b>1. kutu</b> yalnızca verilerin bilgisayarınıza indirilmesini onaylar.<br>
+  <b>2. kutu (kişisel kullanım beyanı)</b> verileri yalnızca kendi kişisel ve ticari olmayan analiziniz, bu bilgisayarda
+  model eğitimi ve tahminleriniz için kullanacağınızı beyan eder. Beyan olmadan uygulama bu verilerle model eğitmez ve
+  tahmin göstermez. Beyan ticari kullanım veya yeniden dağıtım hakkı vermez; kaynağın koşulları geçerlidir ve sorumluluk
+  size aittir. Onay ve beyanı bu sayfadan istediğiniz zaman geri alabilirsiniz.</p>
+<form method="post" action="{{ url_for('views.onay') }}" class="panel consent">{{ csrf_field() }}
+  <input type="hidden" name="sonra" value="{{ sonra }}">
+  {% for x in sources %}
+  <div class="source">
+    <p><b>{{ x.s.name }}</b> — <a href="{{ x.s.terms_url }}" target="_blank" rel="noopener noreferrer">koşullar</a><br>
+      {{ x.s.license_summary }}<br><i>Model eğitimi:</i> {{ x.s.model_training }} · <i>Ticari kullanım:</i> {{ x.s.commercial_use }}</p>
+    <label class="check"><input type="checkbox" name="onay_{{ x.key }}" value="1" data-consent="{{ x.key }}" {% if x.consent %}checked{% endif %}>
+      1. {{ x.s.name }} koşullarını okudum; verilerin bu bilgisayara indirilmesini onaylıyorum.</label>
+    {% if x.declarable %}
+    <label class="check indent"><input type="checkbox" name="beyan_{{ x.key }}" value="1" data-declaration="{{ x.key }}" {% if x.decl %}checked{% endif %}>
+      2. Kişisel kullanım beyanı: {{ x.s.name }} verilerini yalnızca kişisel ve ticari olmayan amaçla (kendi analizim, bu
+      bilgisayarda model eğitimi ve tahmin) kullanacağımı, paylaşmayacağımı ve yeniden dağıtmayacağımı beyan ederim.</label>
+    {% endif %}
+  </div>
+  {% endfor %}
+  <p class="muted">Onay gerektirmeyen (açık lisanslı) kaynaklar: {{ free|join(', ') }} — yalnızca fikstür yedeği.</p>
+  <div class="actions">
+    <button class="btn primary" type="submit">Kaydet{% if sonra == 'guncelle' %} ve güncelle{% endif %}</button>
+    <button class="btn" type="submit" name="vazgec" value="1" formnovalidate>Vazgeç</button>
+  </div>
+</form>
+{% endblock %}

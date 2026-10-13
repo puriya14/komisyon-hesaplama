@@ -1,0 +1,40 @@
+{% macro card(title, value, sub='', cls='') -%}
+<div class="card">
+  <div class="card-title">{{ title }}</div>
+  <div class="card-value {{ cls }}">{{ value }}</div>
+  {% if sub %}<div class="card-sub">{{ sub }}</div>{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro csrf_field() -%}<input type="hidden" name="csrf" value="{{ csrf }}">{%- endmacro %}
+
+{# Genel tablo: {"cols": [...], "rows": [[...], ...]} (sütun adları zaten Türkçe) #}
+{% macro simple_table(t, empty='Veri yok.', sortable=True) -%}
+{% if t.rows %}
+<div class="table-wrap"><table class="data">
+  <thead><tr>{% for c in t.cols %}<th {% if sortable %}data-sort{% endif %}>{{ c }}</th>{% endfor %}</tr></thead>
+  <tbody>
+  {% for r in t.rows %}<tr>{% for v in r %}<td {% if v is number %}class="num" data-v="{{ v }}"{% endif %}>{{ '-' if v is none else v }}</td>{% endfor %}</tr>{% endfor %}
+  </tbody>
+</table></div>
+{% else %}<p class="muted">{{ empty }}</p>{% endif %}
+{%- endmacro %}
+
+{# pandas DataFrame'i sütun başlık eşlemesi ve biçimlerle gösterir #}
+{% macro frame_table(df, headers={}, fmts={}, hidden=[], empty='Veri yok.', bg={}) -%}
+{% if df is not none and not df.empty %}
+{% set cols = [] %}{% for c in df.columns %}{% if c not in hidden %}{% set _ = cols.append(c) %}{% endif %}{% endfor %}
+<div class="table-wrap"><table class="data">
+  <thead><tr>{% for c in cols %}<th data-sort>{{ headers.get(c, c) }}</th>{% endfor %}</tr></thead>
+  <tbody>
+  {% for r in df.to_dict('records') %}<tr>
+    {% for c in cols %}{% set v = r[c] %}
+    <td {% if v is number %}class="num" data-v="{{ v }}"{% endif %} {% if c in bg %}style="{{ bg[c](v) }}"{% endif %}>
+      {%- if c in fmts %}{{ fmts[c](v) }}{% elif v is none or (v is number and v != v) %}-{% else %}{{ v }}{% endif -%}
+    </td>
+    {% endfor %}
+  </tr>{% endfor %}
+  </tbody>
+</table></div>
+{% else %}<p class="muted">{{ empty }}</p>{% endif %}
+{%- endmacro %}

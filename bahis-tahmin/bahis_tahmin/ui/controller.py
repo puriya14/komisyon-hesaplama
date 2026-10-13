@@ -10,23 +10,22 @@ from typing import Callable
 import pandas as pd
 from PySide6.QtCore import QObject, QThread, QTimer, Signal
 
+from .. import core
 from ..config import Settings, app_home
-from ..data.provenance import verified_labels
+from ..core import (  # noqa: F401 (eski içe aktarma yolları için de burada)
+    DECLARATION_HINT,
+    ENGINE_FILE,
+    GOAL_ENGINE_FILE,
+    LEDGER_FILE,
+    SEQ_DIR,
+    STALE_HOURS,
+)
 from ..data.store import DataStore
-from ..eligibility import training_rights_codes
-from ..goals.engine import GoalDataError, GoalEngine, GoalPrediction
+from ..goals.engine import GoalEngine, GoalPrediction
 from ..goals.ledger import Ledger
-from ..goals.validation import data_manifest
 from ..models.engine import MatchPrediction, PredictionEngine
 
 log = logging.getLogger(__name__)
-
-ENGINE_FILE = "engine.joblib"
-GOAL_ENGINE_FILE = "goal_engine.joblib"
-LEDGER_FILE = "gol_pazarlari.sqlite"
-STALE_HOURS = 6.0
-DECLARATION_HINT = ("Kişisel (ticari olmayan) kullanım beyanını Veri sayfasındaki 'Kaynak koşulları ve onaylar...' "
-                    "penceresinden verebilirsiniz.")
 
 
 class Task(QThread):
@@ -48,9 +47,6 @@ class Task(QThread):
         self.done.emit(res)
 
 
-SEQ_DIR = "dizi_arastirma"
-
-
 def load_sequence_results(home) -> dict | None:
     """Uygulama klasöründeki son dizi araştırması sonuçları (``dizi_arastirma/son_sonuclar.json``); yoksa None."""
     import json
@@ -66,14 +62,8 @@ def load_sequence_results(home) -> dict | None:
 
 
 def _train_goal(matches: pd.DataFrame, home, progress) -> tuple[GoalEngine | None, str | None]:
-    """Gol pazarları modelini eğitip kaydeder. Veri yetersizse (ör. ilk yarı skoru yok) hata metni döner."""
-    goal = GoalEngine()
-    try:
-        goal.train(matches, progress=progress)
-    except GoalDataError as e:
-        return None, str(e)
-    goal.save(home / GOAL_ENGINE_FILE)
-    return goal, None
+    """Gol pazarları modelini eğitip kaydeder (``core.train_goal``)."""
+    return core.train_goal(matches, home, progress)
 
 
 class AppController(QObject):
@@ -184,14 +174,7 @@ class AppController(QObject):
         home = self.home
 
         def work(progress):
-            progress(10, "Kayıtlı veriler yükleniyor...")
-            store = DataStore(home)
-            store.load()
-            progress(50, "Kayıtlı model yükleniyor...")
-            engine = PredictionEngine.load(home / ENGINE_FILE)
-            progress(75, "Gol pazarları modeli yükleniyor...")
-            goal, gerr = GoalEngine.load(home / GOAL_ENGINE_FILE)
-            return store, engine, goal, gerr
+            return core.load_saved(home, progress)
 
         def done(res):
             store, engine, goal, gerr = res
@@ -220,77 +203,39 @@ class AppController(QObject):
         self._run(work, done, "Yükleniyor...")
 
     def data_age_hours(self) -> float:
-        ts = self.store.meta.get("updated_at")
-        if not ts:
-            return float("inf")
-        try:
-            return (dt.datetime.now() - dt.datetime.fromisoformat(ts)).total_seconds() / 3600.0
-        except ValueError:
-            return float("inf")
+        return core.data_age_hours(self.store)
 
     def needs_training(self) -> bool:
-        if not self.store.has_data:
-            return False
-        if self.engine is None:
-            return True
-        sig = PredictionEngine.signature(self.store.matches, self.settings.margin_method)
-        return sig != self.engine.data_signature
+        return core.needs_training(self.store, self.engine, self.settings)
 
     # ------------------------------------------------------------ actions
     def needs_consent(self) -> bool:
-        """Onay penceresi gösterilmeli mi? Geçmiş maç verisi sağlayan hiçbir kaynağın kullanım koşulları onaylanmamışsa
-        veya kullanıcı onay penceresinin güncel sürümünü (VERI-01: kişisel kullanım beyanı) henüz kaydetmediyse. GitHub
-        veri profilinde football-data kullanılmadığı için yalnızca GitHub yedek veri setinin onayı sayılır."""
-        from ..data.github_kaynak import PROFILE_GITHUB
-        from ..data.source_registry import CONSENT_SCHEMA
-
-        keys = {"github-mirror"} if self.settings.data_profile == PROFILE_GITHUB else {"football-data", "github-mirror"}
-        return not (keys & self.settings.allowed_sources()) or self.settings.onay_surumu < CONSENT_SCHEMA
+        """Onay penceresi gösterilmeli mi? (``core.needs_consent``)"""
+        return core.needs_consent(self.settings)
 
     def consent_review_needed(self) -> bool:
         """Onay var ama onay penceresinin güncel sürümü (kişisel kullanım beyanı) henüz kaydedilmedi."""
-        from ..data.source_registry import CONSENT_SCHEMA
-
-        return bool(self.settings.source_consent) and self.settings.onay_surumu < CONSENT_SCHEMA
+        return core.consent_review_needed(self.settings)
 
     def declaration_hint(self, matches=None) -> str:
         """Eğitim/tahmin hak engeli için kullanıcıya gösterilecek somut yol (beyan gereken kaynakların adlarıyla)."""
-        from ..data.source_registry import SOURCES, missing_declarations
-
-        m = self.store.matches if matches is None else matches
-        miss = missing_declarations(set(m["source"].dropna().astype(str)), self.settings.source_consent,
-                                    self.settings.kisisel_kullanim) if "source" in m else []
-        names = ", ".join(SOURCES[k].name for k in miss)
-        return ((f"Kişisel (ticari olmayan) kullanım beyanı gereken kaynak: {names}. " if names else "")
-                + DECLARATION_HINT)
+        return core.declaration_hint(self.settings, self.store.matches if matches is None else matches)
 
     def record_consent(self, keys: list[str]) -> None:
-        now = dt.datetime.now().isoformat(timespec="seconds")
-        for k in keys:
-            self.settings.source_consent[k] = now
-        self.settings.save()
+        core.record_consent(self.settings, keys)
         self.settingsChanged.emit()
 
     def revoke_consent(self, key: str) -> None:
-        self.settings.source_consent.pop(key, None)
-        self.settings.kisisel_kullanim.pop(key, None)  # onay olmadan beyan da geçmez
-        self.settings.save()
+        core.revoke_consent(self.settings, key)
         self.settingsChanged.emit()
 
     def record_declaration(self, keys: list[str]) -> None:
         """Kişisel (ticari olmayan) kullanım beyanı: yalnızca beyan verilebilen ve indirme onayı olan kaynaklar."""
-        from ..data.source_registry import DECLARABLE
-
-        now = dt.datetime.now().isoformat(timespec="seconds")
-        for k in keys:
-            if k in DECLARABLE and k in self.settings.source_consent:
-                self.settings.kisisel_kullanim[k] = now
-        self.settings.save()
+        core.record_declaration(self.settings, keys)
         self.settingsChanged.emit()
 
     def revoke_declaration(self, key: str) -> None:
-        self.settings.kisisel_kullanim.pop(key, None)
-        self.settings.save()
+        core.revoke_declaration(self.settings, key)
         self.settingsChanged.emit()
 
     def declarations_changed(self, added: bool) -> None:
@@ -310,10 +255,7 @@ class AppController(QObject):
 
     def mark_consent_reviewed(self) -> None:
         """Kullanıcı onay penceresinin güncel sürümünü kaydetti (beyan verse de vermese de bir daha sorulmaz)."""
-        from ..data.source_registry import CONSENT_SCHEMA
-
-        self.settings.onay_surumu = CONSENT_SCHEMA
-        self.settings.save()
+        core.mark_consent_reviewed(self.settings)
         self.settingsChanged.emit()
 
     # ------------------------------------------------------------ GitHub arşivi (S5-GITHUB-01)
@@ -348,38 +290,7 @@ class AppController(QObject):
             return False
 
         def work(progress):
-            store = DataStore(home)
-            store.load()
-
-            def p1(p, m):
-                progress(int(p * 0.3), m)
-
-            report = store.update(
-                s.leagues, s.years_back, progress=p1, force=force,
-                use_mirror_fallback=s.use_mirror_fallback, fixture_days=s.fixture_days,
-                allowed=allowed, profile=s.data_profile,
-            )
-            engine = old_engine
-            sig = PredictionEngine.signature(store.matches, s.margin_method)
-            blocked = (training_rights_codes(store.matches, s.source_consent, verified_labels(store),
-                                             s.declarations()) if store.has_data else [])
-            if blocked:  # hak kapsamı doğrulanmayan gerçek veriyle eğitim yapılmaz (S3-GATE-02)
-                report.warnings.append("Model eğitimi yapılmadı: veri kaynağının kullanım kapsamı doğrulanmadı ("
-                                       + ", ".join(blocked) + "). " + self.declaration_hint(store.matches))
-            elif store.has_data and (engine is None or engine.data_signature != sig):
-                engine = PredictionEngine()
-
-                def p2(p, m):
-                    progress(30 + int(p * 0.7), m)
-
-                engine.train(store.matches, progress=p2, margin_method=s.margin_method)
-                progress(70, "Model kaydediliyor...")
-                engine.save(home / ENGINE_FILE)
-            goal = gerr = None
-            if store.has_data and not blocked and (old_goal is None
-                                                   or old_goal.data_sha != data_manifest(store.matches)["sha256"]):
-                goal, gerr = _train_goal(store.matches, home, lambda p, m: progress(70 + int(p * 0.29), m))
-            return store, engine, report, (goal, gerr)
+            return core.update_work(home, s, old_engine, old_goal, force, progress, allowed)
 
         def done(res):
             store, engine, report, (goal, gerr) = res
@@ -405,8 +316,7 @@ class AppController(QObject):
         """Gerçek veriyle eğitimin hak kapsamı (onay kutusu bu kontrolü aşamaz)."""
         from ..eligibility import reason_texts
 
-        codes = training_rights_codes(self.store.matches, self.settings.source_consent, verified_labels(self.store),
-                                      self.settings.declarations())
+        codes = core.training_block_codes(self.store, self.settings)
         if codes:
             # İlk satır durum çubuğunda görünür: ne yapılacağı orada yazar
             self.message.emit("warn", "Model eğitimi yapılmadı. " + self.declaration_hint() + "\nVeri kaynağının "
@@ -420,15 +330,11 @@ class AppController(QObject):
         if self._training_blocked():
             return False
         matches = self.store.matches
-        method = self.settings.margin_method
+        settings = self.settings
         home = self.home
 
         def work(progress):
-            engine = PredictionEngine()
-            engine.train(matches, progress=lambda p, m: progress(int(p * 0.7), m), margin_method=method)
-            engine.save(home / ENGINE_FILE)
-            goal, gerr = _train_goal(matches, home, lambda p, m: progress(70 + int(p * 0.29), m))
-            return engine, goal, gerr
+            return core.retrain_work(matches, settings, home, progress)
 
         def done(res):
             self.engine, self.goal_engine, self.goal_load_error = res
@@ -466,9 +372,7 @@ class AppController(QObject):
 
     def today(self) -> dt.date:
         """Bilgi kesimiyle aynı takvim: İstanbul günü."""
-        from ..timeutil import ISTANBUL
-
-        return self.now().astimezone(ISTANBUL).date()
+        return core.istanbul_today(self.now())
 
     def match_day_stale(self) -> bool:
         """1X2 uygunluğu başka bir gün değerlendirildiyse yeniden değerlendirilmelidir."""
@@ -493,24 +397,11 @@ class AppController(QObject):
 
         Önbellek anahtarı; veri deposu, motor durumu, kaynak dosyaları ve onaylar değişince değişir (eski "uygun"
         sonucu yeni veri/durum/kapsamla kullanılmaz). Bağlam kurulamazsa None döner: tahminler uygun sayılmaz."""
-        from ..eligibility import build_context
-
-        raw = self.store.raw_dir / "openfootball"
-        try:
-            files = tuple(sorted((str(p), p.stat().st_mtime_ns, p.stat().st_size) for p in raw.rglob("*.json"))) \
-                if raw.exists() else ()
-        except OSError:
-            files = ()
-        m = self.store.matches
-        decl = self.settings.declarations()
-        key = (id(engine), getattr(engine, "state_available_since", None), id(m), len(m),
-               self.store.meta.get("updated_at"), files, tuple(sorted(self.settings.source_consent)),
-               tuple(sorted(decl)), self.settings.veri_denetimi, self.today())
+        key = core.context_key(self.store, engine, self.settings, self.today())
         ctx = self._ctx_cache.get(key)
         if ctx is None:
             try:
-                ctx = build_context(self.store, engine, self.settings.source_consent, today=self.today(),
-                                    declarations=decl, mode=self.settings.veri_denetimi)
+                ctx = core.build_eligibility_context(self.store, engine, self.settings, self.today())
             except Exception:
                 log.exception("Veri uygunluk bağlamı kurulamadı")
                 return None
@@ -669,51 +560,6 @@ class AppController(QObject):
 
     # ------------------------------------------------------------ queries
     def prediction_frame(self) -> pd.DataFrame:
-        """Tahmin listesini tabloya uygun DataFrame'e çevirir.
-
-        Veri uygunluğu doğrulanmayan maçlarda olasılıklar gösterilmez (boş; sıfır değil), değer önerisi yoktur ve
-        durum metinle yazılır. Tahmini hiç üretilemeyen fikstürler (modelde olmayan lig, eşleşmeyen takım) de
-        nedenleriyle listelenir (``_i`` = -1)."""
-        from ..eligibility import display_label
-
-        rows = []
-        s = self.settings
-        nan = float("nan")
-        now = self.now()
-        for i, p in enumerate(self.predictions):
-            codes = p.display_codes(now)  # gün/kimlik/model durumu eşleşmesi dahil
-            ok = not codes
-            label, text = display_label(p.eligibility, codes)
-            best = p.best_value(s, now=now) if ok else None
-            xg = p.exp_goals
-            pick_idx = int(p.p_final.argmax())
-            rows.append({
-                "_i": i,
-                "date": p.date,
-                "when": p.date.strftime("%d.%m.%Y") + (f" {p.time}" if p.time else ""),
-                "league": p.league,
-                "home": p.home,
-                "away": p.away,
-                "p1": float(p.p_final[0]) if ok else nan,
-                "px": float(p.p_final[1]) if ok else nan,
-                "p2": float(p.p_final[2]) if ok else nan,
-                "pick": ("1", "X", "2")[pick_idx] if ok else "-",
-                "o25": float(p.markets["O2.5"]) if ok else nan,
-                "btts": float(p.markets["BTTS_Y"]) if ok else nan,
-                "xg": f"{xg[0]:.1f} - {xg[1]:.1f}" if ok else "-",
-                "odds": " / ".join(f"{p.odds[k]:.2f}" for k in ("1", "X", "2") if k in p.odds) or "-",
-                "value": f"{best['label']} @{best['odds']:.2f} ({100 * best['ev']:+.0f}%)" if best else "",
-                "value_ev": float(best["ev"]) if best else nan,
-                "has_market": p.p_market is not None,
-                "veri": label,
-                "veri_neden": text,
-            })
-        for v in self.match_unpredicted:
-            label, text = display_label(v.first(), v.display_codes("1X2", now))
-            rows.append({
-                "_i": -1, "date": v.date, "when": v.date.strftime("%d.%m.%Y") + (f" {v.time}" if v.time else ""),
-                "league": v.league, "home": v.home, "away": v.away + ("" if v.canonical_id else " (eşleşmedi)"),
-                "p1": nan, "px": nan, "p2": nan, "pick": "-", "o25": nan, "btts": nan, "xg": "-", "odds": "-",
-                "value": "", "value_ev": nan, "has_market": False, "veri": label, "veri_neden": text,
-            })
-        return pd.DataFrame(rows)
+        """Tahmin listesini tabloya uygun DataFrame'e çevirir (``core.prediction_rows``): veri uygunluğu
+        doğrulanmayan maçlarda olasılıklar gösterilmez, tahmini üretilemeyen fikstürler nedenleriyle listelenir."""
+        return core.prediction_rows(self.predictions, self.match_unpredicted, self.settings, self.now())

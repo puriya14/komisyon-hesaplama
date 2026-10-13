@@ -687,6 +687,7 @@ def test_update_flow_does_not_auto_train_without_documented_scope(tmp_home, monk
     qw.QApplication.instance() or qw.QApplication([])
     from bahis_tahmin.data.store import DataStore, UpdateReport
     from bahis_tahmin.models.engine import PredictionEngine
+    from bahis_tahmin import core
     from bahis_tahmin.ui import controller as C
 
     def fake_update(self, *a, **k):
@@ -699,6 +700,7 @@ def test_update_flow_does_not_auto_train_without_documented_scope(tmp_home, monk
     monkeypatch.setattr(DataStore, "update", fake_update)
     monkeypatch.setattr(PredictionEngine, "train", no_train)
     monkeypatch.setattr(C, "_train_goal", no_train)
+    monkeypatch.setattr(core, "train_goal", no_train)  # eğitim ortak çekirdekte (bahis_tahmin.core)
     ctl = C.AppController()
     ctl.settings.source_consent["football-data"] = "2026-10-10T10:00:00"
     from bahis_tahmin.data.source_registry import CONSENT_SCHEMA

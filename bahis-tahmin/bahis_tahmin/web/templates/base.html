@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}{{ app_title }}{% endblock %} · {{ app_title }}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='site.css') }}">
+<link rel="icon" href="{{ url_for('static', filename='icon.svg') }}" type="image/svg+xml">
+</head>
+<body data-busy="{{ 1 if job.busy else 0 }}" data-finished="{{ job.finished }}" data-csrf="{{ csrf }}">
+<header class="topbar">
+  <button class="menu-btn" type="button" aria-label="Menü" aria-controls="sidebar" aria-expanded="false">☰</button>
+  <a class="brand" href="{{ url_for('views.genel') }}">{{ app_title }}</a>
+  <div class="job" id="job" {% if not job.busy %}hidden{% endif %} role="status" aria-live="polite">
+    <div class="job-bar"><div class="job-fill" style="width: {{ job.pct }}%"></div></div>
+    <span class="job-msg">{{ job.msg }}</span>
+  </div>
+  {% if parolali %}
+  <form method="post" action="{{ url_for('views.cikis') }}" class="logout">
+    <input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn small" type="submit">Çıkış</button>
+  </form>
+  {% endif %}
+</header>
+{% set nav = [
+  ('views.genel', 'Genel Bakış'), ('views.tahminler', 'Tahminler'), ('views.en_olasi', 'En Olası Seçimler'),
+  ('views.analiz', 'Maç Analizi'), ('gol.gol', 'Gol Pazarları'), ('views.guc', 'Güç Sıralaması'),
+  ('views.test', 'Geriye Dönük Test'), ('views.veri', 'Veri'), ('views.ayarlar', 'Ayarlar'),
+  ('views.hakkinda', 'Hakkında')] %}
+<nav class="sidebar" id="sidebar">
+  <div class="side-sub">Veriye dayalı futbol tahmini</div>
+  <ul>
+  {% for ep, label in nav %}
+    <li><a href="{{ url_for(ep) }}" {% if request.endpoint == ep or (ep == 'views.tahminler' and request.endpoint == 'views.mac') %}aria-current="page"{% endif %}>{{ label }}</a></li>
+  {% endfor %}
+  </ul>
+  <div class="side-foot">Sürüm {{ version }} · web</div>
+</nav>
+<main class="main">
+  {% if job.error and request.args.get('bitti') == job.finished|string %}
+  <div class="msg bad">{{ job.error }}</div>
+  {% elif job.notice and request.args.get('bitti') == job.finished|string %}
+  <div class="msg info pre">{{ job.notice }}</div>
+  {% endif %}
+  {% with msgs = get_flashed_messages(with_categories=true) %}
+  {% for cat, m in msgs %}<div class="msg {{ cat }} pre">{{ m }}</div>{% endfor %}
+  {% endwith %}
+  {% if not core.loaded and job.busy %}
+  <div class="msg info">Kayıtlı veriler ve modeller yükleniyor; sayfa hazır olunca kendiliğinden yenilenir.</div>
+  {% endif %}
+  {% block content %}{% endblock %}
+  <footer class="foot muted">18+ · Bahis bağımlılık yapabilir. Bu uygulama analiz amaçlıdır; kazanç garantisi vermez.
+    Destek: YEDAM 115.</footer>
+</main>
+<script src="{{ url_for('static', filename='site.js') }}"></script>
+</body>
+</html>

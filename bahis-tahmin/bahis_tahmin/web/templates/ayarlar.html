@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf_field with context %}
+{% block title %}Ayarlar{% endblock %}
+{% block content %}
+<h1>Ayarlar</h1>
+<p class="sub">Değer bahsi kuralları, kasa yönetimi ve uygulama davranışı. Ayarlar masaüstü sürümüyle ortaktır.</p>
+<form method="post" action="{{ url_for('views.ayarlar') }}" class="panel">{{ csrf_field() }}
+  <fieldset><legend>Değer (value) hesabı</legend><div class="form-grid">
+    <label>Oran türü <select name="oran">{% for k, v in odds_labels.items() %}<option value="{{ k }}" {% if k == s.odds_type %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></label>
+    <label>Marj temizleme yöntemi <select name="marj"><option value="power" {% if s.margin_method == 'power' %}selected{% endif %}>Üs yöntemi (önerilen)</option><option value="proportional" {% if s.margin_method == 'proportional' %}selected{% endif %}>Oransal</option></select></label>
+    <label>En düşük beklenen değer (0.05 = %5) <input type="number" name="min_ev" min="0" max="1" step="0.01" value="{{ '%.2f'|format(s.min_ev) }}"></label>
+    <label>En düşük olasılık <input type="number" name="min_prob" min="0" max="0.99" step="0.05" value="{{ '%.2f'|format(s.min_prob) }}"></label>
+    <label>En düşük oran <input type="number" name="min_odds" min="1.01" max="50" step="0.05" value="{{ '%.2f'|format(s.min_odds) }}"></label>
+    <label>En yüksek oran <input type="number" name="max_odds" min="1.05" max="100" step="0.5" value="{{ '%.2f'|format(s.max_odds) }}"></label>
+  </div></fieldset>
+  <fieldset><legend>Kasa yönetimi</legend><div class="form-grid">
+    <label>Kasa <input type="number" name="kasa" min="0" step="100" value="{{ '%.0f'|format(s.bankroll) }}"></label>
+    <label>Para birimi <input type="text" name="para" maxlength="6" value="{{ s.currency }}"></label>
+    <label>Kelly kesri (0.25 = çeyrek Kelly) <input type="number" name="kelly" min="0" max="1" step="0.05" value="{{ '%.2f'|format(s.kelly_fraction) }}"></label>
+    <label>Tek bahiste kasanın en fazla <input type="number" name="tavan" min="0" max="1" step="0.01" value="{{ '%.2f'|format(s.max_stake_pct) }}"></label>
+  </div>
+    <label class="check"><input type="checkbox" name="miktar_oner" value="1" {% if s.stake_suggestions %}checked{% endif %}> Gerçek para miktarı önerilerini göster (risk sınırlarımı yukarıda kendim belirledim)</label>
+  </fieldset>
+  <fieldset><legend>Uygulama</legend>
+    <label class="check"><input type="checkbox" name="oto" value="1" {% if s.auto_update_on_start %}checked{% endif %}> Açılışta verileri otomatik güncelle ve gerekirse modeli eğit (6 saatten eskiyse; masaüstü)</label>
+    <label class="check"><input type="checkbox" name="yedek" value="1" {% if s.use_mirror_fallback %}checked{% endif %}> football-data.co.uk erişilemezse GitHub yedek veri setini kullan</label>
+    <div class="form-grid">
+      <label>Kaç günlük fikstür gösterilsin <input type="number" name="gun" min="1" max="60" value="{{ s.fixture_days }}"></label>
+      <label>Veri denetimi <select name="denetim"><option value="standart" {% if s.veri_denetimi == 'standart' %}selected{% endif %}>Standart (önerilen)</option><option value="siki" {% if s.veri_denetimi == 'siki' %}selected{% endif %}>Sıkı</option></select></label>
+    </div>
+    <p class="muted">Standart: güncelliği bağımsız bir takvimle kanıtlanamayan maçların tahmini gösterilir (açıklamada
+      yazılır); bilinen eksik veri veya az geçmiş varsa tahmin 'Uyarılı' gösterilir ve bahis adayı olmaz. Sıkı: güncelliği
+      kanıtla doğrulanmayan hiçbir maçın tahmini gösterilmez.</p>
+  </fieldset>
+  <button class="btn primary" type="submit">Kaydet</button>
+</form>
+<div class="banner"><b>Oran türü</b>: 'Piyasa ortalaması' football-data.co.uk verisinde bahisçilerin ortalamasıdır; GitHub
+  yedek veri setinde ise tek bir bahisçinin (veri seti açıklamasına göre Bet365) oranıdır. 'En yüksek oran', geçmişte
+  onlarca şirket arasındaki en iyi fiyattır; erişilebilirliği doğrulanamadığı için bu seçenekle hesaplanan değer ve
+  getiriler varsayımsaldır. Kayıp sonrası bahis artırma (martingale vb.) ve kayıp telafisi önerileri bu uygulamada yoktur.</div>
+{% endblock %}

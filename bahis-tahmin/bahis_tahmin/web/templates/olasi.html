@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% from "macros.html" import card %}
+{% block title %}En Olası Seçimler{% endblock %}
+{% block content %}
+<h1>En Olası Seçimler</h1>
+<p class="sub">Model olasılığı yüksek seçimler. Bu liste 'oranına göre avantaj' listesi değildir. Kartlar, aynı eşiğin
+  geçmiş sezonlarda (model o maçları görmeden) ne sıklıkla gerçekleştiğini gösterir.</p>
+<form class="filters" method="get" action="{{ url_for('views.en_olasi') }}">
+  <label>Model olasılığı en az <input type="number" name="esik" min="0.60" max="0.99" step="0.01" value="{{ '%.2f'|format(thr) }}"></label>
+  {% for g in groups %}<label class="check"><input type="checkbox" name="g_{{ g }}" value="1" {% if g in chosen %}checked{% endif %}> {{ g }}</label>{% endfor %}
+  <label class="check"><input type="checkbox" name="tek" value="1" {% if one %}checked{% endif %}> Maç başına tek seçim</label>
+  <button class="btn" type="submit">Uygula</button>
+</form>
+{% if cards %}
+<div class="cards">
+  {{ card("Geçmişte gerçekleşme oranı", cards.hit[0], cards.hit[1], cards.hit[2]) }}
+  {{ card("Kapsam", cards.cov[0], cards.cov[1], cards.cov[2]) }}
+  {{ card("Ortalama adil oran", cards.odds[0], cards.odds[1], cards.odds[2]) }}
+  {{ card("Gerçek oranla geçmiş getiri", cards.roi[0], cards.roi[1], cards.roi[2]) }}
+</div>
+{% elif not has_model %}<p class="muted">Model eğitilince hesaplanır.</p>{% endif %}
+<div class="warn"><b>Önemli:</b> Yüksek olasılık, kâr demek değildir. %93 olasılıklı bir seçimin adil oranı ~1.07'dir;
+  teklif edilen oran marj nedeniyle genellikle bunun altındadır. 'Gerçek oranla geçmiş getiri' kartı YALNIZCA verisetinde
+  gerçek oranı olan marketleri (1X2 ve 2.5 Alt/Üst, piyasa ortalaması) kapsar; Çifte Şans, 1.5/3.5 Alt/Üst ve KG için oran
+  türetilmez, getiri hesaplanamaz.</div>
+<h2>Yaklaşan maçlardaki seçimler</h2>
+{% if rows %}
+<div class="table-wrap"><table class="data" id="tbl-olasi">
+  <thead><tr><th>Kupon</th><th data-sort>Tarih</th><th data-sort>Saat</th><th data-sort>Lig</th><th data-sort>Maç</th>
+    <th data-sort>Seçim</th><th data-sort class="num">Olasılık</th><th data-sort class="num">Adil oran</th>
+    <th data-sort class="num">Oran</th><th data-sort class="num">Beklenen değer</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr><td class="center"><input type="checkbox" class="kupon" data-prob="{{ r.prob }}" data-match="{{ r.match }}" aria-label="Kupona ekle"></td>
+    <td data-v="{{ r.date|tarih }}">{{ r.date|tarih }}</td><td>{{ r.time }}</td><td title="{{ r.league|lig_tam }}">{{ r.league|lig }}</td>
+    <td><a href="{{ url_for('views.mac', k=r.key, geri=request.full_path) }}">{{ r.match }}</a></td><td>{{ r.selection }}</td>
+    <td class="num" style="{{ r.prob|prob_bg }}" data-v="{{ r.prob }}">{{ r.prob|pct }}</td><td class="num">{{ r.fair|num }}</td>
+    <td class="num">{{ r.odds|num }}</td><td class="num" style="{{ r.ev|ev_bg }}">{{ r.ev|spct }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% else %}<p class="muted">Bu eşikte seçim yok.</p>{% endif %}
+{% if gate_note %}<p class="muted">{{ gate_note }}</p>{% endif %}
+<p id="kupon" class="kupon-text">Birden çok maçın birlikte gerçekleşme olasılığını görmek için kutucukları işaretleyin.</p>
+<h2>Market bazında geçmiş gerçekleşme (model olasılığı ≥ %90)</h2>
+{% if per_market %}
+<div class="table-wrap"><table class="data">
+  <thead><tr><th data-sort>Market</th><th data-sort class="num">Seçim sayısı</th><th data-sort class="num">Gerçekleşme</th>
+    <th data-sort class="num">Ort. olasılık</th><th data-sort class="num">Gerçek oranla ROI</th></tr></thead>
+  <tbody>{% for r in per_market %}<tr><td>{{ r.label }}</td><td class="num" data-v="{{ r.n }}">{{ r.n }}</td>
+    <td class="num" data-v="{{ r.isabet }}">{{ r.isabet|pct }}</td><td class="num">{{ r.ort_olasilik|pct }}</td>
+    <td class="num">{{ r.roi|spct }}</td></tr>{% endfor %}</tbody>
+</table></div>
+{% else %}<p class="muted">Model eğitilince hesaplanır.</p>{% endif %}
+{% endblock %}

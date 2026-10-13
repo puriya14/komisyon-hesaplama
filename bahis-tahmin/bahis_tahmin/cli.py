@@ -1137,6 +1137,29 @@ def cmd_pilot_diagnose(a) -> int:
     return _pilot_run(lambda: diagnose(a.ev, a.cikti, progress=_progress, parser=a.ayristirici))
 
 
+def cmd_web(a) -> int:
+    """Web arayüzü (tarayıcıdan kullanım). Varsayılan: yalnızca bu bilgisayar (127.0.0.1); --paylas ile aynı ağdaki
+    cihazlar (parola zorunlu)."""
+    try:
+        from .web import DEFAULT_PORT, serve
+    except ImportError as e:  # flask/waitress kurulu değil
+        print(f"Web arayüzü için gerekli paketler eksik ({e}). Kurulum: pip install -r requirements.txt")
+        return 1
+    import logging
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    password = a.parola
+    if a.paylas and not password and sys.stdin is not None and sys.stdin.isatty():
+        import getpass  # parola komut satırında (ve görev listesinde) görünmesin diye sorulur
+
+        password = getpass.getpass("Telefon/diğer cihazlar için giriş parolası belirleyin (en az 6 karakter): ")
+    if a.paylas and password is not None and len(password) < 6:
+        print("Parola en az 6 karakter olmalı.")
+        return 2
+    host = "0.0.0.0" if a.paylas else "127.0.0.1"
+    return serve(host=host, port=a.port or DEFAULT_PORT, password=password, open_browser=not a.tarayici_acma)
+
+
 def cmd_self_test(a) -> int:
     from .selftest import run_self_test
 
@@ -1192,6 +1215,13 @@ def main(argv: list[str] | None = None) -> int:
     bt.add_argument("--source", default="final", choices=["final", "model"])
     bt.set_defaults(fn=cmd_backtest)
     sub.add_parser("self-test", help="kurulum kontrolü").set_defaults(fn=cmd_self_test)
+    w = sub.add_parser("web", help="web arayüzünü başlat (tarayıcıdan kullanım; varsayılan yalnızca bu bilgisayar)")
+    w.add_argument("--port", type=int, help="sunucu portu (varsayılan 8765)")
+    w.add_argument("--paylas", action="store_true", help="aynı ağdaki cihazlardan (ör. telefon) erişime aç; "
+                                                         "--parola zorunlu")
+    w.add_argument("--parola", help="--paylas ile giriş parolası")
+    w.add_argument("--tarayici-acma", action="store_true", help="tarayıcıyı kendiliğinden açma")
+    w.set_defaults(fn=cmd_web)
     sub.add_parser("gol-egit", help="gol pazarları modelini eğit ve iç doğrulama yap").set_defaults(fn=cmd_goal_train)
     gp = sub.add_parser("gol-tahmin", help="yaklaşan maçlar için iki yarıda KG / 3.5 Üst / İY 1.5 Üst olasılıkları")
     gp.add_argument("--league")

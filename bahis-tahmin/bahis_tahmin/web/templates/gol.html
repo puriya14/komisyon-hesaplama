@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% from "macros.html" import card, csrf_field, frame_table with context %}
+{% block title %}Gol Pazarları{% endblock %}
+{% block content %}
+<h1>Gol Pazarları</h1>
+<p class="sub">İki yarıda da karşılıklı gol · Maç 3,5 Üst · İlk yarı 1,5 Üst. Olasılıklar tek bir ortak gol dağılımından
+  türetilir; öneri yalnızca gerçek oran ve doğrulanmış model ile oluşabilir.</p>
+<div class="warn">{{ status }}</div>
+<div class="actions">
+  <form method="post" action="{{ url_for('gol.egit') }}">{{ csrf_field() }}
+    <button class="btn" type="submit" {% if job.busy or not has_data %}disabled{% endif %}>Gol modelini eğit</button>
+  </form>
+</div>
+<nav class="tabs">{% for key, label in tabs %}<a href="{{ url_for('gol.gol', sekme=key) }}" {% if key == sekme %}aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}</nav>
+
+{% if sekme == 'tarama' %}
+<form class="filters" method="get" action="{{ url_for('gol.gol') }}"><input type="hidden" name="sekme" value="tarama">
+  <label>Görünüm <select name="gorunum" data-autosubmit>
+    <option value="likely" {% if mode == 'likely' %}selected{% endif %}>En olası (olasılığa göre sıralı)</option>
+    <option value="value" {% if mode == 'value' %}selected{% endif %}>Avantaj adayları (gerçek oranına göre)</option></select></label>
+  <label>Sıralama pazarı <select name="pazar" data-autosubmit>{% for s, name in names.items() %}<option value="{{ s }}" {% if s == msel %}selected{% endif %}>{{ s }}: {{ name }}</option>{% endfor %}</select></label>
+  <noscript><button class="btn" type="submit">Uygula</button></noscript>
+</form>
+{% if rows %}
+<div class="table-wrap"><table class="data small">
+  <thead><tr><th>Tarih (İstanbul)</th><th>Lig</th><th>Maç</th><th class="num">A: İki yarı KG</th><th>A aralık</th>
+    <th class="num">B: 3,5 Üst</th><th>B aralık</th><th class="num">C: İY 1,5 Üst</th><th>C aralık</th><th>Veri durumu</th><th>Karar (A/B/C)</th></tr></thead>
+  <tbody>{% for r in rows %}<tr>
+    <td>{{ r.when }}</td><td title="{{ r.league|lig_tam }}">{{ r.league|lig }}</td>
+    <td><a href="{{ url_for('gol.gol', sekme='mac', aday=r.aday) }}">{{ r.match }}</a></td>
+    {% for s in ['A', 'B', 'C'] %}<td class="num" style="{{ r[s]|prob_bg }}">{{ r[s]|pct }}</td><td>{{ r[s ~ '_iv'] }}</td>{% endfor %}
+    <td><details class="why"><summary>{{ r.data }}</summary><span>{{ r.neden }}</span></details></td><td>{{ r.decision }}</td>
+  </tr>{% endfor %}</tbody>
+</table></div>
+{% endif %}
+<p class="muted">{{ note }}</p>
+
+{% elif sekme == 'mac' %}
+<form class="panel" method="get" action="{{ url_for('gol.gol') }}"><input type="hidden" name="sekme" value="mac">
+  <label>Yaklaşan maç <select name="aday" data-autosubmit><option value="">— seçin —</option>
+    {% for cid, label in choices %}<option value="{{ cid }}" {% if sel.get('aday') == cid %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+  <noscript><button class="btn" type="submit">Göster</button></noscript>
+</form>
+{% if leagues %}
+<form class="panel" method="get" action="{{ url_for('gol.gol') }}"><input type="hidden" name="sekme" value="mac">
+  <div class="form-grid">
+    <label>veya lig <select name="lig" data-autosubmit-reset="ev,dep">{% for c in leagues %}<option value="{{ c }}" {% if c == lig %}selected{% endif %}>{{ c|lig_tam }}</option>{% endfor %}</select></label>
+    <label>Ev sahibi <select name="ev"><option value="">—</option>{% for t in teams %}<option {% if t == ev %}selected{% endif %}>{{ t }}</option>{% endfor %}</select></label>
+    <label>Deplasman <select name="dep"><option value="">—</option>{% for t in teams %}<option {% if t == dep %}selected{% endif %}>{{ t }}</option>{% endfor %}</select></label>
+  </div>
+  <button class="btn" type="submit">Elle seçilen maçı analiz et</button>
+</form>
+{% endif %}
+{% if panel %}
+<h2>{{ panel.title }} <span class="muted small">· {{ panel.league }}</span></h2>
+<div class="cards">{% for t, v, sub in panel.cards %}{{ card(t, v, sub) }}{% endfor %}</div>
+{% if panel.rel %}
+<div class="{{ 'warn' if panel.rel[0] != 'ok' else 'banner' }}"><b>{{ panel.rel[1] }}</b>{% if panel.rel[2] %}<br>{{ panel.rel[2] }}{% endif %}</div>
+{% endif %}
+{% if panel.conds %}
+<h3>İki yarıda KG için dört koşul (ortak modelden, bağımsız çarpılmadan)</h3>
+<div class="table-wrap"><table class="data compact"><thead><tr><th>Koşul</th><th class="num">Gerçekleşme olasılığı</th><th>Not</th></tr></thead>
+  <tbody>{% for k, p, n in panel.conds %}<tr><td>{{ k }}</td><td class="num">{{ p|pct }}</td><td>{{ n }}</td></tr>{% endfor %}</tbody></table></div>
+{% endif %}
+{% if panel.event_id %}
+<form class="panel" method="post" action="{{ url_for('gol.oran') }}">{{ csrf_field() }}
+  {% for k, val in sel.items() %}<input type="hidden" name="{{ k }}" value="{{ val }}">{% endfor %}
+  <fieldset><legend>Gerçek oranlar (karar anında bahis şirketinizde görünen; boş = yok)</legend>
+    <div class="odds-grid">{% for key, name in selections %}<label>{{ name }} <input type="number" name="o_{{ key }}" min="1.01" max="1000" step="0.01" inputmode="decimal"></label>{% endfor %}</div>
+    <label>Bahis şirketi <input type="text" name="sirket" maxlength="60" placeholder="Bahis şirketi adı"></label>
+  </fieldset>
+  <button class="btn" type="submit">Oranları şimdi geçerli olarak kaydet</button>
+</form>
+{% endif %}
+<h3>Karar tablosu</h3>
+<div class="table-wrap"><table class="data">
+  <thead><tr><th>Seçim</th><th class="num">Olasılık</th><th>Belirsizlik (%80)</th><th class="num">Adil oran</th><th class="num">Gerçek oran</th>
+    <th class="num">Başabaş</th><th class="num">Beklenen değer</th><th class="num">Belirsizlik dahil EV</th><th class="num">Gereken min. oran</th><th>Durum</th><th>Gerekçe</th></tr></thead>
+  <tbody>{% for d in panel.decisions %}<tr><td>{{ d.secim }}</td><td class="num">{{ d.get('p')|pct }}</td><td>{{ d.get('aralik', '-') }}</td>
+    <td class="num">{{ d.get('adil')|num }}</td><td class="num">{{ d.get('oran')|num }}</td><td class="num">{{ d.get('basabas')|pct }}</td>
+    <td class="num" style="{{ d.get('ev')|ev_bg }}">{{ d.get('ev')|spct }}</td><td class="num">{{ d.get('ev_safe')|spct }}</td>
+    <td class="num">{{ d.get('min_oran')|num }}</td><td>{{ d.durum }}</td><td class="small">{{ d.gerekce }}</td></tr>{% endfor %}</tbody>
+</table></div>
+{% if panel.can_record %}
+<form method="post" action="{{ url_for('gol.kaydet') }}" data-confirm="Kararlar sanal takibe değiştirilemez biçimde kaydedilecek. Devam edilsin mi?">{{ csrf_field() }}
+  {% for k, val in sel.items() %}<input type="hidden" name="{{ k }}" value="{{ val }}">{% endfor %}
+  <button class="btn primary" type="submit">Bu kararları sanal takibe kaydet (değiştirilemez)</button>
+</form>
+{% endif %}
+<h3>Kullanılan veri ve model</h3>
+<div class="panel small">
+  {% if panel.model %}
+  <p><b>Model:</b> {{ panel.model.version }}<br><b>Eğitim:</b> {{ panel.model.training }}<br>
+    <b>Zaman sıralı iç doğrulama sezonları:</b> {{ panel.model.validation }}<br>
+    <b>Girdiler:</b> ilk yarı / ikinci yarı / maç sonu Poisson takım güçleri (yalnızca maçtan önceki günlerin sonuçları), lig
+    ilk yarı gol payı, yakın dönem yarı bazlı gol sıklıkları, lig taban oranları. Bahis oranları, kadro, sakatlık, xG ve
+    hava durumu verisi KULLANILMIYOR.<br><b>Belirsizlik yöntemi:</b> {{ panel.model.uncertainty }}. Bu aralık gerçek
+    olasılığın kesin sınırı değildir.<br><b>Zaman doğrulaması:</b> geçmiş özellikler yeniden oluşturulmuştur (yalnızca maç
+    tarihi bilinir; o anda yayımlanmış olduğu doğrulanamaz).</p>
+  {% endif %}
+  {% if panel.elig %}{% set e = panel.elig %}
+  <p><b>Veri uygunluğu</b> (politika {{ e.policy }}; değerlendirme {{ e.evaluated }} UTC; bilgi kesimi {{ e.info_cutoff }} öncesi;
+    veri kesimi {{ e.data_cutoff }}):
+    {% for k, label, reasons in e.markets %}<br>· {{ k }}: {{ label }} — {{ reasons }}{% endfor %}<br>
+    <b>Kullanılan model durumu:</b> lig durumu son maç {{ e.state[0] }}, takımlar {{ e.state[1] }}, model eğitim kesimi {{ e.state[2] }}<br>
+    <b>Kaynak kapsam kanıtı:</b> {{ e.evidence }}<br><b>Takım eşleme:</b> {{ e.mapping }} · <b>Gerekli alanlar:</b> {{ e.fields }} ·
+    <b>Kimlik:</b> {{ e.cid }}{% if not e.canonical %} (aday kimlik, kanonik değil){% endif %}</p>
+  {% else %}<p><b>Veri uygunluğu:</b> değerlendirilmedi (uygun değil).</p>{% endif %}
+</div>
+{% if panel.secondary %}
+<h3>İkinci aşama (araştırma) pazarları — öneri motoruna kapalı</h3>
+<div class="table-wrap"><table class="data compact"><thead><tr><th>Pazar</th><th class="num">Yapısal model olasılığı</th><th>Durum</th></tr></thead>
+  <tbody>{% for n, p in panel.secondary %}<tr><td>{{ n }}</td><td class="num">{{ p|pct }}</td><td class="small">Araştırma: doğrulama ve oran eşlemesi tamamlanmadı, öneri yok</td></tr>{% endfor %}</tbody></table></div>
+{% endif %}
+{% elif sel %}<p class="muted">Seçilen maç bulunamadı veya tahmin üretilemedi.</p>
+{% else %}<p class="muted">Bir yaklaşan maç seçin veya lig ve takımları seçip elle analiz edin.</p>{% endif %}
+
+{% elif sekme == 'kapsam' %}
+<div class="banner">Üç katman ayrı gösterilir: <b>sonuç</b> (maç sonu ve ilk yarı skorları), <b>zenginleştirilmiş</b> (şut
+  verisi) ve <b>oran</b> (ilgili pazarın gerçek oran kaydı). Sonuç geçmişi uzun olsa bile, üç pazarın hiçbiri için veri
+  setinde gerçek oran yoktur; bu yüzden geçmiş getiri (ROI/CLV) hesaplanamaz. 'Beklenen' maç sayısı çift devreli lig
+  varsayımıyla tahminidir.</div>
+<p class="muted">Karantinadaki kayıt: {{ n_quarantine }}</p>
+<h2>Lig özeti</h2>
+{{ frame_table(summary, {"league": "Lig", "sezon_sonuc": "Sezon: sonuç", "sezon_ilk_yari": "Sezon: İY skoru (≥%90)",
+  "sezon_A_orani": "Sezon: A gerçek oran", "sezon_B_orani": "Sezon: B gerçek oran", "sezon_C_orani": "Sezon: C gerçek oran",
+  "ilk_sezon": "İlk sezon", "son_sezon": "Son sezon", "maç": "Maç", "A_pozitif": "A gerçekleşen"}, {}, [], 'Henüz veri yok.') }}
+<h2>Lig–sezon kapsam matrisi</h2>
+<form class="filters" method="get" action="{{ url_for('gol.gol') }}"><input type="hidden" name="sekme" value="kapsam">
+  <label>Lig <select name="lig" data-autosubmit><option value="">Tümü</option>{% for c in cov_leagues %}<option value="{{ c }}" {% if c == lig %}selected{% endif %}>{{ c|lig_tam }}</option>{% endfor %}</select></label>
+  <noscript><button class="btn" type="submit">Göster</button></noscript>
+</form>
+{{ frame_table(cov, {"league": "Lig", "season": "Sezon", "takim": "Takım", "beklenen_tahmini": "Beklenen (tahmini)",
+  "bulunan": "Bulunan", "ms_gecerli": "MS skoru", "iy_gecerli": "İY skoru geçerli", "iy_eksik": "İY eksik", "celiskili": "Çelişkili",
+  "sut_verisi": "Şut verisi", "oran_2_5_gercek": "2,5 gerçek oran", "kaynak": "Kaynak", "lisans": "Lisans durumu"}, {}, ["zaman_dogrulama"], 'Henüz veri yok.') }}
+<h2>Kaynaklar ve kullanım koşulları</h2>
+<div class="table-wrap"><table class="data small"><thead><tr>{% for c in ["Kaynak", "Lisans özeti", "Ticari kullanım", "Model eğitimi", "Maliyet", "Durum"] %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+  <tbody>{% for r in sources %}<tr>{% for c in ["Kaynak", "Lisans özeti", "Ticari kullanım", "Model eğitimi", "Maliyet", "Durum"] %}<td>{{ r[c] }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>
+
+{% elif sekme == 'dogrulama' %}
+{% if not has_model %}<p class="muted">Gol modeli eğitilmedi; doğrulama sonuçları eğitimden sonra burada görünür.</p>
+{% elif not validated %}
+<div class="warn"><b>Zaman sıralı doğrulama yapılamadı:</b> eldeki veride, test edilecek sezondan önce yeterli eğitim maçı
+  yok (sezon başına en az 2.000 ilk yarı skorlu eğitim maçı gerekir). Bu yüzden üç pazarın tamamı <b>DOĞRULANMADI</b>
+  durumundadır ve öneri motoru avantaj adayı üretmez. Daha fazla lig/sezon ekleyip modeli yeniden eğitin.</div>
+{% else %}
+<p><b>Zaman sıralı iç doğrulama</b> ({{ val_years }}): her sezon yalnızca önceki sezonlarla eğitilen modelle tahmin edildi.
+  Referans: ligin geçmiş taban oranı. Kural: {{ val_rule }} Doğrulama yalnızca olasılık kalitesini ölçer; gerçek oranlı
+  getiri doğrulaması yapılamaz (oran verisi yok).</p>
+<div class="table-wrap"><table class="data compact"><thead><tr>{% for c in val_rows[0].keys() %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+  <tbody>{% for r in val_rows %}<tr>{% for c, v in r.items() %}
+    <td class="{{ 'num' if v is number else '' }}">{% if c in ('Taban oran',) %}{{ v|pct }}{% elif c == 'Brier becerisi' %}{{ v|spct }}{% elif c in ('LL model', 'LL taban', 'Δ LL', 'Δ alt', 'Δ üst', 'ECE') %}{{ v|num(4) }}{% elif c in ('AP model', 'AP taban', 'Kal. eğim') %}{{ v|num }}{% else %}{{ v }}{% endif %}</td>
+  {% endfor %}</tr>{% endfor %}</tbody></table></div>
+<form class="filters" method="get" action="{{ url_for('gol.gol') }}"><input type="hidden" name="sekme" value="dogrulama">
+  <label>Kalibrasyon eğrisi <select name="pazar" data-autosubmit>{% for s, name in names.items() %}<option value="{{ s }}" {% if s == pazar %}selected{% endif %}>{{ s }}: {{ name }}</option>{% endfor %}</select></label>
+  <noscript><button class="btn" type="submit">Göster</button></noscript>
+</form>
+{% if chart %}<div class="chart-box wide">{{ chart }}</div>{% endif %}
+{% endif %}
+
+{% else %}
+<div class="banner">Sanal takip gerçek bahis değildir. Her kayıt karar anında değiştirilemez biçimde saklanır; sonuç
+  sonradan ayrı olay olarak eklenir. İleriye dönük sanal performans, geçmiş testlerden ayrı gösterilir. Başarılı bir sanal
+  dönem gerçek parayla kazanç garantisi değildir.</div>
+{% if summ %}
+<p>{{ summ.kayit }} kayıt · {{ summ.sanal_bahis }} sanal bahis (yalnızca avantaj adayları) · {{ summ.sonuclanan }} sonuçlandı ·
+  {{ summ.bekleyen_veya_iade }} bekleyen/iade (paydaya girmez) · net {{ '%+.2f'|format(summ.net) }} birim · yield
+  {{ ('%+.1f'|format(100 * summ['yield']) ~ '%') if summ['yield'] is not none else 'hesaplanamıyor' }}</p>
+{% else %}<p class="muted">Henüz sanal kayıt yok. Maç analizi sekmesinden kararları kaydedebilirsiniz.</p>{% endif %}
+<div class="actions">
+  <form method="post" action="{{ url_for('gol.sonuclandir') }}">{{ csrf_field() }}<button class="btn" type="submit">Sonuçları veriden güncelle</button></form>
+  <form method="post" action="{{ url_for('gol.zincir') }}">{{ csrf_field() }}<button class="btn" type="submit">Kayıt zincirini doğrula</button></form>
+  <a class="btn" href="{{ url_for('gol.takip_csv') }}">CSV dışa aktar</a>
+</div>
+{{ frame_table(ledger, {}, {}, [], 'Kayıt yok.') }}
+{% endif %}
+{% endblock %}

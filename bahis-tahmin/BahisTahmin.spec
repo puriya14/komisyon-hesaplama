@@ -19,7 +19,10 @@ a = Analysis(
     ["run_app.py"],
     pathex=["."],
     binaries=[],
-    datas=[("assets/icon.ico", "assets"), ("assets/icon.png", "assets")] + tz_datas,
+    datas=[("assets/icon.ico", "assets"), ("assets/icon.png", "assets"),
+           # web arayüzü (BahisTahmin.exe web) sayfa şablonları ve stilleri
+           ("bahis_tahmin/web/templates", "bahis_tahmin/web/templates"),
+           ("bahis_tahmin/web/static", "bahis_tahmin/web/static")] + tz_datas,
     hiddenimports=hidden,
     hookspath=[],
     runtime_hooks=[],

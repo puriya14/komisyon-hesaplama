@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% from "macros.html" import csrf_field with context %}
+{% block title %}Veri{% endblock %}
+{% block content %}
+<h1>Veri</h1>
+<p class="sub">Veriler ücretsiz kaynaklardan, yalnızca sizin onay verdiğiniz kaynaklardan indirilir: maç sonuçları,
+  istatistikler ve 1X2 / 2,5 Alt-Üst oranları football-data.co.uk'tan; site erişilemezse ve onay verdiyseniz GitHub'daki
+  türetilmiş veri setinden alınır. 'Yalnızca GitHub' profilinde bütün güncellemeler seçili GitHub depolarından yapılır.</p>
+<h2>Kaynak onayları</h2>
+<div class="row-between">
+  <p>{% if names %}Onay verilen kaynaklar: {{ names|join(', ') }}{% else %}Geçmiş maç verisi için henüz hiçbir kaynağın
+    kullanım koşulları onaylanmadı; veri indirilemez.{% endif %}</p>
+  <a class="btn" href="{{ url_for('views.onay') }}">Kaynak koşulları ve onaylar...</a>
+</div>
+<form method="post" action="{{ url_for('views.veri_guncelle') }}" class="panel" id="veri-form">{{ csrf_field() }}
+  <input type="hidden" name="kaydet" value="1">
+  <label>Veri profili <select name="profil">{% for k, label in profiles %}<option value="{{ k }}" {% if k == profile %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+  <h2>Ligler</h2>
+  <div class="league-tools">
+    <button class="btn small" type="button" data-leagues="{{ default_leagues }}">Varsayılan ligler</button>
+    <button class="btn small" type="button" data-leagues="*">Tümünü seç</button>
+    <button class="btn small" type="button" data-leagues="">Hiçbiri</button>
+  </div>
+  <div class="league-grid">
+  {% for country, items in countries.items() %}
+    <fieldset class="country"><legend>{{ country }}</legend>
+      {% for code, name in items %}<label class="check"><input type="checkbox" name="lig_{{ code }}" value="1" data-code="{{ code }}" {% if code in chosen %}checked{% endif %}> {{ name }} <span class="muted">({{ code }})</span></label>{% endfor %}
+    </fieldset>
+  {% endfor %}
+  </div>
+  <div class="form-grid">
+    <label>Kaç yıllık geçmiş <input type="number" name="yil" min="3" max="33" value="{{ years }}"></label>
+    <label class="check"><input type="checkbox" name="zorla" value="1"> Tüm dosyaları yeniden indir</label>
+  </div>
+  <button class="btn primary" type="submit" {% if job.busy %}disabled{% endif %}>Kaydet, Güncelle ve Eğit</button>
+  {% if needs_consent %}<p class="muted">Güncellemeden önce kaynak onay sayfası açılır.</p>{% endif %}
+</form>
+<div class="banner">Daha fazla lig ve yıl, modeli genellikle güçlendirir ancak indirme ve eğitim süresini uzatır.
+  16 lig × 10 yıl için eğitim normal bir bilgisayarda birkaç dakika sürer.</div>
+<h2>Yüklü veriler</h2>
+{% if summary %}
+<div class="table-wrap"><table class="data">
+  <thead><tr><th data-sort>Lig</th><th data-sort>Sezon</th><th data-sort class="num">Maç</th><th data-sort>İlk maç</th><th data-sort>Son maç</th><th data-sort>Kaynak</th></tr></thead>
+  <tbody>{% for r in summary %}<tr><td>{{ r.league|lig_tam }}</td><td>{{ r.seasons }}</td><td class="num" data-v="{{ r.matches }}">{{ r.matches }}</td>
+    <td>{{ r.first }}</td><td>{{ r.last }}</td><td>{{ r.source }}</td></tr>{% endfor %}</tbody>
+</table></div>
+{% else %}<p class="muted">Henüz veri yok.</p>{% endif %}
+{% if updated or report %}
+<h2>Son güncelleme</h2>
+{% if updated %}<p class="muted">{{ updated }}</p>{% endif %}
+{% if report %}<pre class="report">{{ report }}</pre>{% endif %}
+{% endif %}
+<p class="muted">GitHub tarihsel arşivi, Dizi Araştırması ve Araştırma Çalışma Alanı şimdilik yalnızca masaüstü
+  sürümündedir.</p>
+{% endblock %}

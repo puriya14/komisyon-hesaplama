@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}Hata {{ kod }}{% endblock %}
+{% block content %}
+<h1>Hata {{ kod }}</h1>
+<p>{{ mesaj }}</p>
+<p><a href="{{ url_for('views.genel') }}">Genel Bakış'a dön</a></p>
+{% endblock %}

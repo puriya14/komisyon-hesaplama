@@ -8,3 +8,5 @@ PySide6-Essentials>=6.6,<7
 matplotlib>=3.8,<4
 requests>=2.31,<3
 tzdata>=2024.1; sys_platform == "win32"
+flask>=3.0,<4
+waitress>=3.0,<4

@@ -39,53 +39,16 @@ from ...goals.service import (
 )
 from ...goals.value import OddsQuote
 from .. import theme
-from ..charts import ChartCanvas
+from ..charts import ChartCanvas, plot_goal_calibration
 from ..widgets import Card, DataFrameModel, banner, fmt_num, fmt_pct, fmt_signed_pct, make_table, section
 from .base import Page
 
-NAMES = {"A": "İki yarıda da KG", "B": "Maç 3,5 Üst", "C": "İlk yarı 1,5 Üst"}
-KEY_OF = {"A": "BTTS_BOTH_HALVES_YES", "B": "FT_OVER_3_5", "C": "FH_OVER_1_5"}
-STATUS_SHORT = {
-    "VALUE_CANDIDATE": "ADAY", "NO_VALUE": "YOK", "INSUFFICIENT_DATA": "VERİ", "ODDS_UNAVAILABLE": "ORAN YOK",
-    "STALE_ODDS": "ESKİ ORAN", "MARKET_UNSUPPORTED": "EŞLEŞME", "MODEL_NOT_VALIDATED": "DOĞRULANMADI",
-    "HIGH_UNCERTAINTY": "BELİRSİZ", "SETTLEMENT_AMBIGUOUS": "KURAL", "SUSPICIOUS_EDGE": "KARANTİNA",
-    "DATA_NOT_ELIGIBLE": "VERİ UYGUN DEĞİL",
-}
-
-
-def _shown(verdict, now):
-    """(sonuç, gösterim engeli): bu anda gösterilemeyen ilk pazar, yoksa bahsi engellenen, yoksa ilki. Gösterim
-    denetimi gün, kimlik ve model durumu eşleşmesini de içerir (gün değişince eski sonuç kullanılmaz)."""
-    items = [(e, verdict.display_codes(mk, now)) for mk, e in verdict.by_market.items()]
-    for e, codes in items:
-        if codes:
-            return e, codes
-    for e, codes in items:
-        if not e.bet_ok:
-            return e, codes
-    return items[0] if items else (None, ["BAGLAM_YOK"])
-
-
-def _data_label(verdict, now) -> str:
-    return display_label(*_shown(verdict, now))[0]
-
-
-def _data_text(verdict, now) -> str:
-    return display_label(*_shown(verdict, now))[1]
-
-
-def _fin(v) -> float | None:
-    """Sonlu sayıysa float, değilse (None/NaN/metin) None."""
-    try:
-        f = float(v)
-    except (TypeError, ValueError):
-        return None
-    return f if np.isfinite(f) else None
-
-
-def _iv(pred, key) -> str:
-    lo, hi = pred.intervals.get(key, (None, None)) if pred.intervals else (None, None)
-    return f"%{100 * lo:.0f}–%{100 * hi:.0f}" if lo is not None else "-"
+from ...goals.display import KEY_OF, NAMES, STATUS_SHORT  # noqa: E402,F401
+from ...goals.display import data_label as _data_label  # noqa: E402
+from ...goals.display import data_text as _data_text  # noqa: E402
+from ...goals.display import fin as _fin  # noqa: E402
+from ...goals.display import iv as _iv  # noqa: E402
+from ...goals.display import shown as _shown  # noqa: E402
 
 
 class GoalsPage(Page):
@@ -769,30 +732,11 @@ class GoalsPage(Page):
 
     def _plot_cal(self) -> None:
         eng = self.ctl.goal_engine
-        c = self.cal_chart
-        c.reset("Kalibrasyon: tahmin edilen ve gerçekleşen (eşit örnekli bölmeler, %95 Wilson aralığı)")
-        if eng is None or not eng.validation:
-            c.finish()
-            return
-        key = KEY_OF[self.cb_cal.currentData()]
-        bins = eng.validation.get(key, {}).get("modeller", {}).get(eng.variant, {}).get("kalibrasyon", [])
-        if not bins:
-            c.finish()
-            return
-        x = np.array([b["tahmin"] for b in bins])
-        y = np.array([b["gercek"] for b in bins])
-        lo = np.array([b["alt"] for b in bins])
-        hi = np.array([b["ust"] for b in bins])
-        top = max(x.max(), hi.max()) * 1.1
-        c.ax.plot([0, top], [0, top], color=theme.MUTED, linewidth=1, label="Kusursuz kalibrasyon")
-        c.ax.vlines(x, lo, hi, color=theme.SERIES_1, linewidth=1)
-        c.ax.plot(x, y, color=theme.SERIES_1, linewidth=2, label="Model")
-        c.ax.plot(x, y, "o", color=theme.SERIES_1, markersize=8, markeredgecolor=theme.SURFACE, markeredgewidth=2)
-        c.ax.set_xlim(0, top)
-        c.ax.set_ylim(0, top)
-        c.ax.legend(frameon=False, labelcolor=theme.TEXT, fontsize=8, loc="upper left")
-        c.set_hover(x, [("Gerçekleşen", y)], lambda v: f"Tahmin: %{100 * v:.1f}", lambda v: f"%{100 * v:.1f}")
-        c.finish()
+        bins = []
+        if eng is not None and eng.validation:
+            key = KEY_OF[self.cb_cal.currentData()]
+            bins = eng.validation.get(key, {}).get("modeller", {}).get(eng.variant, {}).get("kalibrasyon", [])
+        plot_goal_calibration(self.cal_chart, bins)
 
     # ============================================================== Sanal takip
     def _build_ledger(self) -> QWidget:

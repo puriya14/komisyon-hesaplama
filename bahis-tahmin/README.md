@@ -1,6 +1,7 @@
 # Bahis Tahmin
 
-Windows 11 için Türkçe, ücretsiz verilere dayalı futbol analiz uygulaması (PySide6 masaüstü + komut satırı).
+Windows 11 için Türkçe, ücretsiz verilere dayalı futbol analiz uygulaması (PySide6 masaüstü + tarayıcı arayüzü +
+komut satırı).
 
 > **18+ · Sorumlu kullanım.** Bu uygulama istatistiksel analiz aracıdır; kazanç garantisi vermez, gerçek
 > bahis oynatmaz ve bahis hesabına bağlanmaz. Olasılıklar belirsizlik içerir; geçmiş performans geleceği
@@ -27,6 +28,15 @@ Dizi araştırması: [`docs/DIZI_ARASTIRMA_KULLANIM.md`](docs/DIZI_ARASTIRMA_KUL
 3. Güncellemeden sonra paketleri yenilemek için: `.venv\Scripts\python -m pip install -r requirements.txt`
 
 İsteğe bağlı .exe derlemesi: `exe_olustur.bat` (çıktı: `dist\BahisTahmin\BahisTahmin.exe`).
+
+### Web sürümü (tarayıcıdan)
+
+- `web_baslat.bat`: tarayıcıda `http://127.0.0.1:8765` açılır. Yalnızca bu bilgisayardan erişilir.
+- `web_paylas.bat`: aynı ev ağındaki telefon veya tablet için. Açılışta bir giriş parolası sorulur. Ekranda yazan
+  `http://192.168…:8765` adresini telefonda açın.
+
+Web arayüzü masaüstüyle aynı verileri, ayarları, modeli ve kuralları kullanır. GitHub arşivi, Dizi Araştırması ve
+Araştırma Çalışma Alanı yalnızca masaüstündedir. Ayrıntılar: [`docs/WEB_01.md`](docs/WEB_01.md).
 
 ## Veri ve kullanım koşulları
 
@@ -121,6 +131,7 @@ dokunmaz (`tests/conftest.py`: `BAHIS_TAHMIN_HOME` geçici dizine yönlendirilir
 - [`docs/DIZI_ARASTIRMA_SONUCLARI.md`](docs/DIZI_ARASTIRMA_SONUCLARI.md) — dizi araştırması sonuçları ve zorunlu test eşlemesi
 - [`docs/DIZI_ARASTIRMA_DUZELTMELER.md`](docs/DIZI_ARASTIRMA_DUZELTMELER.md) — sonuç belgesinin kanıt denetimi: düzeltme ve daraltma kaydı (S2-KABUL-01)
 - [`docs/ILERIYE_DONUK_OLCUM.md`](docs/ILERIYE_DONUK_OLCUM.md) — A/B/C için ileriye dönük ölçüm protokolü ve elle günlük akış
+- [`docs/WEB_01.md`](docs/WEB_01.md) — web sürümü: açma, telefondan parolalı erişim, sayfalar, masaüstüyle ortak çekirdek, güvenlik önlemleri
 - [`docs/KAYNAK_06.md`](docs/KAYNAK_06.md) — bütün ligler için ESPN: lig kodları, önceki sezonun play-off maçlarını takvim dışında tutma, geride kalan veri deposu (ek ligler), ad değişikliği, ligler arası kanıt, ESPN benzetimi
 - [`docs/KAYNAK_04.md`](docs/KAYNAK_04.md) — Serie B, La Liga 2, Ligue 2, Süper Lig ve 2. Bundesliga için ESPN (onay + kişisel kullanım beyanıyla açılan kaynak): fikstür, eksik dönem, sezon takvimi, maç kanıtlı ad eşlemesi; KAYNAK-05: ESPN'in openfootball'a önceliği
 - [`docs/FIKSTUR_03.md`](docs/FIKSTUR_03.md) — diğer liglerin fikstürleri: openfootball Football.TXT metin depoları, dönüştürücü, köken ve kanıtlı takma adlar

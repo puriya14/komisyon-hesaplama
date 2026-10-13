@@ -5,28 +5,31 @@ from __future__ import annotations
 from PySide6.QtGui import QColor, QFont, QPalette
 from PySide6.QtWidgets import QApplication
 
-BG = "#0e1217"
-SURFACE = "#151b23"
-SURFACE2 = "#1b232e"
-BORDER = "#283240"
-TEXT = "#e6edf3"
-MUTED = "#8b98a5"
-ACCENT = "#22c55e"  # arayüz vurgu rengi (butonlar, seçili menü)
-ACCENT_DARK = "#15803d"
-# Grafik serileri (koyu yüzey için doğrulanmış kategorik sıra: mavi, turuncu, su yeşili)
-SERIES_1 = "#3987e5"
-SERIES_2 = "#d95926"
-SERIES_3 = "#199e70"
-DRAW = "#94a3b8"  # beraberlik: nötr gri
-# Durum renkleri (yalnızca iyi/kötü anlamı taşıdığında)
-GOOD = "#0ca30c"
-WARNING = "#fab219"
-CRITICAL = "#d03b3b"
-GRID = "#232c38"
-AXIS = "#2f3a48"
-BLUE = SERIES_1
-AMBER = SERIES_2
-RED = CRITICAL
+# Renkler Qt'den bağımsız modülde (web arayüzü ve grafikler de aynı değerleri kullanır)
+from ..palette import (  # noqa: F401
+    ACCENT,
+    ACCENT_DARK,
+    AMBER,
+    AXIS,
+    BG,
+    BLUE,
+    BORDER,
+    CRITICAL,
+    DRAW,
+    GOOD,
+    GRID,
+    MUTED,
+    RED,
+    SERIES_1,
+    SERIES_2,
+    SERIES_3,
+    SURFACE,
+    SURFACE2,
+    TEXT,
+    WARNING,
+    ev_hex,
+    prob_rgb,
+)
 
 STYLE = f"""
 * {{ font-family: "Segoe UI", "Noto Sans", Arial; font-size: 10pt; color: {TEXT}; }}
@@ -134,25 +137,11 @@ def apply_theme(app: QApplication) -> None:
 
 def prob_color(p: float, alpha: int = 255) -> QColor:
     """Olasılık (büyüklük) için tek tonlu ardışık renk: yüzeyden maviye."""
-    if p != p:  # NaN
-        return QColor(0, 0, 0, 0)
-    p = max(0.0, min(1.0, (p - 0.1) / 0.75))  # %10 → yüzey, %85+ → tam ton
-    base = QColor(SURFACE)
-    tgt = QColor("#256abf")
-    r = base.red() + (tgt.red() - base.red()) * p
-    g = base.green() + (tgt.green() - base.green()) * p
-    b = base.blue() + (tgt.blue() - base.blue()) * p
-    return QColor(int(r), int(g), int(b), alpha)
+    rgb = prob_rgb(p)
+    return QColor(0, 0, 0, 0) if rgb is None else QColor(*rgb, alpha)
 
 
 def ev_color(ev: float) -> QColor:
     """Beklenen değer (durum anlamı: olumlu/olumsuz) için koyu arka plan tonları."""
-    if ev != ev:
-        return QColor(0, 0, 0, 0)
-    if ev >= 0.05:
-        return QColor("#12401a")
-    if ev >= 0:
-        return QColor("#1a2e1f")
-    if ev > -0.05:
-        return QColor(0, 0, 0, 0)
-    return QColor("#3a1d1d")
+    h = ev_hex(ev)
+    return QColor(0, 0, 0, 0) if h is None else QColor(h)

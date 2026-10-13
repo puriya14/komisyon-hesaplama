@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% from "macros.html" import card, csrf_field with context %}
+{% block title %}Genel Bakış{% endblock %}
+{% block content %}
+<h1>Genel Bakış</h1>
+<p class="sub">Ücretsiz verilerle eğitilmiş tahmin modelinin özeti</p>
+{% if not has_data %}
+<div class="banner"><b>Hoş geldiniz!</b> Başlamak için son yılların maç verilerini indirip modeli eğitmeniz gerekiyor.
+  Verilerin kullanım koşullarını okuyup onaylamanız istenecek (onay olmadan veri indirilmez). Tahmin için aynı sayfada
+  kişisel (ticari olmayan) kullanım beyanını da işaretleyin; beyan olmadan model eğitilmez. İlk kurulum birkaç dakika
+  sürer; sonraki güncellemelerde yalnızca yeni maçlar indirilir.</div>
+{% endif %}
+{% if needs_training %}
+<div class="warn">Model verilerle uyumlu değil; 'Modeli Yeniden Eğit' ile güncelleyin.</div>
+{% endif %}
+<div class="actions">
+  <form method="post" action="{{ url_for('views.veri_guncelle') }}">{{ csrf_field() }}
+    <input type="hidden" name="sonra" value="{{ url_for('views.genel') }}">
+    <button class="btn primary" type="submit" {% if job.busy %}disabled{% endif %}>Verileri Güncelle ve Modeli Eğit</button>
+  </form>
+  <form method="post" action="{{ url_for('views.model_egit') }}">{{ csrf_field() }}
+    <input type="hidden" name="sonra" value="{{ url_for('views.genel') }}">
+    <button class="btn" type="submit" {% if job.busy or not has_data %}disabled{% endif %}>Modeli Yeniden Eğit</button>
+  </form>
+</div>
+<div class="cards">
+  {{ card("Maç verisi", cards.data[0], cards.data[1], cards.data[2]) }}
+  {{ card("1X2 isabeti (örneklem dışı)", cards.acc[0], cards.acc[1], cards.acc[2]) }}
+  {{ card("Olasılığı ≥ %90 seçimler: geçmişte gerçekleşme", cards.likely[0], cards.likely[1], cards.likely[2]) }}
+  {{ card("Yaklaşan maçlar", cards.fix[0], cards.fix[1], cards.fix[2]) }}
+</div>
+{% if charts %}
+<h2>Model güvenilirliği</h2>
+<div class="charts">{% for c in charts %}<div class="chart-box">{{ c }}</div>{% endfor %}</div>
+{% endif %}
+<div class="warn"><b>Dürüst not:</b> Futbolda maç sonucu (1-X-2) tahmininde en iyi bahis şirketlerinin bile isabeti
+  yaklaşık %50-53'tür; hiçbir model tüm maçlarda %90 isabet sağlayamaz. Bu uygulama olasılıkları doğru (kalibre) tahmin
+  etmeye odaklanır: model bir seçime %90 dediğinde, geçmiş testlerde bu seçimler yaklaşık o sıklıkta gerçekleşmiştir.
+  Yüksek olasılık kâr anlamına gelmez; bu seçimlerin oranları düşüktür. Ayrıntılar: 'En Olası Seçimler', 'Gol
+  Pazarları' ve 'Geriye Dönük Test'.</div>
+{% endblock %}
