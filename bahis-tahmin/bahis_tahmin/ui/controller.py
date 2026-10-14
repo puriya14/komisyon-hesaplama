@@ -530,9 +530,15 @@ class AppController(QObject):
 
     def refresh_goal_predictions(self) -> None:
         eng = self.goal_engine
+        cup = self.cup_engine if (self.cup_engine is not None and self.cup_engine.trained
+                                  and getattr(self.cup_engine, "goal", None) is not None) else None
         stale = self.goal_day_stale()
         self._goal_day = self.today()  # her dalda önce işaretlenir (yeniden giriş/sonsuz döngü olmaz)
-        if eng is None or not eng.trained or (self.store.fixtures.empty and self.store.unmatched_fixtures.empty):
+        cup_fx = getattr(self.store, "cup_fixtures", None)
+        league_ok = eng is not None and eng.trained and not (self.store.fixtures.empty
+                                                              and self.store.unmatched_fixtures.empty)
+        cup_ok = cup_fx is not None and not cup_fx.empty and bool(self.settings.kupalar)
+        if not league_ok and not cup_ok:
             self.goal_predictions = []
             self.goal_verdicts = []
             self.goalPredictionsChanged.emit()
@@ -542,13 +548,25 @@ class AppController(QObject):
             self.goal_predictions = []
             self.goal_verdicts = []
             self.goalPredictionsChanged.emit()
+        store, settings, main = self.store, self.settings, self.engine
 
         def work(progress):
             from ..goals.service import gated_goal_predictions
 
-            progress(10, "Gol pazarları: veri uygunluğu, tahminler ve belirsizlik aralıkları hesaplanıyor...")
-            ctx = self.eligibility_context(eng)
-            return gated_goal_predictions(eng, ctx, fixtures, self.now(), unmatched=unmatched)
+            out = []
+            if league_ok:
+                progress(10, "Gol pazarları: veri uygunluğu, tahminler ve belirsizlik aralıkları hesaplanıyor...")
+                ctx = self.eligibility_context(eng)
+                out = gated_goal_predictions(eng, ctx, fixtures, self.now(), unmatched=unmatched)
+            if cup_ok:  # KUPA-GOL-02: kupa ve Avrupa maçları
+                progress(80, "Gol pazarları: kupa maçları...")
+                try:
+                    m = main if (main is not None and main.trained) else None
+                    out = list(out) + core.cup_goal_verdicts(store, cup, settings, self.now(),
+                                                             self.eligibility_context(m))
+                except Exception:
+                    log.exception("Kupa maçlarının gol pazarları hesaplanamadı")
+            return out
 
         def done(verdicts):
             self.goal_verdicts = verdicts

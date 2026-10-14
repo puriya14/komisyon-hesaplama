@@ -141,9 +141,9 @@ turnuvanın takvimi varsa oluşur.
 - **Veri:** turnuva seçimi, kupa verisi özeti, yaklaşan kupa maçı sayısı ve doğrulama raporu.
 - **En Olası Seçimler:** uygun kupa maçları da listelenir. Kartlar lig modelinin geçmişidir; kupa modelinin aynı
   eşikteki örneklem dışı geçmişi (yalnızca doğrulanmış gruplar) ayrı bir satırda yazılır.
-- **Gol Pazarları:** kupa maçları **yer almaz**. Bu sayfanın yarı-gol modeli (iki yarıda KG, İY 1,5 Üst) lig içinde
-  eğitilip doğrulanır; ligler arası yarı-gol modeli doğrulanmadı. Kupa maçlarının 3,5 Üst dahil toplam gol pazarları
-  maç ayrıntısındadır.
+- **Gol Pazarları:** KUPA-01'de kupa maçları bu sayfada yoktu. KUPA-GOL-02 ile eklendi: ligler arası ortak modelin
+  kalibre gol beklentileri ilk yarı payıyla yarılara bölünür; her doğrulama grubu ve pazar ayrı ölçülür. Ayrıntılar ve
+  gerçek veri sonuçları: [`KUPA_GOL_02.md`](KUPA_GOL_02.md).
 
 ## Komut satırı
 

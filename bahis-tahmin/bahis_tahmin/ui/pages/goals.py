@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDoubleSpinBox,
     QFileDialog,
@@ -32,10 +33,13 @@ from ...goals.service import (
     SELECTIONS,
     decisions_for,
     gated_goal_match,
+    is_cup_prediction,
+    model_validated,
     ledger_csv,
     ledger_rows,
     record_decisions,
     settle_pending,
+    settlement_matches,
 )
 from ...goals.value import OddsQuote
 from .. import theme
@@ -54,9 +58,8 @@ from ...goals.display import shown as _shown  # noqa: E402
 class GoalsPage(Page):
     title = "Gol Pazarları"
     subtitle = ("İki yarıda da karşılıklı gol · Maç 3,5 Üst · İlk yarı 1,5 Üst. Olasılıklar tek bir ortak gol dağılımından "
-                "türetilir; öneri yalnızca gerçek oran ve doğrulanmış model ile oluşabilir. Kupa ve Avrupa maçları bu "
-                "sayfada yer almaz (bu yarı-gol modeli lig içinde eğitilip doğrulanır); onların 1X2, Çifte Şans, Alt/Üst "
-                "ve KG olasılıkları Tahminler sayfasındadır.")
+                "türetilir; öneri yalnızca gerçek oran ve doğrulanmış model ile oluşabilir. Kupa ve Avrupa maçları ligler "
+                "arası ortak modelden gelir ve ayrı doğrulanır (UEFA turnuvaları, yurt içi kupalar, diğer kıtalar).")
 
     def __init__(self, controller, parent=None):
         super().__init__(controller, parent)
@@ -80,11 +83,28 @@ class GoalsPage(Page):
                                    "Destek: YEDAM 115."))
         controller.goalModelChanged.connect(self._reset_panel)
         controller.goalModelChanged.connect(self.refresh_all)
+        controller.modelChanged.connect(self._cup_model_changed)  # KUPA-GOL-02: kupa motoru da gol pazarı üretir
         controller.goalPredictionsChanged.connect(self.refresh_scan)
         controller.dataChanged.connect(self._reset_panel)
         controller.dataChanged.connect(self.refresh_coverage)
         controller.settingsChanged.connect(self._settings_changed)
         controller.busyChanged.connect(lambda b: self.btn_train.setEnabled(not b and self.ctl.store.has_data))
+        self.refresh_all()
+
+    # ================================================================ kupa (KUPA-GOL-02)
+    def _cup_engine(self):
+        from ...kupa.gorunum import goal_part
+
+        eng = getattr(self.ctl, "cup_engine", None)
+        return eng if goal_part(eng) is not None else None
+
+    def _engine_for(self, p):
+        """Tahmini üreten motor: kupa maçında kupa motoru, lig maçında gol pazarları motoru."""
+        return self._cup_engine() if is_cup_prediction(p) else self.ctl.goal_engine
+
+    def _cup_model_changed(self) -> None:
+        if is_cup_prediction(getattr(self, "_current", None)):
+            self._reset_panel()
         self.refresh_all()
 
     # ================================================================ Tarama
@@ -144,10 +164,10 @@ class GoalsPage(Page):
         eng = self.ctl.goal_engine
         verdicts = self.ctl.goal_verdicts
         self._decisions = {}
-        if eng is None or not verdicts:
+        if not verdicts:
             self.scan_model.set_frame(pd.DataFrame())
             self.scan_note.setText(
-                "Gol modeli henüz eğitilmedi." if eng is None else
+                "Gol modeli henüz eğitilmedi." if (eng is None and self._cup_engine() is None) else
                 "Yaklaşan maç bulunamadı (fikstür verisi yok). Maç analizi sekmesinden elle maç seçebilirsiniz.")
             self._fill_match_combo()
             return
@@ -159,7 +179,8 @@ class GoalsPage(Page):
         for i, v in enumerate(verdicts):
             p = v.prediction
             # Kararlar aynı uygunluk sonucuyla üretilir; uygunluk yoksa karar motoru DATA_NOT_ELIGIBLE döndürür.
-            decs = decisions_for(p, eng, self.ctl.ledger_if_exists(), now, eligibility=v) if p is not None else []
+            decs = (decisions_for(p, self._engine_for(p), self.ctl.ledger_if_exists(), now, eligibility=v)
+                    if p is not None else [])
             self._decisions[v.candidate_id] = decs
             by = {d.market_key: d for d in decs}
             if mode == "value" and not any(d.status == "VALUE_CANDIDATE" for d in decs):
@@ -223,6 +244,19 @@ class GoalsPage(Page):
         pl.addWidget(self.cb_home, 1, 2)
         pl.addWidget(self.cb_away, 1, 3)
         pl.addWidget(btn_manual, 2, 3)
+        # KUPA-GOL-02: elle seçilen ligler arası / kupa maçı (takımlar kupa modelinin listesinden, lige göre gruplu)
+        self.cb_comp = QComboBox()
+        self.cb_khome = QComboBox()
+        self.cb_kaway = QComboBox()
+        self.chk_neutral = QCheckBox("Tarafsız saha")
+        btn_cup = QPushButton("Ligler arası maçı analiz et")
+        btn_cup.clicked.connect(self._analyze_manual_cup)
+        pl.addWidget(QLabel("veya kupa / ev / deplasman:"), 3, 0)
+        pl.addWidget(self.cb_comp, 3, 1)
+        pl.addWidget(self.cb_khome, 3, 2)
+        pl.addWidget(self.cb_kaway, 3, 3)
+        pl.addWidget(self.chk_neutral, 4, 2)
+        pl.addWidget(btn_cup, 4, 3)
         lay.addWidget(pick)
         cards = QHBoxLayout()
         self.cards = {s: Card(f"{s}: {NAMES[s]}") for s in ("A", "B", "C")}
@@ -318,6 +352,47 @@ class GoalsPage(Page):
                 self.cb_league.addItem(league_name(code), code)
         self.cb_league.blockSignals(False)
         self._fill_teams()
+        self._fill_cup_choices()
+
+    def _fill_cup_choices(self) -> None:
+        from ...kupa.gorunum import teams_for_analysis
+        from ...kupa.turnuvalar import COMPETITIONS
+
+        cur = self.cb_comp.currentData()
+        self.cb_comp.clear()
+        for code, c in COMPETITIONS.items():
+            self.cb_comp.addItem(c.full, code)
+        i = self.cb_comp.findData(cur or "UCL")
+        self.cb_comp.setCurrentIndex(max(i, 0))
+        groups = teams_for_analysis(self._cup_engine())
+        for nth, cb in ((1, self.cb_khome), (2, self.cb_kaway)):  # varsayılan: ilk grubun 1. ve 2. takımı
+            prev = cb.currentData()
+            cb.clear()
+            for title, teams in groups:
+                cb.addItem(f"— {title} —", None)
+                item = cb.model().item(cb.count() - 1)
+                if item is not None:
+                    item.setEnabled(False)
+                for key, name in teams:
+                    cb.addItem(name, key)
+            j = cb.findData(prev) if prev else -1
+            cb.setCurrentIndex(j if j >= 0 else min(nth, cb.count() - 1))
+        enabled = bool(groups)
+        for w in (self.cb_comp, self.cb_khome, self.cb_kaway, self.chk_neutral):
+            w.setEnabled(enabled)
+
+    def _analyze_manual_cup(self) -> None:
+        from ...kupa.gorunum import goal_match
+
+        cup = self._cup_engine()
+        comp, hk, ak = self.cb_comp.currentData(), self.cb_khome.currentData(), self.cb_kaway.currentData()
+        if cup is None or not comp or not hk or not ak or hk == ak:
+            return
+        names = {hk: self.cb_khome.currentText(), ak: self.cb_kaway.currentText()}
+        main = self.ctl.engine if (self.ctl.engine is not None and self.ctl.engine.trained) else None
+        self._show(goal_match(cup, self.ctl.store, self.ctl.eligibility_context(main), self.ctl.settings, comp=comp,
+                              home_key=hk, away_key=ak, names=names, date=self.ctl.today(),
+                              neutral=self.chk_neutral.isChecked(), as_of=self.ctl.now()))
 
     def _fill_teams(self) -> None:
         eng = self.ctl.goal_engine
@@ -371,11 +446,14 @@ class GoalsPage(Page):
         """Paneldeki tahmin hâlâ GÜNCEL motorun aynı lig durumundan ve güncel mod/haklarla mı üretildi?"""
         from ...eligibility import league_state_digest
 
-        eng, p = self.ctl.goal_engine, getattr(self, "_current", None)
+        p = getattr(self, "_current", None)
+        eng = self._engine_for(p)
         if eng is None or not eng.trained or p is None or getattr(self, "_current_verdict", None) is None:
             return False
         if getattr(self, "_verdict_key", None) != self._policy_key():
             return False
+        if is_cup_prediction(p):  # kupa: tahmin aynı kupa motoru durumundan
+            return bool(p.state_digest) and p.state_digest == eng.digest
         return bool(p.state_digest) and p.state_digest == league_state_digest(eng.states.get(p.league))
 
     def _show_blocked(self, v) -> None:
@@ -417,7 +495,8 @@ class GoalsPage(Page):
                 return ""
             return "; geçmiş aralık kanıtı " + (", ".join(f"{a}–{b}" for a, b in ar) or "yok")
 
-        kan = ", ".join(f"{x['kaynak']} {x['sezon']} ({'tam sezon takvimi' if x['tam'] else 'tam sezon doğrulanmadı'}"
+        kan = ", ".join((f"{x['lig']} · " if x.get("lig") else "")
+                        + f"{x['kaynak']} {x['sezon']} ({'tam sezon takvimi' if x.get('tam') else 'tam sezon doğrulanmadı'}"
                         f"{_araliklar(x)}, alınma {x['alinma'][:16]})" for x in ev) or "yok"
         rows = "".join(f"<br>· {k}: {x.status_label} — {', '.join(x.reasons) or 'neden yok'}"
                        for k, x in v.by_market.items())
@@ -434,12 +513,14 @@ class GoalsPage(Page):
         self._verdict_key = self._policy_key()
         p = v.prediction
         self._current = p
-        eng = self.ctl.goal_engine
+        eng = self._engine_for(p) if p is not None else self.ctl.goal_engine
+        cup = is_cup_prediction(p)
         now = self.ctl.now()
         self.btn_record.setEnabled(True)
         if p is None or eng is None or not v.any_usable(now):
             self._show_blocked(v)
             return
+        validated = model_validated(p, eng)
         for s in ("A", "B", "C"):
             key = KEY_OF[s]
             e = v.get(key)
@@ -448,12 +529,11 @@ class GoalsPage(Page):
                 self.cards[s].set("—", f"Tahmin yok · {label} · {text}")
                 continue
             prob = p.probs.get(s, np.nan)
-            status = eng.status_text(key)
             self.cards[s].set(
                 fmt_pct(prob),
                 f"Belirsizlik (%80): {_iv(p, key)} · adil oran {fmt_num(1 / prob) if prob == prob and prob > 0 else '-'} · "
-                f"lig taban oranı {fmt_pct(p.base_rates.get(s))} · model: "
-                + ("sanal takip için doğrulandı" if status == "VALIDATED_FOR_PAPER_TRADING" else "DOĞRULANMADI")
+                f"{'kupa' if cup else 'lig'} taban oranı {fmt_pct(p.base_rates.get(s))} · model: "
+                + ("sanal takip için doğrulandı" if validated.get(key) else "DOĞRULANMADI")
                 + f" · veri: {e.status_label}" + ("" if e.bet_ok else f" (bahis adayı değil: {e.lead_code})"),
             )
         if not v.all_usable(now):  # pazarlardan biri engelli: ortak olasılık ilişkileri gösterilmez
@@ -478,6 +558,21 @@ class GoalsPage(Page):
         self.cond_model.set_frame(pd.DataFrame([
             {"kosul": k, "p": v, "not": "en zayıf koşul" if i == weakest else ""} for i, (k, v) in enumerate(conds)]))
         self._refresh_decisions()
+        sec = [("Maç sonu KG Var", "FT_BTTS"), ("İlk yarı KG Var", "FH_BTTS"), ("İkinci yarı 1,5 Üst", "SH_O15"),
+               ("Maç sonu 2,5 Üst", "FT_O25"), ("Maç sonu 4,5 Üst", "FT_O45")]
+        self.sec_model.set_frame(pd.DataFrame([
+            {"pazar": n, "p": p.probs.get(k, np.nan), "not": "Araştırma: doğrulama ve oran eşlemesi tamamlanmadı, öneri yok"}
+            for n, k in sec]))
+        if cup:
+            from ...kupa.gorunum import goal_model_card
+
+            m = goal_model_card(p, eng)
+            self.used.setHtml(
+                f"<b>Model:</b> {m['version']}<br><b>Eğitim:</b> {m['training']}<br>"
+                f"<b>Örneklem dışı (ileriye dönük) doğrulama:</b> {m['validation']}<br><b>Girdiler:</b> {m['inputs']}<br>"
+                f"<b>Belirsizlik yöntemi:</b> {m['uncertainty']}. Bu aralık gerçek olasılığın kesin sınırı değildir.<br>"
+                + self._eligibility_html(v))
+            return
         man = eng.manifest
         val = ", ".join(f"{y}/{(y + 1) % 100:02d}" for y in eng.validation_years)
         self.used.setHtml(
@@ -494,15 +589,10 @@ class GoalsPage(Page):
             "Bu aralık gerçek olasılığın kesin sınırı değildir.<br>"
             "<b>Zaman doğrulaması:</b> geçmiş özellikler yeniden oluşturulmuştur (yalnızca maç tarihi bilinir; o anda "
             "yayımlanmış olduğu doğrulanamaz).<br>" + self._eligibility_html(v))
-        sec = [("Maç sonu KG Var", "FT_BTTS"), ("İlk yarı KG Var", "FH_BTTS"), ("İkinci yarı 1,5 Üst", "SH_O15"),
-               ("Maç sonu 2,5 Üst", "FT_O25"), ("Maç sonu 4,5 Üst", "FT_O45")]
-        self.sec_model.set_frame(pd.DataFrame([
-            {"pazar": n, "p": p.probs.get(k, np.nan), "not": "Araştırma: doğrulama ve oran eşlemesi tamamlanmadı, öneri yok"}
-            for n, k in sec]))
 
     def _refresh_decisions(self) -> None:
         p = self._current
-        eng = self.ctl.goal_engine
+        eng = self._engine_for(p)
         v = getattr(self, "_current_verdict", None)
         if p is None or eng is None:
             return
@@ -555,9 +645,9 @@ class GoalsPage(Page):
             return
         # Kararlar kayıt anında aynı uygunluk sonucuyla YENİDEN üretilir (önceden hesaplanmış karar doğrudan yazılmaz)
         now = self.ctl.now()
-        decs = decisions_for(p, self.ctl.goal_engine, self.ctl.ledger, now,
-                             eligibility=getattr(self, "_current_verdict", None))
-        record_decisions(self.ctl.ledger, p, decs, self.ctl.goal_engine, record_time=now)
+        eng = self._engine_for(p)
+        decs = decisions_for(p, eng, self.ctl.ledger, now, eligibility=getattr(self, "_current_verdict", None))
+        record_decisions(self.ctl.ledger, p, decs, eng, record_time=now)
         self.refresh_ledger()
         self.tabs.setCurrentIndex(4)
 
@@ -605,6 +695,12 @@ class GoalsPage(Page):
         v2.setMinimumHeight(320)
         lay.addWidget(section("Lig–sezon kapsam matrisi"))
         lay.addWidget(v2)
+        lay.addWidget(section("Kupa ve Avrupa maçlarında ilk yarı skoru"))
+        self.cup_cov_model = DataFrameModel()
+        self.cup_cov_model.formatters = {"İY skoru oranı": fmt_pct}
+        v4, _ = make_table(self.cup_cov_model)
+        v4.setMinimumHeight(220)
+        lay.addWidget(v4)
         lay.addWidget(section("Kaynaklar ve kullanım koşulları"))
         self.src_model = DataFrameModel()
         v3, _ = make_table(self.src_model, sortable=False)
@@ -614,8 +710,11 @@ class GoalsPage(Page):
         return w
 
     def refresh_coverage(self) -> None:
+        from ...kupa.gorunum import cup_ht_coverage
+
         st = self.ctl.store
         self._refresh_sources()
+        self.cup_cov_model.set_frame(cup_ht_coverage(getattr(st, "cup_matches", None)))
         if not st.has_data:
             self.cov_model.set_frame(pd.DataFrame())
             self.cov_sum_model.set_frame(pd.DataFrame())
@@ -689,14 +788,35 @@ class GoalsPage(Page):
         self.cal_chart = ChartCanvas(7, 4)
         self.cal_chart.setMinimumHeight(380)
         lay.addWidget(self.cal_chart)
+        # KUPA-GOL-02: kupa ve Avrupa maçları (ligler arası ortak model)
+        lay.addWidget(section("Kupa ve Avrupa maçları (ligler arası ortak model)"))
+        self.cup_val_text = QLabel("")
+        self.cup_val_text.setWordWrap(True)
+        self.cup_val_text.setTextFormat(Qt.RichText)
+        lay.addWidget(self.cup_val_text)
+        self.cup_val_model = DataFrameModel()
+        self.cup_val_model.formatters = {k: (lambda v: fmt_num(v, 4)) for k in
+                                         ("LL model", "LL taban", "Δ LL", "Δ üst", "ECE", "ECE eşiği")}
+        self.cup_val_model.formatters.update({"Taban oran": fmt_pct, "Kal. eğim": fmt_num})
+        self.cup_val_model.tooltips = {"Neden": lambda v, r: v}
+        cvv, _ = make_table(self.cup_val_model, sortable=False)
+        cvv.setMinimumHeight(170)
+        lay.addWidget(cvv)
+        self.cup_cal_chart = ChartCanvas(7, 4)
+        self.cup_cal_chart.setMinimumHeight(380)
+        lay.addWidget(self.cup_cal_chart)
         self.cb_cal.currentIndexChanged.connect(self._plot_cal)
         return w
 
     def refresh_validation(self) -> None:
+        self._refresh_cup_validation()
         eng = self.ctl.goal_engine
         has = bool(eng is not None and eng.validation)
-        for w in (self.cal_chart, self.cb_cal, self.lbl_cal):
-            w.setVisible(has)
+        self.cal_chart.setVisible(has)
+        for w in (self.cb_cal, self.lbl_cal):
+            w.setVisible(has or self._cup_engine() is not None)
+        if self._cup_engine() is not None:
+            self._plot_cal()
         if eng is None:
             self.val_text.setText("Gol modeli eğitilmedi; doğrulama sonuçları eğitimden sonra burada görünür.")
             self.val_model.set_frame(pd.DataFrame())
@@ -732,13 +852,38 @@ class GoalsPage(Page):
         self.val_model.set_frame(pd.DataFrame(rows))
         self._plot_cal()
 
+    def _refresh_cup_validation(self) -> None:
+        from ...kupa.gol import GOAL_RULE
+        from ...kupa.gorunum import goal_validation_rows
+
+        cup = self._cup_engine()
+        rows = goal_validation_rows(cup)
+        self.cup_cal_chart.setVisible(bool(rows))
+        if cup is None:
+            self.cup_val_text.setText("Kupa modeli eğitilmedi; kupa turnuvalarını Veri sayfasında seçip verileri "
+                                      "güncelleyin.")
+        elif not rows:
+            self.cup_val_text.setText("Kupa maçlarında gol pazarları için örneklem dışı ölçüm yok (ilk yarı skorlu kupa "
+                                      "maçı az); üç pazar da DOĞRULANMADI.")
+        else:
+            self.cup_val_text.setText(
+                "Ölçülen maçlar kupa modelinin ileriye dönük tahminleridir: her hafta model yalnızca o haftadan önceki "
+                "maçlarla kuruldu, her sezon yalnızca önceki sezonlarla kalibre edildi. Referans: önceki sezonların kupa "
+                f"taban oranı. Kural: {GOAL_RULE}.")
+        self.cup_val_model.set_frame(pd.DataFrame(rows))
+
     def _plot_cal(self) -> None:
+        from ...kupa.gorunum import goal_calibration_bins
+
         eng = self.ctl.goal_engine
         bins = []
         if eng is not None and eng.validation:
             key = KEY_OF[self.cb_cal.currentData()]
             bins = eng.validation.get(key, {}).get("modeller", {}).get(eng.variant, {}).get("kalibrasyon", [])
         plot_goal_calibration(self.cal_chart, bins)
+        cup = self._cup_engine()
+        if cup is not None:
+            plot_goal_calibration(self.cup_cal_chart, goal_calibration_bins(cup, self.cb_cal.currentData()))
 
     # ============================================================== Sanal takip
     def _build_ledger(self) -> QWidget:
@@ -788,7 +933,7 @@ class GoalsPage(Page):
         if led is None:
             self.led_sum.setText("Henüz sanal kayıt yok.")
             return
-        res = settle_pending(led, self.ctl.store.matches)
+        res = settle_pending(led, settlement_matches(self.ctl.store))
         self.refresh_ledger()
         self.led_sum.setText(self.led_sum.text() + f"  ·  güncelleme: {res['sonuclanan']} sonuçlandı, {res['bekleyen']} bekliyor")
 
@@ -812,18 +957,22 @@ class GoalsPage(Page):
 
     # ================================================================== genel
     def refresh_all(self) -> None:
+        from ...kupa.gorunum import goal_status_line
+
         eng = self.ctl.goal_engine
+        cup = goal_status_line(getattr(self.ctl, "cup_engine", None)) if self.ctl.settings.kupalar else ""
         if eng is None:
             err = self.ctl.goal_load_error
             self.status_banner.setText(
-                "Gol pazarları modeli eğitilmedi." + (f" ({err})" if err and "yok" not in err else "")
-                + " Veriler indirildikten sonra 'Gol modelini eğit' butonunu kullanın.")
+                "Lig maçları: gol pazarları modeli eğitilmedi." + (f" ({err})" if err and "yok" not in err else "")
+                + " Veriler indirildikten sonra 'Gol modelini eğit' butonunu kullanın." + (f" {cup}" if cup else ""))
         else:
             st = " · ".join(f"{s}: {'doğrulandı (sanal takip)' if eng.validated.get(KEY_OF[s]) else 'DOĞRULANMADI'}"
                             for s in ("A", "B", "C"))
             self.status_banner.setText(
-                f"Model durumu — {st}. Bu pazarlar için geçmiş gerçek oran verisi olmadığından kârlılık doğrulanamaz; "
-                "'avantaj adayı' yalnızca girdiğiniz güncel gerçek oranla ve tüm kontroller geçilirse oluşur.")
+                f"Lig maçları — {st}." + (f" {cup}" if cup else "") + " Bu pazarlar için geçmiş gerçek oran verisi "
+                "olmadığından kârlılık doğrulanamaz; 'avantaj adayı' yalnızca girdiğiniz güncel gerçek oranla ve tüm "
+                "kontroller geçilirse oluşur.")
         self.btn_train.setEnabled(self.ctl.store.has_data and not self.ctl.busy)
         self.refresh_scan()
         self.refresh_coverage()

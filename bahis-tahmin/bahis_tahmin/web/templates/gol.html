@@ -4,9 +4,8 @@
 {% block content %}
 <h1>Gol Pazarları</h1>
 <p class="sub">İki yarıda da karşılıklı gol · Maç 3,5 Üst · İlk yarı 1,5 Üst. Olasılıklar tek bir ortak gol dağılımından
-  türetilir; öneri yalnızca gerçek oran ve doğrulanmış model ile oluşabilir. Kupa ve Avrupa maçları bu sayfada yer almaz
-  (bu yarı-gol modeli lig içinde eğitilip doğrulanır); onların 1X2, Çifte Şans, Alt/Üst ve KG olasılıkları
-  <a href="{{ url_for('views.tahminler', lig='@kupa') }}">Tahminler</a> sayfasındadır.</p>
+  türetilir; öneri yalnızca gerçek oran ve doğrulanmış model ile oluşabilir. Kupa ve Avrupa maçları ligler arası ortak
+  modelden gelir ve ayrı doğrulanır (doğrulama grubu: UEFA turnuvaları, yurt içi kupalar, diğer kıtalar).</p>
 <div class="warn">{{ status }}</div>
 <div class="actions">
   <form method="post" action="{{ url_for('gol.egit') }}">{{ csrf_field() }}
@@ -53,6 +52,17 @@
   <button class="btn" type="submit">Elle seçilen maçı analiz et</button>
 </form>
 {% endif %}
+{% if cup_groups %}
+<form class="panel" method="get" action="{{ url_for('gol.gol') }}"><input type="hidden" name="sekme" value="mac">
+  <div class="form-grid">
+    <label>veya kupa / Avrupa maçı <select name="turnuva">{% for c in comps %}<option value="{{ c }}" {% if c == comp %}selected{% endif %}>{{ c|lig_tam }}</option>{% endfor %}</select></label>
+    <label>Ev sahibi <select name="ev_k"><option value="">—</option>{% for g, ts in cup_groups %}<optgroup label="{{ g }}">{% for k, n in ts %}<option value="{{ k }}" {% if k == ev_k %}selected{% endif %}>{{ n }}</option>{% endfor %}</optgroup>{% endfor %}</select></label>
+    <label>Deplasman <select name="dep_k"><option value="">—</option>{% for g, ts in cup_groups %}<optgroup label="{{ g }}">{% for k, n in ts %}<option value="{{ k }}" {% if k == dep_k %}selected{% endif %}>{{ n }}</option>{% endfor %}</optgroup>{% endfor %}</select></label>
+  </div>
+  <label class="check"><input type="checkbox" name="tarafsiz" value="1" {% if tarafsiz %}checked{% endif %}> Tarafsız saha (final, süper kupa)</label>
+  <button class="btn" type="submit">Ligler arası maçı analiz et</button>
+</form>
+{% endif %}
 {% if panel %}
 <h2>{{ panel.title }} <span class="muted small">· {{ panel.league }}</span></h2>
 <div class="cards">{% for t, v, sub in panel.cards %}{{ card(t, v, sub) }}{% endfor %}</div>
@@ -93,10 +103,11 @@
 <div class="panel small">
   {% if panel.model %}
   <p><b>Model:</b> {{ panel.model.version }}<br><b>Eğitim:</b> {{ panel.model.training }}<br>
-    <b>Zaman sıralı iç doğrulama sezonları:</b> {{ panel.model.validation }}<br>
+    <b>{{ 'Örneklem dışı (ileriye dönük) doğrulama' if panel.kupa else 'Zaman sıralı iç doğrulama sezonları' }}:</b> {{ panel.model.validation }}<br>
+    {% if panel.kupa %}<b>Girdiler:</b> {{ panel.model.inputs }}{% else %}
     <b>Girdiler:</b> ilk yarı / ikinci yarı / maç sonu Poisson takım güçleri (yalnızca maçtan önceki günlerin sonuçları), lig
     ilk yarı gol payı, yakın dönem yarı bazlı gol sıklıkları, lig taban oranları. Bahis oranları, kadro, sakatlık, xG ve
-    hava durumu verisi KULLANILMIYOR.<br><b>Belirsizlik yöntemi:</b> {{ panel.model.uncertainty }}. Bu aralık gerçek
+    hava durumu verisi KULLANILMIYOR.{% endif %}<br><b>Belirsizlik yöntemi:</b> {{ panel.model.uncertainty }}. Bu aralık gerçek
     olasılığın kesin sınırı değildir.<br><b>Zaman doğrulaması:</b> geçmiş özellikler yeniden oluşturulmuştur (yalnızca maç
     tarihi bilinir; o anda yayımlanmış olduğu doğrulanamaz).</p>
   {% endif %}
@@ -114,8 +125,8 @@
 <div class="table-wrap"><table class="data compact"><thead><tr><th>Pazar</th><th class="num">Yapısal model olasılığı</th><th>Durum</th></tr></thead>
   <tbody>{% for n, p in panel.secondary %}<tr><td>{{ n }}</td><td class="num">{{ p|pct }}</td><td class="small">Araştırma: doğrulama ve oran eşlemesi tamamlanmadı, öneri yok</td></tr>{% endfor %}</tbody></table></div>
 {% endif %}
-{% elif sel %}<p class="muted">Seçilen maç bulunamadı veya tahmin üretilemedi.</p>
-{% else %}<p class="muted">Bir yaklaşan maç seçin veya lig ve takımları seçip elle analiz edin.</p>{% endif %}
+{% elif sel %}<p class="muted">Seçilen maç bulunamadı veya tahmin üretilemedi (iki farklı takım seçin).</p>
+{% else %}<p class="muted">Bir yaklaşan maç seçin veya lig/turnuva ve takımları seçip elle analiz edin.</p>{% endif %}
 
 {% elif sekme == 'kapsam' %}
 <div class="banner">Üç katman ayrı gösterilir: <b>sonuç</b> (maç sonu ve ilk yarı skorları), <b>zenginleştirilmiş</b> (şut
@@ -135,6 +146,8 @@
 {{ frame_table(cov, {"league": "Lig", "season": "Sezon", "takim": "Takım", "beklenen_tahmini": "Beklenen (tahmini)",
   "bulunan": "Bulunan", "ms_gecerli": "MS skoru", "iy_gecerli": "İY skoru geçerli", "iy_eksik": "İY eksik", "celiskili": "Çelişkili",
   "sut_verisi": "Şut verisi", "oran_2_5_gercek": "2,5 gerçek oran", "kaynak": "Kaynak", "lisans": "Lisans durumu"}, {}, ["zaman_dogrulama"], 'Henüz veri yok.') }}
+<h2>Kupa ve Avrupa maçlarında ilk yarı skoru</h2>
+{{ frame_table(cup_cov, {}, cup_cov_fmts, [], 'Kupa verisi yok.') }}
 <h2>Kaynaklar ve kullanım koşulları</h2>
 <div class="table-wrap"><table class="data small"><thead><tr>{% for c in ["Kaynak", "Lisans özeti", "Ticari kullanım", "Model eğitimi", "Maliyet", "Durum"] %}<th>{{ c }}</th>{% endfor %}</tr></thead>
   <tbody>{% for r in sources %}<tr>{% for c in ["Kaynak", "Lisans özeti", "Ticari kullanım", "Model eğitimi", "Maliyet", "Durum"] %}<td>{{ r[c] }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>
@@ -158,6 +171,19 @@
   <noscript><button class="btn" type="submit">Göster</button></noscript>
 </form>
 {% if chart %}<div class="chart-box wide">{{ chart }}</div>{% endif %}
+{% endif %}
+<h2>Kupa ve Avrupa maçları (ligler arası ortak model)</h2>
+{% if not has_cup %}<p class="muted">Kupa modeli eğitilmedi; kupa turnuvalarını Veri sayfasında seçip verileri güncelleyin.</p>
+{% else %}
+<p>Ölçülen maçlar kupa modelinin ileriye dönük tahminleridir: her hafta model yalnızca o haftadan önceki maçlarla kuruldu,
+  her sezon yalnızca önceki sezonlarla kalibre edildi. Referans: önceki sezonların kupa taban oranı. Kural: {{ cup_rule }}.</p>
+{% if cup_rows %}
+<div class="table-wrap"><table class="data compact"><thead><tr>{% for c in cup_rows[0].keys() %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+  <tbody>{% for r in cup_rows %}<tr>{% for c, v in r.items() %}
+    <td class="{{ 'num' if v is number else '' }}">{% if c == 'Taban oran' %}{{ v|pct }}{% elif c in ('LL model', 'LL taban', 'Δ LL', 'Δ üst', 'ECE', 'ECE eşiği') %}{{ v|num(4) }}{% elif c == 'Kal. eğim' %}{{ v|num }}{% else %}{{ v }}{% endif %}</td>
+  {% endfor %}</tr>{% endfor %}</tbody></table></div>
+{% if cup_chart %}<p class="muted small">Kalibrasyon eğrisi (kupa, seçili pazar):</p><div class="chart-box wide">{{ cup_chart }}</div>{% endif %}
+{% else %}<p class="muted">Kupa maçlarında gol pazarları için örneklem dışı ölçüm yok (ilk yarı skorlu kupa maçı az).</p>{% endif %}
 {% endif %}
 
 {% else %}

@@ -39,7 +39,7 @@ from .turnuvalar import COMPETITIONS, VALIDATION_GROUPS, VALIDATION_NAMES, compe
 
 log = logging.getLogger(__name__)
 
-CUP_ENGINE_VERSION = 2  # 2: tarafsız sahada kalibrasyonun iç saha terimi (δ) uygulanmaz
+CUP_ENGINE_VERSION = 3  # 2: tarafsız sahada kalibrasyonun iç saha terimi (δ) uygulanmaz; 3: gol pazarları (KUPA-GOL-02)
 MODEL_VERSION = "kupa-model-v2"
 VALIDATION_RULE = ("kupa-dogrulama-v1: örneklem dışı en az 300 maç ve 1X2 log-kayıp farkının (model − önceki "
                    "sezonların sonuç oranları) hafta bloklu bootstrap %95 üst sınırı < 0")
@@ -55,6 +55,22 @@ ProgressFn = Callable[[int, str], None]
 def group_of(comp: str) -> str:
     c = COMPETITIONS.get(str(comp))
     return c.group if c else "C"
+
+
+def vgroup_of(comp: str) -> str:
+    """Turnuvanın doğrulama grubu (UEFA / YURTICI / KITA)."""
+    return VALIDATION_GROUPS.get(group_of(comp), "YURTICI")
+
+
+def kickoff_country(comp: str, source: str) -> str:
+    """Fikstür saatinin zaman dilimi için ülke: ESPN'de UEFA ve kıta turnuvaları İstanbul saatiyle, yurt içi kupalar
+    ülkenin saatiyle; openfootball UEFA dosyalarında Orta Avrupa saati."""
+    c = COMPETITIONS.get(str(comp))
+    if source == "openfootball-kupa":
+        return "Almanya"
+    if c is not None and c.country:
+        return c.country
+    return "Türkiye"
 
 
 def key_of(league: str, team: str) -> str:
@@ -161,6 +177,7 @@ class CupEngine:
         self.timeline: LeagueTimeline | None = None
         self.state_available_since: dt.datetime | None = None
         self.digest = ""
+        self.goal = None  # gol pazarları bölümü (kupa.gol.GoalPart)
 
     # ------------------------------------------------------------------ durum
     @property
@@ -232,7 +249,7 @@ class CupEngine:
         self._calibrate_and_measure(oos, cups)
         progress(92, "Kupa modeli: bütün verilerle kuruluyor...")
         self.last_day = int(data.day.max())
-        self.params = fit(data, self.last_day + 1, self.cfg, init)
+        self.params = fit(data, self.last_day + 1, self.cfg, init, hessian=True)
         if self.params is None:
             raise ValueError("Kupa modeli için yeterli maç yok.")
         # Uygunluk için durum bilgisi: takımın modelce bilinen maç günleri, adı ve ülkesi
@@ -260,7 +277,7 @@ class CupEngine:
         self.digest = hashlib.sha256(json.dumps(
             [MODEL_VERSION, self.last_day, self.params.n_matches, round(self.params.mu, 9),
              hashlib.sha256(np.round(np.r_[self.params.attack, self.params.defense], 9).tobytes()).hexdigest(),
-             self.calib], default=str).encode()).hexdigest()
+             self.calib, round(self.goal.share, 9) if self.goal is not None else None], default=str).encode()).hexdigest()
         rep = self.report
         rep.trained_at = dt.datetime.now().isoformat(timespec="seconds")
         rep.duration = time.time() - t0
@@ -270,13 +287,17 @@ class CupEngine:
         return rep
 
     def _calibrate_and_measure(self, oos: pd.DataFrame, cups: pd.DataFrame) -> None:
+        from .gol import build_goal_part
+
         rep = CupReport()
         self.report = rep
         if oos.empty:
             self.oos = oos
+            self.oos_markets = None
             self.status = {g: DOGRULANMADI for g in VALIDATION_NAMES}
             rep.groups = {g: {"ad": VALIDATION_NAMES[g], "n": 0, "statu": DOGRULANMADI,
                               "neden": "örneklem dışı kupa maçı yok"} for g in VALIDATION_NAMES}
+            self.goal = build_goal_part(pd.DataFrame(), cups, vgroup_of, VALIDATION_NAMES)
             return
         oos = oos.sort_values(["date", "i"], kind="mergesort").reset_index(drop=True)
         seasons = sorted(oos["season"].unique(), key=lambda s: (str(s)[:4], str(s)))
@@ -359,6 +380,8 @@ class CupEngine:
             rep.groups[vg] = dict(mm, ad=name, statu=self.status[vg], neden=why)
         rep.competitions = [dict(measure(g), turnuva=c, ad=competition_name(c)) for c, g in ev.groupby("comp")]
         rep.seasons = [dict(measure(g), sezon=s) for s, g in ev.groupby("season")]
+        # Gol pazarları (KUPA-GOL-02): aynı ölçülen örneklem dışı tahminlerin kalibre gol beklentilerinden
+        self.goal = build_goal_part(self.oos, cups, vgroup_of, VALIDATION_NAMES)
 
     # ------------------------------------------------------------------ tahmin
     def rates(self, home_key: str, away_key: str, home_country: str, away_country: str, date, comp: str,
@@ -407,6 +430,61 @@ class CupEngine:
             p_model=p, p_market=None, p_final=p, o25_model=float(o25[0]), o25_market=float("nan"),
             o25_final=float(o25[0]), btts_final=float(btts[0]), matrix=m, markets=markets_from_matrix(m), odds=odds,
             info=info, source=source, state_digest=self.digest)
+
+    def predict_goals(self, comp: str, home_key: str, away_key: str, home: str, away: str, home_country: str,
+                      away_country: str, date, time_str: str = "", neutral: bool = False, source: str = "",
+                      with_interval: bool = True):
+        """Gol pazarları tahmini (``goals.engine.GoalPrediction``; ``league`` alanı turnuva kodudur). Gol bölümü veya
+        takım modelde yoksa None. Doğrulama statüsü tahminde taşınır (``validated``: turnuvanın doğrulama grubu)."""
+        from ..goals.engine import MIN_TEAM_MATCHES, GoalPrediction
+        from ..goals.ledger import event_id
+        from ..timeutil import fmt_istanbul, kickoff_utc
+        from .gol import GOAL_MODEL_VERSION, MIN_HT_SHARE, interval, market_probs
+
+        goal = getattr(self, "goal", None)
+        if goal is None or not self.trained:
+            return None
+        r = self.rates(home_key, away_key, home_country, away_country, date, comp, neutral)
+        if r is None:
+            return None
+        share = goal.share
+        pr = market_probs([r["lam"]], [r["nu"]], share)
+        probs = {k: float(v[0]) for k, v in pr.items()}
+        calib = self.calib
+
+        def draw(lam, nu):
+            lc, nc = calibrate_rates(lam, nu, calib, np.full(len(lam), bool(neutral)))
+            return market_probs(lc, nc, share)
+
+        cov = (self.params.log_rate_cov(home_key, away_key, r["home_league"], r["away_league"], r["group"], neutral)
+               if with_interval else None)
+        iv = interval(draw, cov, (r["lam_raw"], r["nu_raw"])) if with_interval else {}
+        vg = VALIDATION_GROUPS.get(r["group"], "YURTICI")
+        day = int((pd.Timestamp(date).normalize() - EPOCH).days)
+        notes, codes = [], []
+        n_h, n_a = self.team_n(home_key, day), self.team_n(away_key, day)
+        for team, n in ((home, n_h), (away, n_a)):
+            if n < MIN_TEAM_MATCHES:
+                notes.append(f"{team}: son 365 günde yalnızca {n} lig + kupa maçı (önbilgi ağırlıklı).")
+                codes.append("TAKIM_N365_AZ")
+        ht = goal.comp_ht_share.get(str(comp))
+        if ht is not None and ht < MIN_HT_SHARE:
+            notes.append(f"Bu turnuvada geçerli ilk yarı skoru oranı düşük (%{100 * ht:.0f}).")
+            codes.append("LIG_IY_ORANI_DUSUK")
+        ko = kickoff_utc(date, time_str or "", source, kickoff_country(comp, source))
+        info = {"kupa": True, "comp": comp, "home_key": home_key, "away_key": away_key, "home_country": home_country,
+                "away_country": away_country, "lam": r["lam"], "nu": r["nu"], "share": share, "neutral": bool(neutral),
+                "home_league": r["home_league"], "away_league": r["away_league"], "validation_group": vg,
+                "h_n365": float(n_h), "a_n365": float(n_a),
+                "model_version": f"{MODEL_VERSION}/{GOAL_MODEL_VERSION}",
+                "data_cutoff": str((EPOCH + pd.Timedelta(days=int(self.last_day))).date())
+                if self.last_day is not None else ""}
+        return GoalPrediction(
+            event_id=event_id(comp, pd.Timestamp(date).date(), home, away), league=comp, home=home, away=away,
+            date=pd.Timestamp(date).normalize(), time=time_str or "", kickoff_utc=ko, kickoff_text=fmt_istanbul(ko, date),
+            probs=probs, intervals=iv, base_rates=dict(goal.base.get(vg, {})), data_notes=notes, info=info,
+            data_codes=tuple(sorted(set(codes))), state_digest=self.digest,
+            validated=dict(goal.validated.get(vg, {})))
 
     def predict_fixtures(self, fixtures: pd.DataFrame | None) -> list:
         out = []

@@ -79,13 +79,28 @@ def _verdict(ctx, league, date, time_str, home, away, as_of, pred, source="", ma
                           candidate_id=eid, canonical_id=mapped, by_market=by, prediction=pred)
 
 
-def decisions_for(pred: GoalPrediction, engine: GoalEngine, ledger: Ledger | None, decision_time: dt.datetime,
+def model_validated(pred: GoalPrediction, engine: GoalEngine | None) -> dict:
+    """Tahminin pazar başına doğrulama statüsü: tahmine özgüyse (kupa maçları: turnuvanın doğrulama grubu) o, değilse
+    motorun genel statüsü; motor yoksa hiçbir pazar doğrulanmış sayılmaz."""
+    own = getattr(pred, "validated", None)
+    if own is not None:
+        return own
+    return dict(getattr(engine, "validated", None) or {})
+
+
+def is_cup_prediction(pred) -> bool:
+    return bool((getattr(pred, "info", None) or {}).get("kupa"))
+
+
+def decisions_for(pred: GoalPrediction, engine: GoalEngine | None, ledger: Ledger | None, decision_time: dt.datetime,
                   policy: DecisionPolicy = DecisionPolicy(), eligibility=None) -> list[Decision]:
     """Bir maçın altı seçimi için kararlar (oranlar yalnızca karar anından önceki kayıtlardan).
 
     ``eligibility``: bu maç için ``FixtureVerdict`` veya pazar -> ``Eligibility`` sözlüğü. Verilmezse (bağlamsız
-    çağrı) bütün seçimler ``DATA_NOT_ELIGIBLE`` olur; koruma varsayılan olarak aşılmaz."""
+    çağrı) bütün seçimler ``DATA_NOT_ELIGIBLE`` olur; koruma varsayılan olarak aşılmaz. Kupa maçlarında (KUPA-GOL-02)
+    doğrulama statüsü tahminin kendisinden gelir (``model_validated``)."""
     by = eligibility.by_market if isinstance(eligibility, FixtureVerdict) else (eligibility or {})
+    validated = model_validated(pred, engine)
     out = []
     for key in SELECTIONS:
         primary_yes = key if MARKETS[key].selection in ("YES", "OVER") else MARKETS[key].complement
@@ -94,7 +109,7 @@ def decisions_for(pred: GoalPrediction, engine: GoalEngine, ledger: Ledger | Non
         lo, hi = pred.interval(key)
         a = Assessment(
             event_id=pred.event_id, league=pred.league, home=pred.home, away=pred.away, market_key=key,
-            p=pred.p(key), p_low=lo, p_high=hi, model_validated=engine.validated.get(primary_yes, False),
+            p=pred.p(key), p_low=lo, p_high=hi, model_validated=bool(validated.get(primary_yes, False)),
             data_notes=list(pred.data_notes), quote=q, opposite_quote=opp, kickoff=pred.kickoff_utc,
             match_date=pd.Timestamp(pred.date).date(), eligibility=by.get(primary_yes),
             state_digest=pred.state_digest or None,
@@ -129,6 +144,10 @@ def record_decisions(ledger: Ledger, pred: GoalPrediction, decisions: list[Decis
     from .forecast_log import RECORD_BET, RECORD_DECISION
 
     record_time = record_time or dt.datetime.now(dt.timezone.utc)
+    info = getattr(pred, "info", None) or {}
+    # Kupa maçları (KUPA-GOL-02) kendi model sürümünü ve veri kesimini taşır
+    model_version = info.get("model_version") or f"{MODEL_VERSION}/{engine.variant}"
+    data_cutoff = info.get("data_cutoff") or engine.data_cutoff
     ids = []
     for d in decisions:
         elig = d.data_eligibility or {}
@@ -142,8 +161,8 @@ def record_decisions(ledger: Ledger, pred: GoalPrediction, decisions: list[Decis
             "event_id": d.event_id, "league": pred.league, "home": pred.home, "away": pred.away,
             "kickoff": pred.kickoff_utc.isoformat() if pred.kickoff_utc else str(pred.date.date()),
             "market_key": d.market_key, "decision_time": d.decision_time,
-            "model_version": f"{MODEL_VERSION}/{engine.variant}", "feature_version": FEATURE_VERSION,
-            "data_cutoff": engine.data_cutoff, "p": p, "p_low": finite_or_none(d.p_safe) if p is not None else None,
+            "model_version": model_version, "feature_version": FEATURE_VERSION,
+            "data_cutoff": data_cutoff, "p": p, "p_low": finite_or_none(d.p_safe) if p is not None else None,
             "odds": finite_or_none(d.odds), "decision_status": d.status,
             "reasons": d.reasons + (["Kayıt anında aday kararı geçerliliğini yitirdi (gün değişti veya maç başladı); "
                                      "sanal stake yok."] if d.status == "VALUE_CANDIDATE" and not bet else []),
@@ -154,6 +173,20 @@ def record_decisions(ledger: Ledger, pred: GoalPrediction, decisions: list[Decis
             "veri_uygunlugu": elig or None,
         }))
     return ids
+
+
+def settlement_matches(store) -> pd.DataFrame:
+    """Sonuçlandırma için lig maçları + kupa maçları (kupada ``league`` = turnuva kodu; ad ve tarih fikstürdekiyle aynı
+    kaynak adlarıdır, KUPA-GOL-02)."""
+    cols = ["league", "date", "home", "away", "fthg", "ftag", "hthg", "htag"]
+    parts = []
+    m = getattr(store, "matches", None)
+    if m is not None and not m.empty:
+        parts.append(m[cols])
+    c = getattr(store, "cup_matches", None)
+    if c is not None and not c.empty:
+        parts.append(c.rename(columns={"comp": "league"})[cols])
+    return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame(columns=cols)
 
 
 def settle_pending(ledger: Ledger, matches: pd.DataFrame, source: str = "veri deposu") -> dict:

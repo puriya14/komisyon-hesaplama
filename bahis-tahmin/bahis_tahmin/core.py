@@ -355,6 +355,21 @@ def cup_predictions(store: DataStore, cup_engine, settings: Settings, now: dt.da
     return gated_cup_predictions(eng, cctx, fx, now)
 
 
+def cup_goal_verdicts(store: DataStore, cup_engine, settings: Settings, now: dt.datetime, dctx,
+                      with_interval: bool = True) -> list:
+    """KUPA-GOL-02: kupa fikstürlerinin gol pazarları sonuçları (tahmin + pazar başına uygunluk; ``FixtureVerdict``)."""
+    from .kupa.uygunluk import build_cup_context, gated_cup_goal_predictions
+
+    fx = getattr(store, "cup_fixtures", None)
+    if fx is None or fx.empty or not settings.kupalar:
+        return []
+    fx = fx[fx["comp"].isin(settings.kupalar)]
+    ok = cup_engine is not None and cup_engine.trained and getattr(cup_engine, "goal", None) is not None
+    eng = cup_engine if ok else None
+    cctx = build_cup_context(store, eng, dctx, settings)
+    return gated_cup_goal_predictions(eng, cctx, fx, now, with_interval=with_interval)
+
+
 def prediction_rows(predictions, unpredicted, settings: Settings, now: dt.datetime) -> pd.DataFrame:
     """Tahmin listesini tabloya uygun DataFrame'e çevirir.
 
@@ -530,12 +545,21 @@ class AppCore:
 
         eng = self.goal_engine
         fixtures, unmatched = self.store.fixtures, self.store.unmatched_fixtures
-        if eng is None or not eng.trained or (fixtures.empty and unmatched.empty):
-            return []
-        if progress:
-            progress(10, "Gol pazarları: veri uygunluğu, tahminler ve belirsizlik aralıkları hesaplanıyor...")
-        ctx = self.eligibility_context(eng)
-        return gated_goal_predictions(eng, ctx, fixtures, self.now(), unmatched=unmatched)
+        out = []
+        if eng is not None and eng.trained and not (fixtures.empty and unmatched.empty):
+            if progress:
+                progress(10, "Gol pazarları: veri uygunluğu, tahminler ve belirsizlik aralıkları hesaplanıyor...")
+            ctx = self.eligibility_context(eng)
+            out = gated_goal_predictions(eng, ctx, fixtures, self.now(), unmatched=unmatched)
+        try:  # KUPA-GOL-02: kupa ve Avrupa maçları (aynı liste, aynı gösterim ve karar kuralları)
+            if progress:
+                progress(80, "Gol pazarları: kupa maçları...")
+            main = self.engine if (self.engine is not None and self.engine.trained) else None
+            out = list(out) + cup_goal_verdicts(self.store, self.cup_engine, self.settings, self.now(),
+                                                self.eligibility_context(main))
+        except Exception:
+            log.exception("Kupa maçlarının gol pazarları hesaplanamadı")
+        return out
 
     def set_goal_verdicts(self, verdicts) -> None:
         with self.lock:

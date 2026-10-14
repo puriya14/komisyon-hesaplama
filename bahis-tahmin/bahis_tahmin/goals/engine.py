@@ -62,6 +62,9 @@ class GoalPrediction:
     # durumunun özeti (uygunluk sonucunun AYNI durumdan geldiğini bağlamak için). Olasılık hesabını etkilemez.
     data_codes: tuple = ()
     state_digest: str = ""
+    # Pazar başına doğrulama statüsü bu tahmine özgüyse (kupa maçları: turnuvanın doğrulama grubu; KUPA-GOL-02). None:
+    # motorun genel statüsü (``GoalEngine.validated``) geçerlidir.
+    validated: dict | None = None
 
     def p(self, market_key: str) -> float:
         """Seçim olasılığı (Hayır/Alt tarafı için tümleyen)."""

@@ -32,6 +32,7 @@ import pandas as pd
 from ..eligibility import (
     PAIR_DAY_TOLERANCE,
     PENDING_GRACE_DAYS,
+    PREDICTION_CODE_MAP,
     EligibilityContext,
     FixtureVerdict,
     _digest,
@@ -137,6 +138,7 @@ class CupContext:
         for c in usable:
             base["data_scope"]["kapsam_kanitlari"].append({
                 "lig": league, "kaynak": c.source, "sezon": c.season, "alinma": c.retrieved_at.isoformat(),
+                "tam": c.complete,
                 "gecmis_aralik_kaniti": [[str(day_to_date(s)), str(day_to_date(e))] for s, e in c.verified_windows],
                 "ozet": c.sha256[:16]})
         if "kontrol" in sub["data_scope"]:
@@ -199,27 +201,31 @@ class CupContext:
     # ------------------------------------------------------------------ değerlendirme
     def evaluate(self, *, comp: str, season: str, date, home: str, away: str, home_key: str, away_key: str,
                  home_country: str, away_country: str, as_of: dt.datetime, source: str = "", provider_id: str = "",
-                 prediction=None) -> dict:
+                 prediction=None, markets=MARKETS, prediction_codes=None) -> dict:
+        """Pazar başına uygunluk. 1X2: ``prediction`` (``MatchPrediction``) verilirse olasılıkların geçerliliği
+        denetlenir. Gol pazarları (KUPA-GOL-02): ``markets=GOAL_MARKETS`` ve ``prediction_codes`` (``goals.service.
+        prediction_codes``; None ise gerekli alanlar denetlenmemiş sayılır ve tahmin uygun olmaz)."""
         from ..goals.ledger import event_id as make_event_id
 
+        markets = tuple(markets)
         cut = info_cutoff(as_of)
-        pcodes = None
-        if prediction is not None:
+        pcodes = None if prediction_codes is None else tuple(sorted(prediction_codes))
+        if prediction is not None and pcodes is None:
             ok = bool(np.all(np.isfinite(np.asarray(prediction.p_final, dtype=float))))
             pcodes = () if ok else ("OLASILIK_GECERSIZ",)
         key = (self.fingerprint, comp, str(season), str(pd.Timestamp(date).date()), home_key, away_key, source,
-               provider_id, cut, self._live(as_of), pcodes is None, pcodes)
+               provider_id, cut, self._live(as_of), pcodes is None, pcodes, markets)
         hit = self._cache.get(key)
         if hit is None:
             hit = self._evaluate(comp, str(season), date, home, away, home_key, away_key, home_country, away_country,
                                  as_of, cut, source, provider_id, pcodes, make_event_id(comp, pd.Timestamp(date).date(),
-                                                                                         home, away))
+                                                                                         home, away), markets)
             self._cache[key] = hit
         stamp = as_of.astimezone(dt.timezone.utc).isoformat()
         return {mk: _restamp(e, stamp) for mk, e in hit.items()}
 
     def _evaluate(self, comp, season, date, home, away, home_key, away_key, home_country, away_country, as_of, cut,
-                  source, provider_id, pcodes, eid):
+                  source, provider_id, pcodes, eid, markets=MARKETS):
         eng = self.engine
         cut_day = day_number(cut)
         fx_day = day_number(date)
@@ -249,6 +255,7 @@ class CupContext:
         if home_key == away_key or not self._fixture_identity(comp, season, source, provider_id, home_key, away_key):
             codes.append("TAKIM_ESLESMESI_DOGRULANAMADI")
             base["team_mapping"] = "DOGRULANAMADI"
+        model_codes: list[str] = []  # yalnızca 1X2: maç sonucu modelinin doğrulama statüsü
         if eng is None or not getattr(eng, "trained", False):
             codes.append("MODEL_YOK")
         else:
@@ -256,7 +263,7 @@ class CupContext:
                 codes.append("DURUM_KARAR_ANINDAN_SONRA")
             vg = VALIDATION_GROUPS.get(COMPETITIONS[comp].group if comp in COMPETITIONS else "C", "YURTICI")
             if eng.status.get(vg) != DOGRULANDI:
-                codes.append("KUPA_MODEL_DOGRULANMADI")
+                model_codes.append("KUPA_MODEL_DOGRULANMADI")
         evidence_all = True
         for k, ctry, nm in ((home_key, home_country, home), (away_key, away_country, away)):
             td: dict = {}
@@ -290,8 +297,23 @@ class CupContext:
         if (comp, season) not in self.calendars:
             codes.append("KUPA_TAKVIMI_YOK")
             evidence_all = False
-        per_market = {mk: tuple(pcodes or ()) for mk in MARKETS}
-        return _finalize(base, codes, MARKETS, per_market, evidence_checked=evidence_all,
+        per_market = {}
+        for mk in markets:
+            if mk == "1X2":
+                per_market[mk] = tuple(pcodes or ()) + tuple(model_codes)
+                continue
+            # Gol pazarları: motorun yapılandırılmış kodları ("KOD" veya "KOD:PAZAR") lig gol pazarlarıyla aynı eşleme;
+            # pazarın model doğrulaması karar motorunda denetlenir (MODEL_NOT_VALIDATED)
+            req = []
+            for pc in pcodes or ():
+                code, _, only = pc.partition(":")
+                if only and only != mk:
+                    continue
+                hit = PREDICTION_CODE_MAP.get(code)
+                if hit:
+                    req.append(hit[0])
+            per_market[mk] = tuple(req)
+        return _finalize(base, codes, markets, per_market, evidence_checked=evidence_all,
                          required_checked=pcodes is not None, mode=self.mode)
 
 
@@ -312,6 +334,40 @@ def gate_cup_prediction(cctx: CupContext | None, pred, row, as_of: dt.datetime):
                           provider_id=row.provider_id, prediction=pred)["1X2"]
     pred.eligibility = e
     return e
+
+
+def gated_cup_goal_predictions(engine, cctx: CupContext | None, fixtures: pd.DataFrame | None, as_of: dt.datetime,
+                               with_interval: bool = True) -> list:
+    """Kupa maçları için gol pazarları (KUPA-GOL-02): her fikstüre (tahmin + pazar başına uygunluk). Tahmini
+    üretilemeyen maç sessizce düşürülmez; nedenli "tahmin yok" sonucu olarak döner (``FixtureVerdict``)."""
+    from ..eligibility import GOAL_MARKETS, not_evaluated
+    from ..goals.ledger import event_id
+    from ..goals.service import prediction_codes
+
+    out = []
+    if fixtures is None or fixtures.empty:
+        return out
+    for row in fixtures.itertuples(index=False):
+        p = None
+        if engine is not None and getattr(engine, "trained", False) and getattr(engine, "goal", None) is not None:
+            try:
+                p = engine.predict_goals(row.comp, row.home_key, row.away_key, row.home, row.away, row.home_country,
+                                         row.away_country, row.date, row.time or "", bool(row.neutral), row.source,
+                                         with_interval=with_interval)
+            except Exception:  # tek maçın hatası listeyi durdurmaz; nedenli "tahmin yok" olarak kalır
+                p = None
+        eid = event_id(row.comp, pd.Timestamp(row.date).date(), row.home, row.away)
+        if cctx is None:
+            by = {mk: not_evaluated(eid, mk, as_of, canonical=True) for mk in GOAL_MARKETS}
+        else:
+            by = cctx.evaluate(comp=row.comp, season=row.season, date=row.date, home=row.home, away=row.away,
+                               home_key=row.home_key, away_key=row.away_key, home_country=row.home_country,
+                               away_country=row.away_country, as_of=as_of, source=row.source,
+                               provider_id=row.provider_id, markets=GOAL_MARKETS,
+                               prediction_codes=prediction_codes(p) if p is not None else None)
+        out.append(FixtureVerdict(league=row.comp, date=pd.Timestamp(row.date), time=row.time or "", home=row.home,
+                                  away=row.away, candidate_id=eid, canonical_id=True, by_market=by, prediction=p))
+    return out
 
 
 def gated_cup_predictions(engine, cctx: CupContext | None, fixtures: pd.DataFrame | None, as_of: dt.datetime):

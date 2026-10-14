@@ -81,10 +81,50 @@ class Params:
     n_matches: int
     team_index: dict = field(default_factory=dict)
     league_index: dict = field(default_factory=dict)
+    # Yalnızca son çözümde (``fit(..., hessian=True)``): cezalı negatif log-olabilirliğin seyrek Hessian'ı ve parametre
+    # bloklarının başlangıçları (μ=0, iç saha, lig hücum, lig savunma, takım hücum, takım savunma). Belirsizlik aralığı
+    # (KUPA-GOL-02) için; tahmini değiştirmez.
+    hess: object = None
+    offsets: tuple | None = None
 
     def __post_init__(self):
         self.team_index = {t: i for i, t in enumerate(self.teams)}
         self.league_index = {lg: i for i, lg in enumerate(self.leagues)}
+
+    def _home_key(self, group: str | None) -> str | None:
+        key = f"grup:{group}"
+        return key if key in self.homes else ("grup:U" if "grup:U" in self.homes else None)
+
+    def log_rate_cov(self, home: str, away: str, hlg: str | None, alg: str | None, group: str | None,
+                     neutral: bool) -> np.ndarray | None:
+        """(log λ, log ν) ham gol beklentilerinin yaklaşık kovaryansı (Laplace yaklaşımı: cezalı olabilirliğin ters
+        Hessian'ı, ``rates`` ile aynı parametreler). Hessian yoksa veya takım modelde yoksa None."""
+        if self.hess is None or self.offsets is None:
+            return None
+        i, j = self.team_index.get(home), self.team_index.get(away)
+        if i is None or j is None:
+            return None
+        o_H, o_A, o_D, o_a, o_d = self.offsets
+        g = np.zeros((self.hess.shape[0], 2))
+        g[0, :] = 1.0
+        hk = None if neutral else self._home_key(group)
+        if hk is not None:
+            g[o_H + list(self.homes).index(hk), 0] += 1.0
+        lh = self.league_index.get(hlg) if hlg is not None else None
+        la = self.league_index.get(alg) if alg is not None else None
+        if lh is not None:
+            g[o_A + lh, 0] += 1.0
+            g[o_D + lh, 1] -= 1.0
+        if la is not None:
+            g[o_D + la, 0] -= 1.0
+            g[o_A + la, 1] += 1.0
+        g[o_a + i, 0] += 1.0
+        g[o_d + j, 0] -= 1.0
+        g[o_a + j, 1] += 1.0
+        g[o_d + i, 1] -= 1.0
+        x = np.asarray(spsolve(self.hess, g)).reshape(g.shape)
+        cov = g.T @ x
+        return 0.5 * (cov + cov.T)
 
     def as_dict(self) -> dict:
         """Isınma başlangıcı (sonraki çözüm için): ad -> değer."""
@@ -113,7 +153,8 @@ class Params:
         a = self.team_strength(away, alg)
         if h is None or a is None:
             return None
-        hv = 0.0 if neutral else float(self.homes.get(f"grup:{group}", self.homes.get("grup:U", 0.25)))
+        hk = None if neutral else self._home_key(group)
+        hv = 0.0 if neutral else (float(self.homes[hk]) if hk is not None else 0.25)
         lam = float(np.exp(self.mu + hv + h[0] - a[1]))
         nu = float(np.exp(self.mu + a[0] - h[1]))
         return lam, nu
@@ -210,8 +251,10 @@ def build_data(domestic: pd.DataFrame, cups: pd.DataFrame, key_of, group_of) -> 
 # ----------------------------------------------------------------------------------------------------- çözüm
 
 
-def fit(data: ModelData, day: int, cfg: ModelConfig = ModelConfig(), init: dict | None = None) -> Params | None:
-    """``day`` gününden ÖNCE oynanmış ve pencere içindeki maçlarla parametreler (yeterli maç yoksa None)."""
+def fit(data: ModelData, day: int, cfg: ModelConfig = ModelConfig(), init: dict | None = None,
+        hessian: bool = False) -> Params | None:
+    """``day`` gününden ÖNCE oynanmış ve pencere içindeki maçlarla parametreler (yeterli maç yoksa None).
+    ``hessian``: çözümdeki Hessian'ı da sakla (belirsizlik aralığı için; yalnızca son çözümde)."""
     sel = np.nonzero((data.day < day) & (data.day >= day - cfg.window_days))[0]
     if len(sel) < cfg.min_matches:
         return None
@@ -302,9 +345,14 @@ def fit(data: ModelData, day: int, cfg: ModelConfig = ModelConfig(), init: dict 
         if np.max(np.abs(t * step)) < cfg.tol or abs(obj - obj_old) < cfg.tol:
             break
     teams = [data.teams[t] for t in tu]
+    hess = None
+    if hessian:
+        rate = np.exp(X @ th)
+        hess = ((Xt @ sp.diags(ww * rate) @ X) + sp.diags(pen + 1e-9)).tocsc()
     return Params(fit_day=int(day), teams=teams, attack=th[o_a:o_d].copy(), defense=th[o_d:].copy(), leagues=names_L,
                   lg_attack=th[o_A:o_D].copy(), lg_defense=th[o_D:o_a].copy(),
-                  homes={hn: float(th[o_H + k]) for k, hn in enumerate(data.homes)}, mu=float(th[0]), n_matches=m)
+                  homes={hn: float(th[o_H + k]) for k, hn in enumerate(data.homes)}, mu=float(th[0]), n_matches=m,
+                  hess=hess, offsets=(o_H, o_A, o_D, o_a, o_d) if hessian else None)
 
 
 # ------------------------------------------------------------------------------------------------ kalibrasyon

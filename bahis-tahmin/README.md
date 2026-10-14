@@ -15,7 +15,7 @@ komut satırı).
 | **Kupa ve Avrupa maçları** | Şampiyonlar Ligi, Avrupa Ligi, Konferans Ligi (elemeler dahil), UEFA Süper Kupa, ulusal kupalar ve diğer kıtaların turnuvaları: bütün lig ve kupa maçlarından kurulan **ligler arası ortak model**, ileriye dönük doğrulama, iki takımın ayrı liglerine göre veri uygunluğu |
 | En Olası Seçimler | Model olasılığı yüksek seçimler ve geçmişte gerçekleşme oranları (avantaj listesi **değildir**) |
 | Geriye dönük test | Gerçek 1X2 ve 2,5 Alt/Üst oranlarıyla geçmiş simülasyon |
-| **Gol Pazarları** | İki yarıda da karşılıklı gol (A), maç sonu 3,5 Üst (B), ilk yarı 1,5 Üst (C): ortak yarı-gol modeli, belirsizlik aralıkları, kapsam matrisi, doğrulama, karar motoru ve değiştirilemez sanal takip |
+| **Gol Pazarları** | İki yarıda da karşılıklı gol (A), maç sonu 3,5 Üst (B), ilk yarı 1,5 Üst (C): ortak yarı-gol modeli, belirsizlik aralıkları, kapsam matrisi, doğrulama, karar motoru ve değiştirilemez sanal takip. Kupa ve Avrupa maçları da dahildir (ligler arası ortak model; pazar ve doğrulama grubu başına ayrı doğrulama) |
 | **Dizi Araştırması** | Maç dizileri, olay öncesi/sonrası ve tekrarlar (ör. İY/MS 2/1): geçmiş inceleme, maç öncesi benzer diziler, ön-kayıtlı örüntü doğrulama (çoklu test, yanlışlama, zaman sıralı doğrulama) ve tahminden ayrı anomali incelemesi. **Araştırma statüsündedir**; ana modelleri değiştirmez |
 
 Gol pazarlarının ayrıntıları: [`docs/GOL_PAZARLARI_MODEL_KARTI.md`](docs/GOL_PAZARLARI_MODEL_KARTI.md).
@@ -71,10 +71,12 @@ Veriler, modeller ve sanal takip dosyası yalnızca bilgisayarınızda tutulur:
 .venv\Scripts\python -m bahis_tahmin update --kupalar varsayilan          & rem kupa / Avrupa turnuvaları
 .venv\Scripts\python -m bahis_tahmin kupa-egit
 .venv\Scripts\python -m bahis_tahmin kupa-tahmin --turnuva UCL
+.venv\Scripts\python -m bahis_tahmin kupa-gol-tahmin --turnuva UCL
 ```
 
 Kupa ve Avrupa maçları (KUPA-01): `kupa-turnuvalar` (kodlar), `kupa-egit` (ligler arası ortak model + ileriye dönük
-doğrulama), `kupa-tahmin`, `kupa-rapor`. Ayrıntılar: [`docs/KUPA_01.md`](docs/KUPA_01.md).
+doğrulama), `kupa-tahmin`, `kupa-rapor`. Ayrıntılar: [`docs/KUPA_01.md`](docs/KUPA_01.md). Kupa maçlarında gol
+pazarları (KUPA-GOL-02): `kupa-gol-tahmin`; ayrıntılar: [`docs/KUPA_GOL_02.md`](docs/KUPA_GOL_02.md).
 
 Tek ligde gerçek veri pilotu (S4; openfootball sonuçları, İngiltere Premier League; bütün yazmalar yalnızca `--ev`
 ile verilen ayrı pilot klasörüne): `pilot-hazirla`, `pilot-kapsam` (salt okunur), `pilot-egit`, `pilot-tahmin`
@@ -139,6 +141,7 @@ dokunmaz (`tests/conftest.py`: `BAHIS_TAHMIN_HOME` geçici dizine yönlendirilir
 - [`docs/DIZI_ARASTIRMA_DUZELTMELER.md`](docs/DIZI_ARASTIRMA_DUZELTMELER.md) — sonuç belgesinin kanıt denetimi: düzeltme ve daraltma kaydı (S2-KABUL-01)
 - [`docs/ILERIYE_DONUK_OLCUM.md`](docs/ILERIYE_DONUK_OLCUM.md) — A/B/C için ileriye dönük ölçüm protokolü ve elle günlük akış
 - [`docs/KUPA_01.md`](docs/KUPA_01.md) — kupa ve Avrupa maçları: neden yoktu, kaynaklar (openfootball + ESPN), kanıtlı takım kimliği, ligler arası ortak model, ileriye dönük doğrulama sonuçları, uygunluk kodları, sınırlar
+- [`docs/KUPA_GOL_02.md`](docs/KUPA_GOL_02.md) — Gol Pazarlarında kupa maçları: ilk yarı skoru kapsamı, `kupa-gol-v1` modeli ve geliştirme döneminde seçimi, `kupa-gol-dogrulama-v1` kuralı (ECE eşiği uyarlaması dahil), gerçek veri sonuçları, uygunluk/karar/sanal takip, sınırlar
 - [`docs/WEB_01.md`](docs/WEB_01.md) — web sürümü: açma, telefondan parolalı erişim, sayfalar, masaüstüyle ortak çekirdek, güvenlik önlemleri
 - [`docs/KAYNAK_06.md`](docs/KAYNAK_06.md) — bütün ligler için ESPN: lig kodları, önceki sezonun play-off maçlarını takvim dışında tutma, geride kalan veri deposu (ek ligler), ad değişikliği, ligler arası kanıt, ESPN benzetimi
 - [`docs/KAYNAK_04.md`](docs/KAYNAK_04.md) — Serie B, La Liga 2, Ligue 2, Süper Lig ve 2. Bundesliga için ESPN (onay + kişisel kullanım beyanıyla açılan kaynak): fikstür, eksik dönem, sezon takvimi, maç kanıtlı ad eşlemesi; KAYNAK-05: ESPN'in openfootball'a önceliği

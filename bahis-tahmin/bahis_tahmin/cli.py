@@ -27,6 +27,7 @@
     python -m bahis_tahmin kupa-egit                # ligler arası kupa modeli + ileriye dönük doğrulama
     python -m bahis_tahmin kupa-tahmin --turnuva UCL
     python -m bahis_tahmin kupa-rapor               # kupa verisi ve model doğrulama raporu
+    python -m bahis_tahmin kupa-gol-tahmin --turnuva UCL   # kupa maçlarında gol pazarları (A/B/C)
 """
 
 from __future__ import annotations
@@ -245,6 +246,19 @@ def _print_cup_report(eng) -> None:
         acc = "-" if r["isabet"] is None or r["isabet"] != r["isabet"] else f"%{100 * r['isabet']:.1f}"
         st = r["statu"] + (f" ({r['neden']})" if r["neden"] and r["grup"] else "")
         print(f"{str(r['ad'])[:42]:42s} {r['n']:6d} {ll:>10s} {tb:>7s} {acc:>7s}  {st}")
+    from .kupa.gol import GOAL_RULE
+    from .kupa.gorunum import goal_validation_rows
+
+    rows = goal_validation_rows(eng)
+    if rows:
+        print(f"\nGol pazarları (kural {GOAL_RULE}):")
+        print(f"{'Grup / pazar':52s} {'Maç':>6s} {'Poz.':>5s} {'LL':>7s} {'Taban':>7s} {'Δ üst':>8s} {'Eğim':>5s} "
+              f"{'ECE':>6s} {'Eşik':>6s}  Statü")
+        for r in rows:
+            name = f"{r['Grup'][:20]} · {r['Pazar']}"
+            print(f"{name[:52]:52s} {r['Maç']:6d} {r['Pozitif']:5d} {r['LL model']:7.4f} {r['LL taban']:7.4f} "
+                  f"{r['Δ üst']:+8.4f} {r['Kal. eğim']:5.2f} {r['ECE']:6.3f} {r['ECE eşiği']:6.3f}  {r['Statü']}"
+                  + (f" ({r['Neden']})" if r["Neden"] else ""))
 
 
 def cmd_cup_train(a) -> int:
@@ -268,6 +282,30 @@ def cmd_cup_train(a) -> int:
         return 1
     print(f"Eğitim {time.time() - t:.0f} sn sürdü.")
     _print_cup_report(eng)
+    return 0
+
+
+def cmd_cup_goal_predict(a) -> int:
+    """KUPA-GOL-02: kupa ve Avrupa maçlarında gol pazarları (A/B/C), aynı uygunluk kontrolüyle."""
+    from .core import cup_goal_verdicts
+    from .kupa.gorunum import goal_status_line
+    from .models.engine import PredictionEngine
+
+    st = _store()
+    eng = _cup_engine()
+    if eng is None or not eng.trained or getattr(eng, "goal", None) is None:
+        print("Kupa modeli bulunamadı. Önce 'update --kupalar ...' ve 'kupa-egit' çalıştırın.", file=sys.stderr)
+        return 2
+    s = Settings.load()
+    now = _now_utc()
+    verdicts = cup_goal_verdicts(st, eng, s, now, _eligibility_ctx(st, PredictionEngine.load(app_home() / ENGINE_FILE)))
+    if a.turnuva:
+        verdicts = [v for v in verdicts if v.league == a.turnuva.strip().upper()]
+    if not verdicts:
+        print("Yaklaşan kupa maçı bulunamadı.")
+        return 0
+    print(goal_status_line(eng) + " Gerçek oran olmadan öneri üretilmez.")
+    _print_goal_verdicts(verdicts, now)
     return 0
 
 
@@ -484,6 +522,11 @@ def cmd_goal_predict(a) -> int:
     st = {k: ("doğrulandı" if v else "DOĞRULANMADI") for k, v in eng.validated.items()}
     print(f"Model durumu: A {st.get('BTTS_BOTH_HALVES_YES')} · B {st.get('FT_OVER_3_5')} · C {st.get('FH_OVER_1_5')}. "
           "Gerçek oran olmadan öneri üretilmez. Olasılık yalnızca veri uygunluğu doğrulanan pazarlarda gösterilir.")
+    _print_goal_verdicts(verdicts, now)
+    return 0
+
+
+def _print_goal_verdicts(verdicts, now) -> None:
     for v in verdicts:
         p = v.prediction
         when = p.kickoff_text if p is not None else f"{v.date:%d.%m.%Y}"
@@ -503,7 +546,6 @@ def cmd_goal_predict(a) -> int:
         e0 = v.first()
         note = "" if (e0 is not None and e0.bet_ok) else f"  (bahis adayı değil: {e0.lead_code if e0 else 'BAGLAM_YOK'})"
         print(head + " ".join(parts) + note)
-    return 0
 
 
 def _forecast_inputs():
@@ -1367,6 +1409,9 @@ def main(argv: list[str] | None = None) -> int:
     kt.add_argument("--turnuva", help="turnuva kodu, ör. UCL")
     kt.set_defaults(fn=cmd_cup_predict)
     sub.add_parser("kupa-rapor", help="kupa verisi ve kupa modeli doğrulama raporu").set_defaults(fn=cmd_cup_report)
+    kg = sub.add_parser("kupa-gol-tahmin", help="kupa / Avrupa maçlarında gol pazarları (A/B/C)")
+    kg.add_argument("--turnuva", help="turnuva kodu, ör. UCL")
+    kg.set_defaults(fn=cmd_cup_goal_predict)
     w = sub.add_parser("web", help="web arayüzünü başlat (tarayıcıdan kullanım; varsayılan yalnızca bu bilgisayar)")
     w.add_argument("--port", type=int, help="sunucu portu (varsayılan 8765)")
     w.add_argument("--paylas", action="store_true", help="aynı ağdaki cihazlardan (ör. telefon) erişime aç; "

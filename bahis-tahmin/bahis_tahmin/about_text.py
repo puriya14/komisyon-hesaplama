@@ -35,7 +35,8 @@ Model her doğrulama grubu (UEFA turnuvaları, yurt içi kupalar, diğer kıtala
 ileriye dönük (model o maçları görmeden) tahminler önceki sezonların kupa maçı oranlarından anlamlı biçimde daha
 iyiyse <b>"doğrulandı"</b> sayılır; doğrulanmayan grupların tahminleri gösterilir ama bahis adayı olmaz. Kupa maçları için
 ücretsiz veride piyasa oranı yoktur; Maç Analizi'nde kendi oranlarınızı girerek değer hesaplayabilirsiniz. Gol Pazarları
-sayfasındaki yarı-gol pazarları yalnızca lig maçlarını kapsar.</p>
+sayfası kupa maçlarını da kapsar: ortak modelin gol beklentileri, önceki kupa maçlarındaki ilk yarı gol payıyla yarılara
+bölünür. Her pazar her doğrulama grubunda ayrı ölçülür; doğrulanmayan pazarlar bahis adayı olmaz.</p>
 <p>Tüm başarı ölçümleri <b>sızıntısızdır</b>: her sezon, yalnızca o sezondan önceki verilerle eğitilen bir modelle
 tahmin edilmiştir (walk-forward). Uygulamadaki yüzdeler bu gerçekçi testlerden gelir.</p>
 

@@ -39,10 +39,13 @@ from ..goals.service import (
     SELECTIONS,
     decisions_for,
     gated_goal_match,
+    is_cup_prediction,
+    model_validated,
     ledger_csv,
     ledger_rows,
     record_decisions,
     settle_pending,
+    settlement_matches,
 )
 from ..goals.value import OddsQuote
 from ..plots import SvgCanvas, plot_goal_calibration
@@ -56,15 +59,25 @@ TABS = [("tarama", "Tarama"), ("mac", "Maç analizi"), ("kapsam", "Veri kapsamı
 
 
 def _status_text(core) -> str:
+    from ..kupa.gorunum import goal_status_line
+
     eng = core.goal_engine
+    cup = goal_status_line(core.cup_engine) if core.settings.kupalar else ""
     if eng is None:
         err = core.goal_load_error
-        return ("Gol pazarları modeli eğitilmedi." + (f" ({err})" if err and "yok" not in err else "")
-                + " Veriler indirildikten sonra 'Gol modelini eğit' düğmesini kullanın.")
+        return ("Lig maçları: gol pazarları modeli eğitilmedi." + (f" ({err})" if err and "yok" not in err else "")
+                + " Veriler indirildikten sonra 'Gol modelini eğit' düğmesini kullanın." + (f" {cup}" if cup else ""))
     st = " · ".join(f"{s}: {'doğrulandı (sanal takip)' if eng.validated.get(KEY_OF[s]) else 'DOĞRULANMADI'}"
                     for s in ("A", "B", "C"))
-    return (f"Model durumu — {st}. Bu pazarlar için geçmiş gerçek oran verisi olmadığından kârlılık doğrulanamaz; "
-            "'avantaj adayı' yalnızca girdiğiniz güncel gerçek oranla ve tüm kontroller geçilirse oluşur.")
+    return (f"Lig maçları — {st}." + (f" {cup}" if cup else "") + " Bu pazarlar için geçmiş gerçek oran verisi "
+            "olmadığından kârlılık doğrulanamaz; 'avantaj adayı' yalnızca girdiğiniz güncel gerçek oranla ve tüm "
+            "kontroller geçilirse oluşur.")
+
+
+def _cup_engine(core):
+    from ..kupa.gorunum import goal_part
+
+    return core.cup_engine if goal_part(core.cup_engine) is not None else None
 
 
 # ================================================================== seçim (yaklaşan maç veya elle)
@@ -78,6 +91,22 @@ def _selection(core, values):
     if aday:
         v = next((x for x in list(core.goal_verdicts) if x.candidate_id == aday), None)
         return v, {"aday": aday}
+    comp = values.get("turnuva") or ""
+    if comp:  # KUPA-GOL-02: elle seçilen ligler arası / kupa maçı (takım anahtarları kupa modelinin listesinden)
+        from ..kupa.gorunum import goal_match, teams_for_analysis
+        from ..kupa.turnuvalar import COMPETITIONS
+
+        cup = _cup_engine(core)
+        hk, ak = values.get("ev_k") or "", values.get("dep_k") or ""
+        names = {k: n for _g, ts in teams_for_analysis(cup) for k, n in ts}
+        neutral = values.get("tarafsiz") == "1"
+        sel = {"turnuva": comp, "ev_k": hk, "dep_k": ak, **({"tarafsiz": "1"} if neutral else {})}
+        if cup is None or comp not in COMPETITIONS or hk not in names or ak not in names or hk == ak:
+            return None, sel
+        main = core.engine if (core.engine is not None and core.engine.trained) else None
+        v = goal_match(cup, core.store, core.eligibility_context(main), core.settings, comp=comp, home_key=hk,
+                       away_key=ak, names=names, date=core.today(), neutral=neutral, as_of=core.now())
+        return v, sel
     lg, h, a = values.get("lig") or "", values.get("ev") or "", values.get("dep") or ""
     if eng is None or not lg or not h or not a or h == a or lg not in (eng.states or {}):
         return None, {}
@@ -99,7 +128,8 @@ def _eligibility_info(v) -> dict | None:
             return ""
         return "; geçmiş aralık kanıtı " + (", ".join(f"{a}–{b}" for a, b in ar) or "yok")
 
-    kan = ", ".join(f"{x['kaynak']} {x['sezon']} ({'tam sezon takvimi' if x['tam'] else 'tam sezon doğrulanmadı'}"
+    kan = ", ".join((f"{x['lig']} · " if x.get("lig") else "")
+                    + f"{x['kaynak']} {x['sezon']} ({'tam sezon takvimi' if x.get('tam') else 'tam sezon doğrulanmadı'}"
                     f"{araliklar(x)}, alınma {x['alinma'][:16]})" for x in ev) or "yok"
     return {"policy": e.policy_version, "evaluated": e.evaluated_at[:16], "info_cutoff": e.info_cutoff,
             "data_cutoff": e.data_cutoff or "-",
@@ -112,13 +142,15 @@ def _eligibility_info(v) -> dict | None:
 
 def _analysis(core, v, led) -> dict:
     """Maç analizi paneli (masaüstündeki ``GoalsPage._show`` ile aynı kurallar)."""
-    eng = core.goal_engine
-    now = core.now()
     p = v.prediction
+    cup = is_cup_prediction(p)
+    eng = _cup_engine(core) if cup else core.goal_engine
+    now = core.now()
     out = {"v": v, "title": f"{v.home} - {v.away}", "league": league_name(v.league), "cards": [], "rel": None,
            "conds": [], "decisions": [], "secondary": [], "can_record": False, "model": None,
-           "elig": _eligibility_info(v), "event_id": getattr(p, "event_id", None)}
+           "elig": _eligibility_info(v), "event_id": getattr(p, "event_id", None), "kupa": cup}
     usable_any = p is not None and eng is not None and v.any_usable(now)
+    validated = model_validated(p, eng) if p is not None else {}
     for s in ("A", "B", "C"):
         key = KEY_OF[s]
         e = v.get(key)
@@ -127,9 +159,9 @@ def _analysis(core, v, led) -> dict:
             out["cards"].append((f"{s}: {NAMES[s]}", "—", f"Tahmin yok · {label} · {text}"))
             continue
         prob = p.probs.get(s, np.nan)
-        model_ok = eng.status_text(key) == "VALIDATED_FOR_PAPER_TRADING"
+        model_ok = bool(validated.get(key))
         sub = (f"Belirsizlik (%80): {iv(p, key)} · adil oran {fmt_num(1 / prob) if prob == prob and prob > 0 else '-'}"
-               f" · lig taban oranı {fmt_pct(p.base_rates.get(s))} · model: "
+               f" · {'kupa' if cup else 'lig'} taban oranı {fmt_pct(p.base_rates.get(s))} · model: "
                + ("sanal takip için doğrulandı" if model_ok else "DOĞRULANMADI")
                + f" · veri: {e.status_label}" + ("" if e.bet_ok else f" (bahis adayı değil: {e.lead_code})"))
         out["cards"].append((f"{s}: {NAMES[s]}", fmt_pct(prob), sub))
@@ -168,6 +200,15 @@ def _analysis(core, v, led) -> dict:
     vals = [c[1] if c[1] is not None else np.nan for c in conds]
     weakest = int(np.nanargmin(vals)) if np.isfinite(vals).any() else -1
     out["conds"] = [(k, x, "en zayıf koşul" if i == weakest else "") for i, (k, x) in enumerate(conds)]
+    if cup:
+        from ..kupa.gorunum import goal_model_card
+
+        out["model"] = goal_model_card(p, eng)
+        out["secondary"] = [(n, p.probs.get(k, np.nan)) for n, k in
+                            (("Maç sonu KG Var", "FT_BTTS"), ("İlk yarı KG Var", "FH_BTTS"),
+                             ("İkinci yarı 1,5 Üst", "SH_O15"), ("Maç sonu 2,5 Üst", "FT_O25"),
+                             ("Maç sonu 4,5 Üst", "FT_O45"))]
+        return out
     man = eng.manifest
     meta = p.intervals.get("meta", {}) if p.intervals else {}
     out["model"] = {
@@ -205,7 +246,8 @@ def gol():
         with core.ledger(create=False) as led:
             for v in verdicts:
                 p = v.prediction
-                decs = decisions_for(p, eng, led, now, eligibility=v) if (p is not None and eng is not None) else []
+                decs = (decisions_for(p, _cup_engine(core) if is_cup_prediction(p) else eng, led, now, eligibility=v)
+                        if (p is not None and (eng is not None or is_cup_prediction(p))) else [])
                 n_val += sum(1 for d in decs if d.status == "VALUE_CANDIDATE")
                 by = {d.market_key: d for d in decs}
                 if mode == "value" and not any(d.status == "VALUE_CANDIDATE" for d in decs):
@@ -235,7 +277,7 @@ def gol():
                 f" · {n_val} avantaj adayı · karar politikası: {DecisionPolicy().version}. 'En olası' görünümü avantaj "
                 "göstermez; yüksek olasılık düşük oranla birlikte gelir. Bu pazarlar için veri setinde gerçek oran "
                 "yoktur: oranları Maç analizi sekmesinde siz girersiniz.")
-        if eng is None:
+        if eng is None and not verdicts:
             note = "Gol modeli henüz eğitilmedi."
         elif not verdicts:
             note = ("Yaklaşan maç bulunamadı (fikstür verisi yok) veya değerlendirme sürüyor. Maç analizi sekmesinden "
@@ -252,14 +294,23 @@ def gol():
             if (eng is not None and lig in (eng.states or {})) else []
         with core.ledger(create=False) as led:
             panel = _analysis(core, v, led) if v is not None else None
+        from ..kupa.gorunum import teams_for_analysis
+        from ..kupa.turnuvalar import COMPETITIONS
+
         ctx.update(choices=choices, sel=sel, leagues=leagues, lig=lig, teams=teams, panel=panel,
                    selections=[(k, MARKETS[k].name_tr) for k in SELECTIONS],
-                   ev=request.args.get("ev", ""), dep=request.args.get("dep", ""))
+                   ev=request.args.get("ev", ""), dep=request.args.get("dep", ""),
+                   cup_groups=teams_for_analysis(_cup_engine(core)), comps=list(COMPETITIONS),
+                   comp=request.args.get("turnuva") or "UCL", ev_k=request.args.get("ev_k", ""),
+                   dep_k=request.args.get("dep_k", ""), tarafsiz=request.args.get("tarafsiz") == "1")
     elif sekme == "kapsam":
         st = core.store
         cov = coverage_matrix(st.matches, core.settings.source_consent, {}) if st.has_data else pd.DataFrame()
         lg = request.args.get("lig") or ""
+        from ..kupa.gorunum import cup_ht_coverage
+
         ctx.update(
+            cup_cov=cup_ht_coverage(getattr(st, "cup_matches", None)), cup_cov_fmts={"İY skoru oranı": fmt_pct},
             summary=coverage_summary(cov) if not cov.empty else pd.DataFrame(),
             cov=(cov[cov["league"] == lg] if (lg and not cov.empty) else cov),
             cov_leagues=[c for c in LEAGUES if not cov.empty and c in set(cov["league"])], lig=lg,
@@ -288,6 +339,17 @@ def gol():
             c = SvgCanvas(7, 4)
             plot_goal_calibration(c, bins)
             chart = svg_img(c)
+        from ..kupa.gorunum import goal_calibration_bins, goal_validation_rows
+        from ..kupa.gol import GOAL_RULE
+
+        cup = _cup_engine(core)
+        cup_chart = None
+        if cup is not None:
+            c2 = SvgCanvas(7, 4)
+            plot_goal_calibration(c2, goal_calibration_bins(cup, pazar))
+            cup_chart = svg_img(c2)
+        ctx.update(cup_rows=goal_validation_rows(cup), cup_chart=cup_chart, cup_rule=GOAL_RULE,
+                   has_cup=cup is not None)
         ctx.update(val_rows=rows, chart=chart, pazar=pazar,
                    val_years=", ".join(f"{y}/{(y + 1) % 100:02d}" for y in eng.validation_years) if eng else "",
                    val_rule=(eng.validation.get("rule", "") or "") if (eng is not None and eng.validation) else "",
@@ -370,6 +432,9 @@ def kaydet():
     eng = core.goal_engine
     v, sel = _selection(core, request.form)
     now = core.now()
+    cup = v is not None and is_cup_prediction(v.prediction)
+    if cup:
+        eng = _cup_engine(core)
     if v is None or v.prediction is None or eng is None or not v.any_usable(now):
         flash("Kayıt yapılmadı: maçın veri uygunluğu doğrulanmadı veya model yok.", "warn")
         return redirect(_back(sel))
@@ -388,7 +453,7 @@ def sonuclandir():
         if led is None:
             flash("Henüz sanal kayıt yok.", "warn")
         else:
-            res = settle_pending(led, core.store.matches)
+            res = settle_pending(led, settlement_matches(core.store))
             flash(f"Sonuçlar güncellendi: {res['sonuclanan']} sonuçlandı, {res['bekleyen']} bekliyor.", "info")
     return redirect(url_for("gol.gol", sekme="takip"))
 
