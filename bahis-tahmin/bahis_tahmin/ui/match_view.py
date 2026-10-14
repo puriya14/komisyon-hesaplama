@@ -160,7 +160,11 @@ class MatchDetail(QWidget):
             )
         self.summary.setText("<br>".join(parts))
         notes = []
-        if p.p_market is None:
+        if _is_cup(p):  # KUPA-01: kupa maçı notları (ortak model, doğrulama satırı)
+            from ..kupa import gorunum
+
+            notes.extend(gorunum.notes(p, self.ctl.cup_engine))
+        elif p.p_market is None:
             notes.append(
                 "Bu maç için piyasa oranı yok; olasılıklar yalnızca modelden gelir (model tek başına piyasadan "
                 "biraz daha az isabetlidir). Maç Analizi sayfasında oranları girerseniz sonuç iyileşir."
@@ -195,6 +199,9 @@ class MatchDetail(QWidget):
             if w is not None:
                 w.deleteLater()
         info = p.info
+        if _is_cup(p):
+            self._show_cup_teams(p)
+            return
         rows = [
             ("", p.home, p.away),
             ("Elo puanı", fmt_num(info.get("elo_h"), 0), fmt_num(info.get("elo_a"), 0)),
@@ -206,12 +213,7 @@ class MatchDetail(QWidget):
             ("Dinlenme (gün)", fmt_num(info.get("h_rest"), 0), fmt_num(info.get("a_rest"), 0)),
             ("Lige yeni (yükselen)", "Evet" if info.get("h_new") else "Hayır", "Evet" if info.get("a_new") else "Hayır"),
         ]
-        for r, (label, a, b) in enumerate(rows):
-            for c, text in enumerate((label, a, b)):
-                lbl = QLabel(text)
-                if r == 0 or c == 0:
-                    lbl.setObjectName("muted")
-                self.compare.addWidget(lbl, r, c)
+        self._fill_compare(rows)
 
         matches = self.ctl.store.matches
         self._form_titles[0].setText(f"{p.home} – son maçlar")
@@ -220,6 +222,33 @@ class MatchDetail(QWidget):
         self.form_home.set_frame(team_matches(matches, p.home, 8, p.league))
         self.form_away.set_frame(team_matches(matches, p.away, 8, p.league))
         self.h2h.set_frame(head_to_head(matches, p.home, p.away, 8))
+
+    def _fill_compare(self, rows) -> None:
+        for r, (label, a, b) in enumerate(rows):
+            for c, text in enumerate((label, a, b)):
+                lbl = QLabel(text)
+                if r == 0 or c == 0:
+                    lbl.setObjectName("muted")
+                self.compare.addWidget(lbl, r, c)
+
+    def _show_cup_teams(self, p: MatchPrediction) -> None:
+        """KUPA-01: kupa maçında takımlar farklı liglerden olabilir; karşılaştırma ortak ölçekte, son maçlar lig + kupa."""
+        from ..kupa import gorunum
+
+        self._fill_compare([("", p.home, p.away)] + gorunum.compare_rows(p, self.ctl.cup_engine))
+        info = p.info or {}
+        hk, ak = info.get("home_key", ""), info.get("away_key", "")
+        store = self.ctl.store
+        self._form_titles[0].setText(f"{p.home} – son maçlar (lig + kupa)")
+        self._form_titles[1].setText(f"{p.away} – son maçlar (lig + kupa)")
+        self._form_titles[2].setText("Aralarındaki son maçlar")
+        self.form_home.set_frame(gorunum.team_recent(store, hk, 8))
+        self.form_away.set_frame(gorunum.team_recent(store, ak, 8))
+        self.h2h.set_frame(gorunum.head_to_head(store, hk, ak, 8))
+
+
+def _is_cup(p) -> bool:
+    return bool((getattr(p, "info", None) or {}).get("kupa"))
 
 
 class MatchDialog(QDialog):

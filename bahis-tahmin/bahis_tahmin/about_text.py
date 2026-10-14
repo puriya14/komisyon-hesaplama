@@ -25,6 +25,17 @@ güçlerinden kurulan <b>tek bir ortak yarı-gol dağılımından</b> hesaplanı
 Marjinaller zaman sıralı kalibre edilir; pazarlar arası mantıksal ilişkiler (iki yarıda KG ⊆ 3,5 Üst ∩ İY 1,5 Üst)
 yapısal olarak korunur. Bu pazarların gerçek oranları ücretsiz veride bulunmadığından geçmiş getiri hesaplanamaz;
 öneri yalnızca doğrulanmış model ve sizin girdiğiniz güncel gerçek oranla oluşabilir.</p>
+<h3>Kupa ve Avrupa maçları (ligler arası ortak model)</h3>
+<p>Şampiyonlar Ligi, Avrupa Ligi, Konferans Ligi (eleme turları ve UEFA Süper Kupa dahil), ulusal kupalar ve süper
+kupalar, diğer kıtaların kulüp turnuvaları. Lig modelleri her ligi kendi içinde ölçer; farklı liglerin takımları aynı
+ölçekte olmadığından kupa maçları <b>ayrı bir ortak modelden</b> tahmin edilir: bütün lig ve kupa maçlarından, zamanla
+azalan ağırlıkla kurulan bir Poisson gol modeli (takım güçleri ligin gücüne göre ayarlanır; ligler kupa maçlarıyla
+birbirine bağlanır; tarafsız sahada iç saha avantajı uygulanmaz). Skorlar 90 dakikadır (uzatma ve penaltılar sayılmaz).
+Model her doğrulama grubu (UEFA turnuvaları, yurt içi kupalar, diğer kıtalar) için ayrı ölçülür: haftalık
+ileriye dönük (model o maçları görmeden) tahminler önceki sezonların kupa maçı oranlarından anlamlı biçimde daha
+iyiyse <b>"doğrulandı"</b> sayılır; doğrulanmayan grupların tahminleri gösterilir ama bahis adayı olmaz. Kupa maçları için
+ücretsiz veride piyasa oranı yoktur; Maç Analizi'nde kendi oranlarınızı girerek değer hesaplayabilirsiniz. Gol Pazarları
+sayfasındaki yarı-gol pazarları yalnızca lig maçlarını kapsar.</p>
 <p>Tüm başarı ölçümleri <b>sızıntısızdır</b>: her sezon, yalnızca o sezondan önceki verilerle eğitilen bir modelle
 tahmin edilmiştir (walk-forward). Uygulamadaki yüzdeler bu gerçekçi testlerden gelir.</p>
 
@@ -51,7 +62,12 @@ depoları (<a href="https://github.com/openfootball/europe">europe</a> ve diğer
 metni yok. Verileri football-data.co.uk'tan alınamayan ligler için fikstür, sonuç ve sezon takvimi (bu liglerde
 openfootball yerine; ESPN'den veri gelmezse openfootball yedeği kullanılır).
 <b>Kullanıcı onayı olmadan istek gönderilmez</b>; model eğitimi ve tahmin için ayrıca kişisel kullanım beyanı
-gerekir. Takım adları yalnızca maç kanıtıyla eşlenir.</li>
+gerekir. Takım adları yalnızca maç kanıtıyla eşlenir. Kupa ve Avrupa turnuvalarının içinde bulunulan sezonu da
+buradan gelir.</li>
+<li><a href="https://github.com/openfootball/champions-league">openfootball/champions-league</a> – CC0 (serbest);
+Şampiyonlar Ligi, Avrupa Ligi ve Konferans Ligi'nin (eleme turlarıyla) geçmiş sezon sonuçları. Takımlar ülke kodu ve
+uygulamanın doğrulanmış takım adlarıyla eşlenir; eşlenemeyen takım hiçbir lig takımıyla birleştirilmez, ayrı takım
+olarak tutulur (maçları bahis adayı olmaz).</li>
 </ul>
 <p>Veriler yalnızca bilgisayarınızda saklanır ve uygulama ile dağıtılmaz: <code>{home}</code></p>
 

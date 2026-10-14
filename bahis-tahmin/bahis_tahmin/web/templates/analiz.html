@@ -4,7 +4,41 @@
 {% block content %}
 <h1>Maç Analizi</h1>
 <p class="sub">İstediğiniz iki takımı seçin; isterseniz bahis şirketinizin oranlarını girerek değer hesaplayın.</p>
-{% if not has_model %}
+<nav class="tabs">
+  <a href="{{ url_for('views.analiz') }}" {% if mod != 'kupa' %}aria-current="page"{% endif %}>Lig maçı</a>
+  <a href="{{ url_for('views.analiz', mod='kupa') }}" {% if mod == 'kupa' %}aria-current="page"{% endif %}>Ligler arası / kupa maçı</a>
+</nav>
+{% if mod == 'kupa' %}
+{% if not has_cup_model %}
+<p class="muted">Kupa modeli henüz eğitilmedi. Veri sayfasında kupa turnuvalarını seçip verileri güncelleyin.</p>
+{% else %}
+<p class="muted">Takımlar farklı liglerden olabilir (ör. Avrupa kupası maçı). Olasılıklar bütün lig ve kupa maçlarından
+  kurulan ligler arası ortak modelden gelir; turnuva seçimi iç saha avantajını ve model doğrulama grubunu belirler.</p>
+<form method="post" action="{{ url_for('views.analiz', mod='kupa') }}" class="panel">{{ csrf_field() }}
+  <input type="hidden" name="mod" value="kupa">
+  <div class="form-grid">
+    <label>Ev sahibi <select name="ev_k">{% for g, ts in cup_groups %}<optgroup label="{{ g }}">
+      {% for k, n in ts %}<option value="{{ k }}" {% if k == hk %}selected{% endif %}>{{ n }}</option>{% endfor %}</optgroup>{% endfor %}</select></label>
+    <label>Deplasman <select name="dep_k">{% for g, ts in cup_groups %}<optgroup label="{{ g }}">
+      {% for k, n in ts %}<option value="{{ k }}" {% if k == ak %}selected{% endif %}>{{ n }}</option>{% endfor %}</optgroup>{% endfor %}</select></label>
+    <label>Turnuva <select name="turnuva">{% for c in comps %}<option value="{{ c }}" {% if c == comp %}selected{% endif %}>{{ c|lig_tam }}</option>{% endfor %}</select></label>
+    <label>Tarih <input type="date" name="tarih" value="{{ tarih }}"></label>
+  </div>
+  <label class="check"><input type="checkbox" name="tarafsiz" value="1" {% if neutral %}checked{% endif %}> Tarafsız saha (final, süper kupa)</label>
+  <fieldset><legend>Oranlarınız (isteğe bağlı, boş = yok)</legend>
+    <div class="odds-grid">
+    {% for key, m in markets.items() %}
+      <label>{{ m[0] }} <input type="number" name="o_{{ key }}" min="1.01" max="100" step="0.01" inputmode="decimal"
+        value="{{ '%.2f'|format(odds_in[key]) if odds_in[key] else '' }}"></label>
+    {% endfor %}
+    </div>
+  </fieldset>
+  <button class="btn primary" type="submit">Analiz Et</button>
+</form>
+{% if info %}<div class="banner">{{ info }}</div>{% endif %}
+{% if d %}{% include "_mac_detay.html" %}{% endif %}
+{% endif %}
+{% elif not has_model %}
 <p class="muted">Model henüz eğitilmedi. Önce 'Veri' sayfasından verileri indirip modeli eğitin.</p>
 {% else %}
 <form method="get" action="{{ url_for('views.analiz') }}" class="filters" id="analiz-lig">

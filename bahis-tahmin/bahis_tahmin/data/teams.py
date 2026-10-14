@@ -198,7 +198,19 @@ _TXT_ALIASES: dict[str, dict[str, str]] = {
     "İskoçya": {"saint johnstone": "St Johnstone"},
     "Almanya": {"dsc arminia bielefeld": "Bielefeld", "energie cottbus": "Cottbus"},
 }
-for _extra in (_DERIVED_ALIASES, _TXT_ALIASES):
+# KUPA-01: openfootball/champions-league kupa dosyalarının (2014/15–2025/26) ülke kodlu adları. Bu dosyalardaki 128 ad
+# (ülkesi uygulamada olan) içinde mevcut eşleyicinin bulamadığı dört ad; her biri, yazıldığı sezonun ülke kodundaki
+# (BEL/GER/GRE/ITA) veri deposu kadrosunda tek bir kulübe karşılık geliyor, aynı kulübün diğer sezonlardaki adı mevcut
+# eşleyiciyle zaten bu takıma eşleniyor ("Union Saint-Gilloise", "Borussia Mönchengladbach" değil "Bor."; "Olympiakos
+# Piraeus"; "SS Lazio") ve aynı dosyadaki diğer bütün adlar kesin eşleşiyor. "Lazio Roma" Roma kulübü değil, SS Lazio'dur
+# (dosyada "AS Roma" ayrıca yer alır).
+_CUP_ALIASES: dict[str, dict[str, str]] = {
+    "Belçika": {"royale union saint gilloise": "St. Gilloise"},
+    "Almanya": {"bor monchengladbach": "M'gladbach"},
+    "Yunanistan": {"pae olympiakos sfp": "Olympiakos"},
+    "İtalya": {"lazio roma": "Lazio"},
+}
+for _extra in (_DERIVED_ALIASES, _TXT_ALIASES, _CUP_ALIASES):
     for _country, _group in _extra.items():
         _base = ALIASES_BY_COUNTRY.setdefault(_country, {})
         assert not set(_base) & set(_group), (_country, set(_base) & set(_group))

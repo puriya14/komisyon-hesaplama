@@ -8,10 +8,38 @@
 <p class="muted">Henüz veri yok.</p>
 {% else %}
 <form class="filters" method="get" action="{{ url_for('views.guc') }}">
-  <label>Lig <select name="lig" data-autosubmit>{% for c in leagues %}<option value="{{ c }}" {% if c == lig %}selected{% endif %}>{{ c|lig_tam }}</option>{% endfor %}</select></label>
-  <label>Sezon <select name="sezon" data-autosubmit>{% for s in seasons %}<option {% if s == sezon %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></label>
+  <label>Lig <select name="lig" data-autosubmit>
+    <option value="@avrupa" {% if lig == '@avrupa' %}selected{% endif %}>Avrupa (ligler arası ortak ölçek)</option>
+    {% for c in leagues %}<option value="{{ c }}" {% if c == lig %}selected{% endif %}>{{ c|lig_tam }}</option>{% endfor %}</select></label>
+  {% if not avrupa %}<label>Sezon <select name="sezon" data-autosubmit>{% for s in seasons %}<option {% if s == sezon %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></label>{% endif %}
   <noscript><button class="btn" type="submit">Göster</button></noscript>
 </form>
+{% if avrupa %}
+{% if not has_cup %}<p class="muted">Kupa modeli henüz eğitilmedi. Veri sayfasında kupa turnuvalarını seçip verileri güncelleyin.</p>
+{% else %}
+<p class="muted">Bütün lig ve kupa maçlarından kurulan ortak model: farklı liglerin takımları aynı ölçektedir. Hücum ve
+  savunma, bütün takımların ortalamasına göre log-gol ölçeğindedir (0 = ortalama). "Gol farkı": ortalama bir takıma karşı
+  tarafsız sahada beklenen gol farkı (90 dk). Ligin değeri, son 365 günde maçı olan takımlarının ortalamasıdır.</p>
+<h2>Liglerin gücü</h2>
+<div class="table-wrap"><table class="data compact">
+  <thead><tr><th data-sort class="num">#</th><th data-sort>Lig</th><th data-sort class="num">Takım</th><th data-sort class="num">Hücum</th>
+    <th data-sort class="num">Savunma</th><th data-sort class="num">Gol farkı</th></tr></thead>
+  <tbody>{% for r in league_rows %}<tr><td class="num" data-v="{{ loop.index }}">{{ loop.index }}</td><td>{{ r['Lig'] }}</td>
+    <td class="num">{{ r['Takım'] }}</td><td class="num" data-v="{{ r['Hücum'] }}">{{ '%+.2f'|format(r['Hücum']) }}</td>
+    <td class="num" data-v="{{ r['Savunma'] }}">{{ '%+.2f'|format(r['Savunma']) }}</td>
+    <td class="num" style="{{ (r['Gol farkı'] / 4)|ev_bg }}" data-v="{{ r['Gol farkı'] }}">{{ '%+.2f'|format(r['Gol farkı']) }}</td></tr>{% endfor %}</tbody>
+</table></div>
+<h2>En güçlü takımlar</h2>
+<div class="table-wrap"><table class="data">
+  <thead><tr><th data-sort class="num">#</th><th data-sort>Takım</th><th data-sort>Lig</th><th data-sort class="num">Hücum</th>
+    <th data-sort class="num">Savunma</th><th data-sort class="num">Gol farkı</th><th data-sort class="num">Maç (365 gün)</th></tr></thead>
+  <tbody>{% for r in team_rows %}<tr><td class="num" data-v="{{ loop.index }}">{{ loop.index }}</td><td>{{ r['Takım'] }}</td><td>{{ r['Lig'] }}</td>
+    <td class="num" data-v="{{ r['Hücum'] }}">{{ '%+.2f'|format(r['Hücum']) }}</td><td class="num" data-v="{{ r['Savunma'] }}">{{ '%+.2f'|format(r['Savunma']) }}</td>
+    <td class="num" style="{{ (r['Gol farkı'] / 4)|ev_bg }}" data-v="{{ r['Gol farkı'] }}">{{ '%+.2f'|format(r['Gol farkı']) }}</td>
+    <td class="num">{{ r['Maç (365 gün)'] }}</td></tr>{% endfor %}</tbody>
+</table></div>
+{% endif %}
+{% else %}
 <h2>Güç sıralaması</h2>
 {% if ratings %}
 <div class="table-wrap"><table class="data">
@@ -29,5 +57,6 @@
 <h2>Puan durumu{% if sezon %} ({{ sezon }}){% endif %}</h2>
 {{ simple_table(table, 'Bu sezon için maç yok.') }}
 <p class="muted">O: oynanan · G/B/M: galibiyet/beraberlik/mağlubiyet · AG/YG: atılan/yenilen gol · AV: averaj</p>
+{% endif %}
 {% endif %}
 {% endblock %}

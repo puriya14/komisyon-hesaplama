@@ -89,6 +89,8 @@ class AppController(QObject):
         self.goal_engine: GoalEngine | None = None
         self.goal_load_error: str | None = None
         self.goal_predictions: list[GoalPrediction] = []
+        self.cup_engine = None  # KUPA-01: ligler arası kupa modeli
+        self.cup_error: str | None = None
         # Ortak veri uygunluk kontrolünden geçmiş sonuçlar (S3-GATE-01): her fikstür için tahmin (varsa) + pazar başına
         # uygunluk. Modelde olmayan lig ve eşleşmeyen takım da nedenli sonuç olarak burada yer alır.
         self.goal_verdicts: list = []
@@ -177,7 +179,8 @@ class AppController(QObject):
             return core.load_saved(home, progress)
 
         def done(res):
-            store, engine, goal, gerr = res
+            store, engine, goal, gerr, *rest = res
+            self.cup_engine = rest[0] if rest else None
             self.store = store
             self.seq_table = None  # veri değişti: dizi tablosu yeniden kurulacak
             self.seq_error = None
@@ -284,16 +287,21 @@ class AppController(QObject):
         home = self.home
         old_engine = self.engine
         old_goal = self.goal_engine
+        old_cup = self.cup_engine
         allowed = s.allowed_sources()
         if self.needs_consent():
             self.message.emit("consent", "Veri kaynaklarının kullanım koşullarını onaylamanız gerekiyor.")
             return False
 
         def work(progress):
-            return core.update_work(home, s, old_engine, old_goal, force, progress, allowed)
+            return core.update_work(home, s, old_engine, old_goal, force, progress, allowed, old_cup=old_cup)
 
         def done(res):
-            store, engine, report, (goal, gerr) = res
+            store, engine, report, (goal, gerr), *rest = res
+            if rest:
+                cup, cerr = rest[0]
+                self.cup_engine = core.next_cup_engine(self.cup_engine, cup, self.settings)
+                self.cup_error = cerr
             self.store = store
             self.seq_table = None  # veri değişti: dizi tablosu yeniden kurulacak
             self.seq_error = None
@@ -332,12 +340,16 @@ class AppController(QObject):
         matches = self.store.matches
         settings = self.settings
         home = self.home
+        cups = getattr(self.store, "cup_matches", None)
+        cup_ok = not core.cup_training_block_codes(self.store, settings)
 
         def work(progress):
-            return core.retrain_work(matches, settings, home, progress)
+            return core.retrain_work(matches, settings, home, progress, cups, cup_ok)
 
         def done(res):
-            self.engine, self.goal_engine, self.goal_load_error = res
+            self.engine, self.goal_engine, self.goal_load_error, (cup, cerr) = res
+            self.cup_engine = core.next_cup_engine(self.cup_engine, cup, self.settings)
+            self.cup_error = cerr
             self.modelChanged.emit()
             self.goalModelChanged.emit()
             self.refresh_predictions()
@@ -429,6 +441,15 @@ class AppController(QObject):
                 log.exception("Tahminler hesaplanamadı")
                 self.predictions = []
                 self.message.emit("error", f"Tahminler hesaplanamadı: {e}")
+        try:  # KUPA-01: kupa ve Avrupa maçları (aynı listeye, aynı gösterim kurallarıyla)
+            eng = self.engine if (self.engine is not None and self.engine.trained) else None
+            cp, cu = core.cup_predictions(self.store, self.cup_engine, self.settings, self.now(),
+                                          self.eligibility_context(eng))
+            self.predictions = list(self.predictions) + cp
+            self.match_unpredicted = list(self.match_unpredicted) + cu
+        except Exception as e:
+            log.exception("Kupa tahminleri hesaplanamadı")
+            self.message.emit("error", f"Kupa tahminleri hesaplanamadı: {e}")
         self.predictionsChanged.emit()
 
     @property

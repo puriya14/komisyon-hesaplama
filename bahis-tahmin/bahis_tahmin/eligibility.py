@@ -247,6 +247,20 @@ REASONS: dict[str, Reason] = {
         "tahmin", None, "Hakları belgeli veriyle modeli yeniden eğitin (eski model dosyasına köken uydurulmaz)."),
     "OLASILIK_GECERSIZ": Reason("Model olasılığı geçersiz (NaN, sonsuz veya [0,1] dışı).", "tahmin", None,
                                 "Model ve girdi verisi denetlenmeli."),
+    # KUPA-01: kupa ve Avrupa maçları (kupa.uygunluk)
+    "KUPA_TAKIM_VERISI_YOK": Reason(
+        "Takımın son 365 günde veride (lig + kupa) 5'ten az maçı var; ligler arası güç tahmini yapılamaz.", "tahmin",
+        None, "Takımın ligini Veri sayfasında seçip güncelleyin (ligi uygulamada yoksa yalnızca kupa maçları vardır)."),
+    "KUPA_TAKIM_LIGI_VERIDE_YOK": Reason(
+        "Takımın kendi ligi veride yok; gücü yalnızca kupa maçlarından tahmin edildi.", "bahis", None,
+        "Takımın ligini Veri sayfasında seçip güncelleyin (ligi uygulamada yoksa tahmin uyarılı kalır)."),
+    "KUPA_MODEL_DOGRULANMADI": Reason(
+        "Kupa modeli bu turnuva grubunda geçmiş maçlarda (ileriye dönük doğrulama) önceki sezonların sonuç oranlarından "
+        "anlamlı biçimde iyi bulunmadı veya örnek az.", "bahis", None,
+        "Daha fazla geçmiş kupa verisiyle modeli yeniden eğitin (Kupa doğrulama raporu)."),
+    "KUPA_TAKVIMI_YOK": Reason(
+        "Bu turnuvanın bu sezonu için güncel takvim (ESPN) yok; kupa maçlarında eksik sonuç denetlenemedi.", "tahmin",
+        UNKNOWN, "ESPN kaynağını onaylayıp verileri güncelleyin."),
 }
 
 # Kullanıcıya gösterilecek birincil nedenin sırası: önce bağlam ve yapısal engeller (tahmin hiç kurulamaz), sonra
@@ -258,7 +272,9 @@ LEAD_ORDER = (
     "KAYNAK_KAPSAMI_YOK", "KAYNAK_KAPSAMI_KISMI", "KAYNAK_KARAR_ANINDAN_SONRA", "KAYNAK_ESLESME_BELIRSIZ",
     "KAYNAK_DEPO_CELISKISI", "KAYNAK_DURUMU_BELIRSIZ", "SON_SONUC_BEKLENIYOR", "KAYNAK_ARALIK_DISI",
     "LIG_DURUMU_BELIRSIZ",
-    "OLASILIK_GECERSIZ", "GEREKLI_ALAN_EKSIK", "TAKIM_GECMISI_YETERSIZ", "KAYNAK_ERISIM_IZNI_YOK",
+    "KUPA_TAKIM_VERISI_YOK", "KUPA_TAKVIMI_YOK",
+    "OLASILIK_GECERSIZ", "GEREKLI_ALAN_EKSIK", "TAKIM_GECMISI_YETERSIZ", "KUPA_TAKIM_LIGI_VERIDE_YOK",
+    "KUPA_MODEL_DOGRULANMADI", "KAYNAK_ERISIM_IZNI_YOK",
     "KAYNAK_HAKKI_BILINMIYOR", "KAYNAK_ETIKETI_UYUMSUZ", "KAYNAK_KOKENI_DOGRULANAMADI", "MODEL_EGITIM_KOKENI_YOK",
     "KAYNAK_SONUC_KULLANIMI_DOGRULANAMADI", "KAYNAK_EGITIM_HAKKI_DOGRULANAMADI", "KAYNAK_MODEL_KULLANIMI_DOGRULANAMADI",
     "LIG_IY_ORANI_DUSUK",
@@ -287,6 +303,8 @@ STANDART_LEVELS = {
     "KAYNAK_KOKENI_DOGRULANAMADI": "tahmin", "KAYNAK_SONUC_KULLANIMI_DOGRULANAMADI": "tahmin",
     "KAYNAK_EGITIM_HAKKI_DOGRULANAMADI": "tahmin", "KAYNAK_MODEL_KULLANIMI_DOGRULANAMADI": "tahmin",
     "MODEL_EGITIM_KOKENI_YOK": "tahmin", "OLASILIK_GECERSIZ": "tahmin",
+    "KUPA_TAKIM_VERISI_YOK": "tahmin", "KUPA_TAKIM_LIGI_VERIDE_YOK": "bahis", "KUPA_MODEL_DOGRULANMADI": "bahis",
+    "KUPA_TAKVIMI_YOK": "yok",
 }
 LEVELS = {"siki": {c: r.blocks for c, r in REASONS.items()}, "standart": STANDART_LEVELS}
 assert all(set(v) == set(REASONS) for v in LEVELS.values())
@@ -1350,7 +1368,7 @@ class EligibilityContext:
                 md = day_number(m.date)
                 if md >= cut_day or m.status in NOT_PLAYED_STATUSES:
                     continue  # aynı gün / gelecek veya ertelenen-iptal edilen: eksik tamamlanmış maç sayılmaz
-                ours = [t for t in (home, away) if t in (m.home, m.away)]
+                ours = [t for t in (home, away) if t is not None and t in (m.home, m.away)]
                 in_window = md >= cut_day - LOOKBACK_DAYS  # paylaşılan lig durumu için ilgili dönem
                 if not ours and in_window:
                     cnt["gecmis"] += 1
@@ -1436,7 +1454,7 @@ class EligibilityContext:
                 md = day_number(m.date)
                 if md >= cut_day or m.status != FINISHED or m.home is None or m.away is None:
                     continue
-                ours = [t for t in (home, away) if t in (m.home, m.away)]
+                ours = [t for t in (home, away) if t is not None and t in (m.home, m.away)]
                 if not ours or any(abs(d - md) <= PAIR_DAY_TOLERANCE for d in ok_days.get((m.home, m.away), ())):
                     continue
                 bucket = invalid if any(abs(d - md) <= PAIR_DAY_TOLERANCE
@@ -1461,6 +1479,8 @@ class EligibilityContext:
         wins = [(s, min(e, cut_day - 1)) for c in evidence for s, e in c.verified_windows]
         extra: dict[str, list[str]] = {}
         for t in (home, away):
+            if t is None:
+                continue
             tg = g[(g["home"] == t) | (g["away"] == t)]
             for h, a, d in zip(tg["home"], tg["away"], tg["day"]):
                 d = int(d)
@@ -1623,6 +1643,8 @@ SHORT_TEXT = {
     "KAYNAK_SONUC_KULLANIMI_DOGRULANAMADI": "kullanım beyanı yok", "KAYNAK_EGITIM_HAKKI_DOGRULANAMADI": "kullanım beyanı yok",
     "KAYNAK_MODEL_KULLANIMI_DOGRULANAMADI": "kullanım beyanı yok", "MODEL_EGITIM_KOKENI_YOK": "modelin veri kökeni yok",
     "OLASILIK_GECERSIZ": "geçersiz olasılık",
+    "KUPA_TAKIM_VERISI_YOK": "takımın verisi çok az", "KUPA_TAKIM_LIGI_VERIDE_YOK": "takımın ligi veride yok",
+    "KUPA_MODEL_DOGRULANMADI": "kupa modeli doğrulanmadı", "KUPA_TAKVIMI_YOK": "kupa takvimi yok",
 }
 assert set(SHORT_TEXT) == set(REASONS)
 

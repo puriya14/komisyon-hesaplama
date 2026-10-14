@@ -709,8 +709,9 @@ def test_update_flow_does_not_auto_train_without_documented_scope(tmp_home, monk
     results = []
     monkeypatch.setattr(ctl, "_run", lambda work, done, msg: results.append(work(lambda p, m: None)) or True)
     assert ctl.update_and_train()
-    store, engine, report, (goal, gerr) = results[0]
+    store, engine, report, (goal, gerr), (cup, cerr) = results[0]
     assert engine is None and goal is None and gerr is None
+    assert cup is None and cerr is None  # KUPA-01: kupa modeli de hak doğrulanmadan eğitilmez
     assert any("Model eğitimi yapılmadı" in w and "KAYNAK_EGITIM_HAKKI_DOGRULANAMADI" in w for w in report.warnings)
 
 

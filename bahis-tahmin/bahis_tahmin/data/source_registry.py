@@ -164,7 +164,8 @@ SOURCES: dict[str, SourceInfo] = {
         redistribution="İzin varsayılmaz: veriler yalnızca kullanıcının bilgisayarında tutulur.",
         coverage=("Uygulamanın bütün ligleri (İsviçre, Finlandiya, Polonya ve Romanya'nın ESPN kodu önceden "
                   "doğrulanamadı): fikstür, normal süre sonucu, varsa devre skorları; oran ve istatistik yok. Takım "
-                  "adları yalnızca maç kanıtıyla eşlenir."),
+                  "adları yalnızca maç kanıtıyla eşlenir. KUPA-01: UEFA turnuvaları ve yurt içi kupalar (içinde "
+                  "bulunulan ve önceki sezon; uzatmalı maçlarda devre skorları tutarlıysa normal süre sonucu)."),
         cost="Ücretsiz (anahtar gerekmez)",
         requires_consent=True,
     ),
@@ -199,7 +200,10 @@ SOURCE_LABELS = {"football-data.co.uk": "football-data", "github-yedek": "github
                  # yalnızca köken doğrulanırsa (data/completion.py)
                  "openfootball-tamamlama": "openfootball-sonuc",
                  # KAYNAK-04: ESPN sonuç ve fikstür satırları (onay + kişisel kullanım beyanı)
-                 "espn": "espn"}
+                 "espn": "espn",
+                 # KUPA-01: openfootball/champions-league kupa satırları; aynı lisans (CC0), hak yalnızca köken
+                 # doğrulanırsa (kupa/veri.py verify_cup_rows)
+                 "openfootball-kupa": "openfootball-sonuc"}
 
 # Kullanım kapsamının yapılandırılmış hâli (veri uygunluk kontrolü bunu okur; S3-GATE-01, kapsamlar S3-GATE-02).
 # Değerler yukarıdaki SOURCES metinlerinin aynısıdır, YENİ HAK VERMEZ: belge yoksa "DOGRULANAMADI" kalır. Ayrı alanlar:
@@ -248,7 +252,9 @@ USE_RIGHTS: dict[str, dict] = {
                                               "(FIKSTUR-03): openfootball/europe 0bf83f88e8fe, belgium 1166d3c9c572, "
                                               "austria 627ba1b3ebdd, deutschland c34532ab6950, england b17e8f01707d, "
                                               "espana 09afd6cd836e, italy 48954d163c31, south-america 119fa1724b20 "
-                                              "LICENSE.md dosyaları aynı git nesnesi (670154e3538863b2)."),
+                                              "LICENSE.md dosyaları aynı git nesnesi (670154e3538863b2). "
+                                              "2026-10-14 (KUPA-01): openfootball/champions-league abfaeddc2ee3 "
+                                              "LICENSE.md aynı git nesnesi."),
                            "sinirlar": ("CC0 doğruluk garantisi vermez ve üçüncü kişi haklarını temizlemez (madde 4); "
                                         "uygulama ham veriyi dağıtmaz.")},
     # KAYNAK-04: koşul metni yok; hiçbir alan izinli sayılmaz. Kullanıcının onayı erişimi, kişisel kullanım beyanı

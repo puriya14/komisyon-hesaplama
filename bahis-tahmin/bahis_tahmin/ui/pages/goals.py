@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ...data.leagues import LEAGUES, league_name
+from ...data.leagues import LEAGUES, league_name, short_name
 from ...eligibility import display_label
 from ...data.source_registry import SOURCES
 from ...goals.coverage import coverage_matrix, coverage_summary, quarantine
@@ -54,7 +54,9 @@ from ...goals.display import shown as _shown  # noqa: E402
 class GoalsPage(Page):
     title = "Gol Pazarları"
     subtitle = ("İki yarıda da karşılıklı gol · Maç 3,5 Üst · İlk yarı 1,5 Üst. Olasılıklar tek bir ortak gol dağılımından "
-                "türetilir; öneri yalnızca gerçek oran ve doğrulanmış model ile oluşabilir.")
+                "türetilir; öneri yalnızca gerçek oran ve doğrulanmış model ile oluşabilir. Kupa ve Avrupa maçları bu "
+                "sayfada yer almaz (bu yarı-gol modeli lig içinde eğitilip doğrulanır); onların 1X2, Çifte Şans, Alt/Üst "
+                "ve KG olasılıkları Tahminler sayfasındadır.")
 
     def __init__(self, controller, parent=None):
         super().__init__(controller, parent)
@@ -112,7 +114,7 @@ class GoalsPage(Page):
         }
         self.scan_model.tooltips = {"neden": lambda v, r: v, "data": lambda v, r: r["neden"]}
         self.scan_model.formatters = {"A": fmt_pct, "B": fmt_pct, "C": fmt_pct,
-                                      "league": lambda v: LEAGUES[v].name if v in LEAGUES else v}
+                                      "league": short_name}
         for c in ("A", "B", "C"):
             self.scan_model.backgrounds[c] = lambda v, r: theme.prob_color(_fin(v)) if _fin(v) is not None else None
         self.scan_view, self.scan_proxy = make_table(self.scan_model)

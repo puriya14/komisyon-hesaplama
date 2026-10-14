@@ -127,6 +127,7 @@ table.heat th { background: var(--surface2); color: var(--muted); }
 .probbar .s2 { background: var(--s2); }
 .two-col { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 1.2rem; }
 .three-col { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+.three-col.wide { grid-template-columns: repeat(auto-fit, minmax(min(26rem, 100%), 1fr)); }
 .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1rem; }
 .chart-box { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: .5rem; }
 .chart-box.wide { max-width: 760px; }

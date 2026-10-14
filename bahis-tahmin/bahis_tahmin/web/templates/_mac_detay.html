@@ -8,9 +8,9 @@
     doğrulanınca gösterilir.</div>
   {% else %}
   <div class="probbar" role="img" aria-label="1: {{ d.probs[0]|pct }}, X: {{ d.probs[1]|pct }}, 2: {{ d.probs[2]|pct }}">
-    <div class="seg s1" style="flex: {{ d.probs[0] }}">1 {{ d.p.home if d.p.home|length < 14 else '' }} {{ d.probs[0]|pct }}</div>
+    <div class="seg s1" style="flex: {{ d.probs[0] }}">1 {{ d.p.home if (d.p.home|length < 14 and d.probs[0] >= 0.2) else '' }} {{ d.probs[0]|pct }}</div>
     <div class="seg sx" style="flex: {{ d.probs[1] }}">X {{ d.probs[1]|pct }}</div>
-    <div class="seg s2" style="flex: {{ d.probs[2] }}">2 {{ d.p.away if d.p.away|length < 14 else '' }} {{ d.probs[2]|pct }}</div>
+    <div class="seg s2" style="flex: {{ d.probs[2] }}">2 {{ d.p.away if (d.p.away|length < 14 and d.probs[2] >= 0.2) else '' }} {{ d.probs[2]|pct }}</div>
   </div>
   <p>Beklenen gol: <b>{{ d.xg }}</b><br>
     1: <b>{{ d.probs[0]|pct }}</b> · X: <b>{{ d.probs[1]|pct }}</b> · 2: <b>{{ d.probs[2]|pct }}</b><br>
@@ -51,7 +51,7 @@
     <thead><tr><th></th><th>{{ d.p.home }}</th><th>{{ d.p.away }}</th></tr></thead>
     <tbody>{% for label, a, b in d.compare %}<tr><td class="muted">{{ label }}</td><td>{{ a }}</td><td>{{ b }}</td></tr>{% endfor %}</tbody>
   </table></div>
-  <div class="three-col">
+  <div class="three-col{% if d.kupa %} wide{% endif %}">
     {% for title, t in d.forms %}<div><h3>{{ title }}</h3>{{ simple_table(t, 'Maç yok.', False) }}</div>{% endfor %}
   </div>
 </section>

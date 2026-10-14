@@ -7,7 +7,7 @@ import datetime as dt
 import pandas as pd
 from PySide6.QtWidgets import QCheckBox, QComboBox, QHBoxLayout, QLabel, QLineEdit
 
-from ...data.leagues import LEAGUES, league_name
+from ...data.leagues import LEAGUES, league_name, short_name
 from ...models.engine import ODDS_TYPE_LABELS
 from .. import theme
 from ..match_view import MatchDialog
@@ -48,7 +48,7 @@ class PredictionsPage(Page):
         }
         self.model.formatters = {
             "p1": fmt_pct, "px": fmt_pct, "p2": fmt_pct, "o25": fmt_pct, "btts": fmt_pct,
-            "league": lambda v: LEAGUES[v].name if v in LEAGUES else v,
+            "league": short_name,
         }
         prob_bg = lambda v, r: theme.prob_color(float(v) * 0.9) if v == v else None  # noqa: E731
         self.model.backgrounds = {

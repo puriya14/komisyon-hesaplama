@@ -5,7 +5,7 @@ from __future__ import annotations
 import pandas as pd
 from flask import Flask
 
-from ..data.leagues import LEAGUES, league_name
+from ..data.leagues import league_name, short_name
 from ..fmt import fmt_num, fmt_pct, fmt_signed_pct
 from ..palette import ev_hex, prob_hex
 
@@ -57,7 +57,7 @@ def binlik(v, digits: int = 0) -> str:
 
 
 def lig(code) -> str:
-    return LEAGUES[code].name if code in LEAGUES else str(code)
+    return short_name(code)  # lig veya kupa turnuvası (KUPA-01)
 
 
 def register(app: Flask) -> None:

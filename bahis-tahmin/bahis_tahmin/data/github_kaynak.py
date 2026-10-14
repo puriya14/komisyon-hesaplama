@@ -83,6 +83,11 @@ def _txt_repo_specs() -> dict[str, RepoSpec]:
 # football.json'unkiyle aynı git nesnesi, CC0 1.0). Yalnızca football.json'da güncel sezon dosyası olmayan liglerin
 # fikstür, takvim ve eksik dönem yedeği olarak okunur; tarihsel arşive (``REPOS``) girmez.
 TXT_REPO_SPECS: dict[str, RepoSpec] = _txt_repo_specs()
+# KUPA-01: UEFA kupaları (openfootball/champions-league; CC0, lisans dosyası football.json'unkiyle aynı git nesnesi
+# 670154e3538863b2). Yalnızca kupa verisi için okunur; tarihsel arşive (``REPOS``) girmez.
+TXT_REPO_SPECS["openfootball/champions-league"] = RepoSpec(
+    "openfootball/champions-league", "master", "openfootball-sonuc", "openfootball-sonuc",
+    "openfootball topluluk derlemesi (CC0; UEFA kupaları, Football.TXT)")
 
 
 class GitHubError(Exception):

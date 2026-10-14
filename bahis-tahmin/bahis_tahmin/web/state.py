@@ -10,9 +10,12 @@ import logging
 
 from ..config import Settings
 from ..core import (
+    CUP_ENGINE_FILE,
     ENGINE_FILE,
     GOAL_ENGINE_FILE,
     AppCore,
+    cup_training_block_codes,
+    next_cup_engine,
     declaration_hint,
     load_saved,
     retrain_work,
@@ -56,7 +59,7 @@ class WebState:
         """Ayar, veri ve model dosyalarının değişiklik zamanları. ``data_meta.json`` veri kaydında en son yazılır."""
         h = self.core.home
         out = []
-        for p in (Settings.path(), h / "data_meta.json", h / ENGINE_FILE, h / GOAL_ENGINE_FILE):
+        for p in (Settings.path(), h / "data_meta.json", h / ENGINE_FILE, h / GOAL_ENGINE_FILE, h / CUP_ENGINE_FILE):
             try:
                 out.append(p.stat().st_mtime_ns)
             except OSError:
@@ -91,10 +94,10 @@ class WebState:
         core = self.core
         s = core.settings
         allowed = s.allowed_sources()
-        old_engine, old_goal = core.engine, core.goal_engine
+        old_engine, old_goal, old_cup = core.engine, core.goal_engine, core.cup_engine
 
         def work(progress):
-            res = update_work(core.home, s, old_engine, old_goal, force, progress, allowed)
+            res = update_work(core.home, s, old_engine, old_goal, force, progress, allowed, old_cup=old_cup)
             core.apply_update(res)
             err = self._refresh_all(progress)
             summary = res[2].summary()
@@ -118,13 +121,18 @@ class WebState:
     def start_retrain(self) -> bool:
         core = self.core
         matches, settings, home = core.store.matches, core.settings, core.home
+        cups = getattr(core.store, "cup_matches", None)
+        cup_ok = not cup_training_block_codes(core.store, settings)
 
         def work(progress):
-            engine, goal, gerr = retrain_work(matches, settings, home, progress)
+            engine, goal, gerr, (cup, cerr) = retrain_work(matches, settings, home, progress, cups, cup_ok)
             with core.lock:
                 core.engine, core.goal_engine, core.goal_load_error = engine, goal, gerr
+                core.cup_engine = next_cup_engine(core.cup_engine, cup, settings)
+                core.cup_error = cerr
             self._refresh_all(progress)
-            return "Model eğitildi." + (f" Gol pazarları: {gerr}" if gerr else "")
+            return ("Model eğitildi." + (f" Gol pazarları: {gerr}" if gerr else "")
+                    + (f" Kupa modeli: {cerr}" if cerr else ""))
 
         return self._start("Model eğitiliyor...", work, lambda msg: msg)
 

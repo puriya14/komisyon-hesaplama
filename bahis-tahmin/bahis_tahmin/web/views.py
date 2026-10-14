@@ -27,6 +27,7 @@ from ..config import DEFAULT_LEAGUES, Settings
 from ..core import apply_consent, consent_keys, needs_consent
 from ..data.github_kaynak import PROFILE_DEFAULT, PROFILE_GITHUB
 from ..data.leagues import LEAGUES, league_name
+from ..kupa.turnuvalar import COMPETITIONS
 from ..data.source_registry import DECLARABLE, IMPLEMENTED, SOURCES
 from ..eligibility import display_label
 from ..fmt import fmt_num, fmt_pct
@@ -192,11 +193,17 @@ def tahminler():
     gun_i = int(gun) if gun.isdigit() and int(gun) < len(DATE_FILTERS) else 0
     deger = request.args.get("deger") == "1"
     ara = (request.args.get("ara") or "").strip()
-    leagues = [c for c in LEAGUES if not df.empty and c in set(df["league"])]
+    present = set(df["league"]) if not df.empty else set()
+    leagues = [c for c in LEAGUES if c in present]
+    cups = [c for c in COMPETITIONS if c in present]  # KUPA-01
     total = len(df)
     if not df.empty:
         mask = pd.Series(True, index=df.index)
-        if lig:
+        if lig == "@lig":
+            mask &= df["league"].isin(list(LEAGUES))
+        elif lig == "@kupa":
+            mask &= df["league"].isin(list(COMPETITIONS))
+        elif lig:
             mask &= df["league"] == lig
         days = DATE_FILTERS[gun_i][1]
         if days is not None:
@@ -221,8 +228,8 @@ def tahminler():
               f", en az %{100 * s.min_ev:.0f} beklenen değer, oran {s.min_odds:.2f}–{s.max_odds:.2f} · tahmini "
               f"gösterilemeyen {n_blocked} maç" + (f", uyarılı (bahis adayı olmayan) {n_warn} maç" if n_warn else "")
               + " (nedenleri Veri durumu sütununda)")
-    return render_template("tahminler.html", rows=rows, leagues=leagues, lig=lig, gun=gun_i, deger=deger, ara=ara,
-                           date_filters=DATE_FILTERS, footer=footer)
+    return render_template("tahminler.html", rows=rows, leagues=leagues, cups=cups, lig=lig, gun=gun_i, deger=deger,
+                           ara=ara, date_filters=DATE_FILTERS, footer=footer)
 
 
 # ================================================================== Maç ayrıntısı
@@ -270,6 +277,19 @@ def detail_context(core, p, odds: dict | None = None) -> dict:
         out["mat_max"] = float(mat[:n, :n].max()) if n else 1.0
         out["top_scores"] = ", ".join(f"{i}-{j} (%{100 * v:.1f})" for i, j, v in top_scores(p.matrix, 6))
     info = p.info or {}
+    if info.get("kupa"):  # KUPA-01: kupa maçı (ligler arası ortak model)
+        from ..kupa import gorunum
+
+        eng = core.cup_engine
+        generic = [n for n in out["notes"] if not n.startswith("Bu maç için piyasa oranı yok")]
+        out["notes"] = gorunum.notes(p, eng) + generic
+        out["kupa"] = True
+        out["compare"] = gorunum.compare_rows(p, eng)
+        hk, ak = info.get("home_key", ""), info.get("away_key", "")
+        out["forms"] = [(f"{p.home} – son maçlar (lig + kupa)", _table(gorunum.team_recent(core.store, hk, 8))),
+                        (f"{p.away} – son maçlar (lig + kupa)", _table(gorunum.team_recent(core.store, ak, 8))),
+                        ("Aralarındaki son maçlar", _table(gorunum.head_to_head(core.store, hk, ak, 8)))]
+        return out
     out["compare"] = [
         ("Elo puanı", fmt_num(info.get("elo_h"), 0), fmt_num(info.get("elo_a"), 0)),
         ("Son 6 maç puan ort.", fmt_num(info.get("h_ppg6")), fmt_num(info.get("a_ppg6"))),
@@ -355,7 +375,10 @@ def en_olasi():
         notes.append(f"Tahmini gösterilemediği için listelenmeyen maç: {skipped}.")
     if warned:
         notes.append(f"Uyarılı (bahis adayı olmayan) {warned} maçta oran ve beklenen değer gösterilmez.")
+    from ..kupa.gorunum import likely_history_line
+
     return render_template("olasi.html", thr=thr, groups=list(MARKET_GROUPS), chosen=groups, one=one, cards=cards,
+                           cup_line=likely_history_line(core.cup_engine, keys, thr, one),
                            rows=rows, per_market=per_market, has_model=eng is not None,
                            gate_note=" ".join(notes) + (" Neden ve gereken veri için Tahminler sayfasındaki 'Veri "
                                                         "durumu' sütununa bakın." if notes else ""))
@@ -364,9 +387,58 @@ def en_olasi():
 # ================================================================== Maç Analizi (elle)
 
 
+def _analiz_kupa(core) -> dict:
+    """KUPA-01: ligler arası / kupa maçı analizi (iki takım farklı liglerden olabilir). Tahmin kupa motorundan gelir ve
+    kupa uygunluk kontrolünden geçer."""
+    from ..kupa import gorunum
+
+    eng = core.cup_engine if (core.cup_engine is not None and core.cup_engine.trained) else None
+    groups = gorunum.teams_for_analysis(eng)
+    keys = {k: n for _g, ts in groups for k, n in ts}
+    comps = [c for c in COMPETITIONS]
+    comp = request.values.get("turnuva") or "UCL"
+    comp = comp if comp in COMPETITIONS else "UCL"
+    hk = request.values.get("ev_k") or ""
+    ak = request.values.get("dep_k") or ""
+    hk = hk if hk in keys else next(iter(keys), "")
+    ak = ak if ak in keys else (list(keys)[1] if len(keys) > 1 else "")
+    neutral = request.values.get("tarafsiz") == "1"
+    tarih = request.values.get("tarih") or f"{core.today():%Y-%m-%d}"
+    odds_in = {}
+    for k in MARKETS:
+        raw = request.form.get(f"o_{k}") if request.method == "POST" else None
+        try:
+            odds_in[k] = float(str(raw).replace(",", ".")) if raw not in (None, "") else None
+        except ValueError:
+            odds_in[k] = None
+    d = info = None
+    if request.method == "POST" and eng is not None:
+        if not hk or not ak or hk == ak:
+            info = "Lütfen iki farklı takım seçin."
+        else:
+            try:
+                date = dt.date.fromisoformat(tarih)
+            except ValueError:
+                date = core.today()
+            user = {k: v for k, v in odds_in.items() if v is not None and v > 1.0}
+            dctx = core.eligibility_context(core.engine if (core.engine is not None and core.engine.trained)
+                                            else None)
+            p = gorunum.analyze(eng, core.store, dctx, core.settings, comp=comp, home_key=hk, away_key=ak, names=keys,
+                                date=date, neutral=neutral, offered=user, as_of=core.now())
+            if p is None:
+                info = "Takımlardan biri kupa modelinde yok."
+            else:
+                d = detail_context(core, p, user)
+    return {"mod": "kupa", "cup_groups": groups, "comps": comps, "comp": comp, "hk": hk, "ak": ak,
+            "neutral": neutral, "tarih": tarih, "markets": MARKETS, "odds_in": odds_in, "d": d, "info": info,
+            "has_cup_model": eng is not None, "has_model": True}
+
+
 @bp.route("/analiz", methods=["GET", "POST"])
 def analiz():
     core = get_state().core
+    if request.values.get("mod") == "kupa":
+        return render_template("analiz.html", **_analiz_kupa(core))
     eng = core.engine
     leagues = [c for c in LEAGUES if eng is not None and eng.trained and c in eng.states]
     lig = request.values.get("lig") or ("T1" if "T1" in leagues else (leagues[0] if leagues else ""))
@@ -425,8 +497,8 @@ def analiz():
             gate_match_prediction(core.eligibility_context(eng), p, core.now())
             info = " ".join(notes)
             d = detail_context(core, p)
-    return render_template("analiz.html", leagues=leagues, lig=lig, teams=teams, home=home, away=away, tarih=tarih,
-                           markets=MARKETS, odds_in=odds_in, piyasa=piyasa, d=d, info=info,
+    return render_template("analiz.html", mod="lig", leagues=leagues, lig=lig, teams=teams, home=home, away=away,
+                           tarih=tarih, markets=MARKETS, odds_in=odds_in, piyasa=piyasa, d=d, info=info,
                            has_model=bool(leagues))
 
 
@@ -440,6 +512,13 @@ def guc():
     present = set(store.matches["league"].unique()) if store.has_data else set()
     leagues = [c for c in LEAGUES if c in present]
     lig = request.args.get("lig") or ("T1" if "T1" in leagues else (leagues[0] if leagues else ""))
+    cup = core.cup_engine if (core.cup_engine is not None and core.cup_engine.trained) else None
+    if lig == "@avrupa" and leagues:  # KUPA-01: ligler arası ortak ölçek
+        lt = cup.league_table() if cup is not None else pd.DataFrame()
+        tt = cup.team_table(60) if cup is not None else pd.DataFrame()
+        return render_template("guc.html", leagues=leagues, lig=lig, avrupa=True, has_cup=cup is not None,
+                               league_rows=lt.to_dict("records") if not lt.empty else [],
+                               team_rows=tt.to_dict("records") if not tt.empty else [])
     if lig not in leagues:
         lig = leagues[0] if leagues else ""
     ratings, chart = None, None
@@ -569,7 +648,19 @@ def veri():
     for code, lg in LEAGUES.items():
         countries.setdefault(lg.country, []).append((code, lg.name))
     summary = core.store.summary() if core.store.has_data else pd.DataFrame()
+    from ..kupa.gorunum import choice_groups, report_rows
+    from ..kupa.turnuvalar import default_for_leagues
+    from ..kupa.veri import summary as cup_summary
+
+    cup_groups = choice_groups()
+    cs = cup_summary(getattr(core.store, "cup_matches", None))
+    cup_rep = report_rows(core.cup_engine)
     return render_template("veri.html", names=names, countries=countries, chosen=set(s.leagues), years=s.years_back,
+                           cup_groups=cup_groups, cups_chosen=set(s.kupalar or []),
+                           default_cups=",".join(default_for_leagues(s.leagues)),
+                           cup_summary=cs.to_dict("records") if not cs.empty else [], cup_report=cup_rep,
+                           cup_fixtures=len(core.store.cup_fixtures) if getattr(core.store, "cup_fixtures", None)
+                           is not None else 0,
                            profile=s.data_profile, profiles=[(PROFILE_DEFAULT, "Varsayılan: football-data.co.uk (onay "
                                                               "verildiyse GitHub yedek)"),
                                                              (PROFILE_GITHUB, "Yalnızca GitHub: seçili depolar "
@@ -591,6 +682,7 @@ def veri_guncelle():
             return redirect(url_for("views.veri"))
         new = copy.deepcopy(s)
         new.leagues = codes
+        new.kupalar = [c for c in COMPETITIONS if request.form.get(f"kupa_{c}") == "1"]  # KUPA-01
         try:
             new.years_back = int(request.form.get("yil", s.years_back))
         except ValueError:

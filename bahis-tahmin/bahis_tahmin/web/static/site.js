@@ -155,4 +155,15 @@
       });
     });
   });
+
+  // Kupa turnuvası seçimi (KUPA-01): aynı düzen, ayrı kutular
+  document.querySelectorAll("button[data-cups]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var spec = btn.dataset.cups;
+      var set = spec === "*" ? null : spec.split(",");
+      document.querySelectorAll("input[data-cup]").forEach(function (cb) {
+        cb.checked = set === null ? true : set.indexOf(cb.dataset.cup) !== -1;
+      });
+    });
+  });
 })();

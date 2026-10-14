@@ -126,4 +126,11 @@ def verified_labels(store) -> set[str]:
     completion = meta.get("tamamlama_kokeni") or []
     if completion and verify_completion(matches, completion, raw_dir)[0]:
         out.add(COMPLETION_LABEL)  # VERI-02: güncel sezon tamamlaması
+    cup = (meta.get("kupa") or {}).get("koken") or []
+    if cup:  # KUPA-01: openfootball kupa satırları
+        from ..kupa.openfootball import CUP_LABEL
+        from ..kupa.veri import verify_cup_rows
+
+        if verify_cup_rows(getattr(store, "cup_matches", None), cup, raw_dir)[0]:
+            out.add(CUP_LABEL)
     return out

@@ -77,8 +77,25 @@ MIRROR_TO_CODE: dict[str, str] = {(lg.mirror_code or lg.code): lg.code for lg in
 
 
 def league_name(code: str) -> str:
+    """Uzun ad ("Ülke - Lig"); kupa turnuvası kodları (KUPA-01) turnuvanın uzun adıyla."""
     lg = LEAGUES.get(code)
-    return lg.label if lg else code
+    if lg:
+        return lg.label
+    from ..kupa.turnuvalar import COMPETITIONS
+
+    c = COMPETITIONS.get(str(code))
+    return c.full if c else code
+
+
+def short_name(code: str) -> str:
+    """Kısa ad (listelerde): ligin adı veya kupa turnuvasının kısa adı."""
+    lg = LEAGUES.get(code)
+    if lg:
+        return lg.name
+    from ..kupa.turnuvalar import COMPETITIONS
+
+    c = COMPETITIONS.get(str(code))
+    return c.name if c else str(code)
 
 
 def season_start_year(date: dt.date) -> int:

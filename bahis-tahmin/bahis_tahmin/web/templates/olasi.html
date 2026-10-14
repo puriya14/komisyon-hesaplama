@@ -19,6 +19,7 @@
   {{ card("Gerçek oranla geçmiş getiri", cards.roi[0], cards.roi[1], cards.roi[2]) }}
 </div>
 {% elif not has_model %}<p class="muted">Model eğitilince hesaplanır.</p>{% endif %}
+{% if cup_line %}<p class="muted">{{ cup_line }}</p>{% endif %}
 <div class="warn"><b>Önemli:</b> Yüksek olasılık, kâr demek değildir. %93 olasılıklı bir seçimin adil oranı ~1.07'dir;
   teklif edilen oran marj nedeniyle genellikle bunun altındadır. 'Gerçek oranla geçmiş getiri' kartı YALNIZCA verisetinde
   gerçek oranı olan marketleri (1X2 ve 2.5 Alt/Üst, piyasa ortalaması) kapsar; Çifte Şans, 1.5/3.5 Alt/Üst ve KG için oran

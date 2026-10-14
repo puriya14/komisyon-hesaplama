@@ -212,7 +212,7 @@ def test_update_job_runs_and_refreshes_predictions(app, monkeypatch, synthetic, 
 
     calls = {}
 
-    def fake_update(home, settings, old_engine, old_goal, force, progress, allowed=None):
+    def fake_update(home, settings, old_engine, old_goal, force, progress, allowed=None, old_cup=None):
         progress(10, "sahte indirme")
         calls["allowed"] = set(allowed)
         st = DataStore(home)

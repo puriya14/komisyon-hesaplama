@@ -77,6 +77,9 @@ class Settings:
     # Veri denetimi: "standart" (doğrulanamayan güncellik tahmini engellemez; bilinen eksik/az geçmiş yalnızca bahis
     # adayını engeller) veya "siki" (S3-GATE-02 davranışı: güncelliği doğrulanmayan tahmin gösterilmez)
     veri_denetimi: str = "standart"
+    # KUPA-01: kupa turnuvaları (kupa.turnuvalar). None: seçili liglere göre varsayılan (UEFA turnuvaları + seçili
+    # liglerin ülkelerinin kupaları); boş liste: kupa verisi kullanılmaz.
+    kupalar: list | None = None
 
     @classmethod
     def path(cls) -> Path:
@@ -117,6 +120,12 @@ class Settings:
             self.onay_surumu = 0
         if self.veri_denetimi not in VERI_DENETIMI:
             self.veri_denetimi = "standart"
+        from .kupa.turnuvalar import COMPETITIONS, default_for_leagues
+
+        if not isinstance(self.kupalar, list):
+            self.kupalar = default_for_leagues(self.leagues)
+        else:
+            self.kupalar = [c for c in dict.fromkeys(str(x) for x in self.kupalar) if c in COMPETITIONS]
         if self.odds_type not in ("avg", "max", "b365", "pinnacle"):
             self.odds_type = "avg"
         if self.margin_method not in ("power", "proportional"):

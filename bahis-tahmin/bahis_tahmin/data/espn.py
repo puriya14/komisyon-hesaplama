@@ -62,6 +62,7 @@ ESPN_LEAGUES: dict[str, str] = {
 UNVERIFIED: frozenset[str] = frozenset({"FIN", "POL", "ROU", "SWZ"})
 
 NORMAL_FINISH = frozenset({"STATUS_FULL_TIME", "STATUS_FINAL"})
+EXTRA_TIME_FINISH = frozenset({"STATUS_FINAL_AET", "STATUS_FINAL_PEN"})  # KUPA-01: yalnızca kupa okuyucusu
 NOT_PLAYED = {"STATUS_POSTPONED": "postponed", "STATUS_CANCELED": "cancelled", "STATUS_CANCELLED": "cancelled",
               "STATUS_ABANDONED": "abandoned", "STATUS_SUSPENDED": "suspended"}
 MIN_N, MIN_SHARE = 3, 0.90  # maç kanıtı eşikleri (VERI-01 ile aynı)
@@ -94,6 +95,12 @@ class EspnEvent:
     status: str  # ESPN durum adı
     ft: tuple | None = None  # normal süre sonucu
     ht: tuple | None = None  # ilk yarı (yalnızca tutarlı devre skorlarından)
+    # KUPA-01: ESPN takım kimlikleri (kimlik kanıtı için), tarafsız saha ve uzatmaya giden maç (``ft`` yine normal
+    # süre sonucudur; yalnızca ``allow_extra_time`` ile ve devre skorları tutarlıysa)
+    home_id: str = ""
+    away_id: str = ""
+    neutral: bool = False
+    extra_time: bool = False
 
 
 @dataclass
@@ -153,8 +160,23 @@ def _half(c: dict) -> int | None:
     return None if None in vals else vals
 
 
-def parse_scoreboard(data: bytes, country: str) -> EspnParse:
-    """ESPN skor tablosu yanıtından maçlar. Tanınmayan kayıt atlanır ve nedeniyle sayılır."""
+def _regulation(c: dict, total: int | None):
+    """Uzatmaya giden maçta normal süre ve ilk yarı golleri: devre skorları en az iki dönem içermeli ve bütün
+    dönemlerin toplamı maç skoruna eşit olmalı (penaltı atışları skora ve dönemlere katılmaz); yoksa None."""
+    ls = c.get("linescores")
+    if not isinstance(ls, list) or len(ls) < 2 or total is None:
+        return None
+    vals = [_goals(x) for x in ls]
+    if None in vals or sum(vals) != total:
+        return None
+    return vals[0] + vals[1], vals[0]
+
+
+def parse_scoreboard(data: bytes, country: str, allow_extra_time: bool = False, tz=None) -> EspnParse:
+    """ESPN skor tablosu yanıtından maçlar. Tanınmayan kayıt atlanır ve nedeniyle sayılır.
+
+    ``allow_extra_time`` (KUPA-01, yalnızca kupalar): uzatmaya/penaltılara giden maçın normal süre skoru, dönem skorları
+    tutarlıysa okunur (``extra_time``); değilse maç yine atlanır. ``tz``: verilirse yerel tarih/saat bu dilimde."""
     res = EspnParse()
     try:
         obj = json.loads(data.decode("utf-8"))
@@ -165,7 +187,7 @@ def parse_scoreboard(data: bytes, country: str) -> EspnParse:
     if not isinstance(events, list):
         res.skipped["BICIM_BILINMIYOR"] += 1
         return res
-    tz = _tz(country)
+    tz = tz or _tz(country)
     for e in events:
         comp = (e.get("competitions") or [None])[0] if isinstance(e, dict) else None
         if not isinstance(comp, dict) or not isinstance(comp.get("competitors"), list):
@@ -194,19 +216,30 @@ def parse_scoreboard(data: bytes, country: str) -> EspnParse:
         st = (comp.get("status") or e.get("status") or {}).get("type") or {}
         name, state = str(st.get("name") or ""), str(st.get("state") or "")
         ft = ht = None
+        extra = False
         if st.get("completed") is True:
-            if name not in NORMAL_FINISH:
+            if name in EXTRA_TIME_FINISH and allow_extra_time:
+                total = (_goals(side["home"][1].get("score")), _goals(side["away"][1].get("score")))
+                rh, ra = _regulation(side["home"][1], total[0]), _regulation(side["away"][1], total[1])
+                if rh is None or ra is None:
+                    res.skipped["NORMAL_SURE_DISI"] += 1
+                    continue
+                ft, ht, extra = (rh[0], ra[0]), (rh[1], ra[1]), True
+            elif name not in NORMAL_FINISH:
                 res.skipped["NORMAL_SURE_DISI"] += 1
                 continue
-            ft = (_goals(side["home"][1].get("score")), _goals(side["away"][1].get("score")))
-            if None in ft:
-                res.skipped["SKOR_GECERSIZ"] += 1
-                continue
-            hh, ha = _half(side["home"][1]), _half(side["away"][1])
-            if hh and ha and hh[0] + hh[1] == ft[0] and ha[0] + ha[1] == ft[1]:
-                ht = (hh[0], ha[0])
+            else:
+                ft = (_goals(side["home"][1].get("score")), _goals(side["away"][1].get("score")))
+                if None in ft:
+                    res.skipped["SKOR_GECERSIZ"] += 1
+                    continue
+                hh, ha = _half(side["home"][1]), _half(side["away"][1])
+                if hh and ha and hh[0] + hh[1] == ft[0] and ha[0] + ha[1] == ft[1]:
+                    ht = (hh[0], ha[0])
+        ids = {k: str((v[1].get("team") or {}).get("id") or "") for k, v in side.items()}
         res.events.append(EspnEvent(str(e.get("id") or f"{day}|{side['home'][0]}|{side['away'][0]}"), day, time,
-                                    side["home"][0], side["away"][0], state, name, ft, ht))
+                                    side["home"][0], side["away"][0], state, name, ft, ht,
+                                    ids["home"], ids["away"], comp.get("neutralSite") is True, extra))
     return res
 
 

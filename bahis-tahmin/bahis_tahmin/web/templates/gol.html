@@ -4,7 +4,9 @@
 {% block content %}
 <h1>Gol Pazarları</h1>
 <p class="sub">İki yarıda da karşılıklı gol · Maç 3,5 Üst · İlk yarı 1,5 Üst. Olasılıklar tek bir ortak gol dağılımından
-  türetilir; öneri yalnızca gerçek oran ve doğrulanmış model ile oluşabilir.</p>
+  türetilir; öneri yalnızca gerçek oran ve doğrulanmış model ile oluşabilir. Kupa ve Avrupa maçları bu sayfada yer almaz
+  (bu yarı-gol modeli lig içinde eğitilip doğrulanır); onların 1X2, Çifte Şans, Alt/Üst ve KG olasılıkları
+  <a href="{{ url_for('views.tahminler', lig='@kupa') }}">Tahminler</a> sayfasındadır.</p>
 <div class="warn">{{ status }}</div>
 <div class="actions">
   <form method="post" action="{{ url_for('gol.egit') }}">{{ csrf_field() }}

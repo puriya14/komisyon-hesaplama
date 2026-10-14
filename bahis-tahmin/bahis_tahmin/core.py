@@ -30,6 +30,7 @@ log = logging.getLogger(__name__)
 
 ENGINE_FILE = "engine.joblib"
 GOAL_ENGINE_FILE = "goal_engine.joblib"
+CUP_ENGINE_FILE = "kupa_engine.joblib"  # KUPA-01: ligler arası kupa modeli
 LEDGER_FILE = "gol_pazarlari.sqlite"
 SEQ_DIR = "dizi_arastirma"
 STALE_HOURS = 6.0
@@ -53,8 +54,27 @@ def train_goal(matches: pd.DataFrame, home, progress) -> tuple[GoalEngine | None
     return goal, None
 
 
+def train_cup(matches: pd.DataFrame, cup_matches: pd.DataFrame, home, progress):
+    """KUPA-01: ligler arası kupa modelini eğitip kaydeder. Döner: (motor | None, hata | None). Kupa maçı yoksa
+    eğitilmez (hata metni)."""
+    from .kupa.motor import CupEngine
+
+    if cup_matches is None or cup_matches.empty:
+        return None, "Kupa maçı verisi yok (Veri sayfasında turnuva seçip verileri güncelleyin)."
+    eng = CupEngine()
+    try:
+        eng.train(matches, cup_matches, progress=progress)
+    except ValueError as e:
+        return None, str(e)
+    eng.save(Path(home) / CUP_ENGINE_FILE)
+    return eng, None
+
+
 def load_saved(home, progress: Progress | None = None):
-    """Kayıtlı veri deposu, maç sonucu modeli ve gol modeli. Döner: (store, engine, goal, goal_hata)."""
+    """Kayıtlı veri deposu, maç sonucu modeli, gol modeli ve kupa modeli. Döner: (store, engine, goal, goal_hata,
+    kupa_motoru)."""
+    from .kupa.motor import CupEngine
+
     progress = progress or (lambda p, m: None)
     home = Path(home)
     progress(10, "Kayıtlı veriler yükleniyor...")
@@ -64,13 +84,41 @@ def load_saved(home, progress: Progress | None = None):
     engine = PredictionEngine.load(home / ENGINE_FILE)
     progress(75, "Gol pazarları modeli yükleniyor...")
     goal, gerr = GoalEngine.load(home / GOAL_ENGINE_FILE)
-    return store, engine, goal, gerr
+    progress(90, "Kupa modeli yükleniyor...")
+    cup = CupEngine.load(home / CUP_ENGINE_FILE)
+    return store, engine, goal, gerr, cup
 
 
 def training_block_codes(store: DataStore, settings: Settings, matches: pd.DataFrame | None = None) -> list[str]:
     """Gerçek veriyle eğitimin hak engelleri (S3-GATE-02; onay kutusu bu kontrolü aşamaz). Boşsa eğitilebilir."""
     m = store.matches if matches is None else matches
     return training_rights_codes(m, settings.source_consent, verified_labels(store), settings.declarations())
+
+
+def cup_training_block_codes(store: DataStore, settings: Settings) -> list[str]:
+    """Kupa modelinin eğitim verisi (lig + kupa satırları) için hak engelleri (boş = eğitilebilir)."""
+    cups = getattr(store, "cup_matches", None)
+    m = store.matches[["source"]]
+    if cups is not None and not cups.empty:
+        m = pd.concat([m, cups[["source"]]], ignore_index=True)
+    return training_rights_codes(m, settings.source_consent, verified_labels(store), settings.declarations())
+
+
+def cup_needs_training(store: DataStore, cup_engine, settings: Settings) -> bool:
+    """Kupa verisi var ve kupa modeli yok ya da veriyle uyumsuz mu?"""
+    from .kupa.motor import CupEngine
+
+    cups = getattr(store, "cup_matches", None)
+    if not store.has_data or cups is None or cups.empty or not settings.kupalar:
+        return False
+    return cup_engine is None or cup_engine.data_signature != CupEngine.signature(store.matches, cups)
+
+
+def next_cup_engine(old, new, settings: Settings):
+    """Güncelleme/eğitim sonrası etkin kupa motoru: yeni eğitildiyse yenisi, turnuva seçimi boşsa yok, yoksa eskisi."""
+    if not settings.kupalar:
+        return None
+    return new if new is not None else old
 
 
 def needs_training(store: DataStore, engine: PredictionEngine | None, settings: Settings) -> bool:
@@ -92,11 +140,12 @@ def data_age_hours(store: DataStore) -> float:
 
 
 def update_work(home, settings: Settings, old_engine, old_goal, force: bool, progress: Progress,
-                allowed: set[str] | None = None):
+                allowed: set[str] | None = None, old_cup=None):
     """Verileri günceller; veri değiştiyse ve kullanım hakkı doğrulandıysa modelleri eğitir. ``allowed``: işin
     başlatıldığı andaki izinli kaynaklar (verilmezse ayarlardan).
 
-    Döner: (store, engine, report, (goal, goal_hata)). ``goal`` None ve hata yoksa gol modeli değişmedi."""
+    Döner: (store, engine, report, (goal, goal_hata), (kupa_motoru, kupa_hata)). ``goal`` None ve hata yoksa gol modeli
+    değişmedi; kupa motoru için de aynı (KUPA-01)."""
     s = settings
     allowed = s.allowed_sources() if allowed is None else allowed
     home = Path(home)
@@ -109,7 +158,7 @@ def update_work(home, settings: Settings, old_engine, old_goal, force: bool, pro
     report = store.update(
         s.leagues, s.years_back, progress=p1, force=force,
         use_mirror_fallback=s.use_mirror_fallback, fixture_days=s.fixture_days,
-        allowed=allowed, profile=s.data_profile,
+        allowed=allowed, profile=s.data_profile, cups=list(s.kupalar),
     )
     engine = old_engine
     sig = PredictionEngine.signature(store.matches, s.margin_method)
@@ -129,18 +178,35 @@ def update_work(home, settings: Settings, old_engine, old_goal, force: bool, pro
     goal = gerr = None
     if store.has_data and not blocked and (old_goal is None
                                            or old_goal.data_sha != data_manifest(store.matches)["sha256"]):
-        goal, gerr = train_goal(store.matches, home, lambda p, m: progress(70 + int(p * 0.29), m))
-    return store, engine, report, (goal, gerr)
+        goal, gerr = train_goal(store.matches, home, lambda p, m: progress(70 + int(p * 0.2), m))
+    cup = cerr = None
+    if not s.kupalar:  # turnuva seçimi boş: eski kupa modeli de kaldırılır (yeniden açılışta geri gelmez)
+        (home / CUP_ENGINE_FILE).unlink(missing_ok=True)
+    if not blocked and cup_needs_training(store, old_cup, s):
+        cblock = cup_training_block_codes(store, s)
+        if cblock:
+            report.warnings.append("Kupa modeli eğitilmedi: kupa verisinin kaynağında kullanım kapsamı doğrulanmadı ("
+                                   + ", ".join(cblock) + "). " + DECLARATION_HINT)
+        else:
+            cup, cerr = train_cup(store.matches, store.cup_matches, home,
+                                  lambda p, m: progress(90 + int(p * 0.09), m))
+            if cerr:
+                report.warnings.append(f"Kupa modeli: {cerr}")
+    return store, engine, report, (goal, gerr), (cup, cerr)
 
 
-def retrain_work(matches: pd.DataFrame, settings: Settings, home, progress: Progress):
-    """Maç sonucu ve gol modelini yeniden eğitir (hak kapısı çağırandan önce denetlenir). Döner: (engine, goal,
-    goal_hata)."""
+def retrain_work(matches: pd.DataFrame, settings: Settings, home, progress: Progress, cup_matches=None,
+                 cup_allowed: bool = False):
+    """Maç sonucu, gol ve (``cup_allowed`` ve kupa verisi varsa) kupa modelini yeniden eğitir (hak kapısı çağırandan
+    önce denetlenir). Döner: (engine, goal, goal_hata, (kupa_motoru, kupa_hata))."""
     engine = PredictionEngine()
-    engine.train(matches, progress=lambda p, m: progress(int(p * 0.7), m), margin_method=settings.margin_method)
+    engine.train(matches, progress=lambda p, m: progress(int(p * 0.65), m), margin_method=settings.margin_method)
     engine.save(Path(home) / ENGINE_FILE)
-    goal, gerr = train_goal(matches, home, lambda p, m: progress(70 + int(p * 0.29), m))
-    return engine, goal, gerr
+    goal, gerr = train_goal(matches, home, lambda p, m: progress(65 + int(p * 0.25), m))
+    cup = cerr = None
+    if cup_allowed and cup_matches is not None and not cup_matches.empty and settings.kupalar:
+        cup, cerr = train_cup(matches, cup_matches, home, lambda p, m: progress(90 + int(p * 0.09), m))
+    return engine, goal, gerr, (cup, cerr)
 
 
 # ------------------------------------------------------------------ onay ve beyan
@@ -275,6 +341,20 @@ def build_eligibility_context(store: DataStore, engine, settings: Settings, toda
                          mode=settings.veri_denetimi)
 
 
+def cup_predictions(store: DataStore, cup_engine, settings: Settings, now: dt.datetime, dctx) -> tuple[list, list]:
+    """KUPA-01: kupa fikstürlerinin uygunluk kontrollü tahminleri (tahminler, tahmini olmayanların nedenli sonuçları).
+    ``dctx``: lig uygunluk bağlamı (takımların kendi liglerinin kapsam takvimleri)."""
+    from .kupa.uygunluk import build_cup_context, gated_cup_predictions
+
+    fx = getattr(store, "cup_fixtures", None)
+    if fx is None or fx.empty or not settings.kupalar:
+        return [], []
+    fx = fx[fx["comp"].isin(settings.kupalar)]
+    eng = cup_engine if (cup_engine is not None and cup_engine.trained) else None
+    cctx = build_cup_context(store, eng, dctx, settings)
+    return gated_cup_predictions(eng, cctx, fx, now)
+
+
 def prediction_rows(predictions, unpredicted, settings: Settings, now: dt.datetime) -> pd.DataFrame:
     """Tahmin listesini tabloya uygun DataFrame'e çevirir.
 
@@ -341,6 +421,8 @@ class AppCore:
         self.engine: PredictionEngine | None = None
         self.goal_engine: GoalEngine | None = None
         self.goal_load_error: str | None = None
+        self.cup_engine = None  # KUPA-01: ligler arası kupa modeli (kupa.motor.CupEngine)
+        self.cup_error: str | None = None
         self.predictions: list = []
         self.match_unpredicted: list = []
         self.goal_verdicts: list = []
@@ -361,19 +443,25 @@ class AppCore:
 
     # ----------------------------------------------------------- durum
     def apply_loaded(self, res) -> None:
+        store, engine, goal, gerr, *rest = res
         with self.lock:
-            self.store, self.engine, self.goal_engine, self.goal_load_error = res
+            self.store, self.engine, self.goal_engine, self.goal_load_error = store, engine, goal, gerr
+            self.cup_engine = rest[0] if rest else None
             self.loaded = True
             self._ctx_cache.clear()
 
     def apply_update(self, res) -> None:
-        store, engine, report, (goal, gerr) = res
+        store, engine, report, (goal, gerr), *rest = res
         with self.lock:
             self.store = store
             self.engine = engine
             if goal is not None or gerr:
                 self.goal_engine = goal
                 self.goal_load_error = gerr
+            if rest:
+                cup, cerr = rest[0]
+                self.cup_engine = next_cup_engine(self.cup_engine, cup, self.settings)
+                self.cup_error = cerr
             self.last_report_text = report.summary()
             self.loaded = True
 
@@ -423,6 +511,14 @@ class AppCore:
             except Exception as e:
                 log.exception("Tahminler hesaplanamadı")
                 preds, err = [], f"Tahminler hesaplanamadı: {e}"
+        try:  # KUPA-01: kupa ve Avrupa maçları (aynı listeye, aynı gösterim kurallarıyla)
+            cp, cu = cup_predictions(self.store, self.cup_engine, self.settings, self.now(),
+                                     self.eligibility_context(self.engine if (self.engine is not None
+                                                                             and self.engine.trained) else None))
+            preds, unpredicted = list(preds) + cp, list(unpredicted) + cu
+        except Exception as e:
+            log.exception("Kupa tahminleri hesaplanamadı")
+            err = (err + " · " if err else "") + f"Kupa tahminleri hesaplanamadı: {e}"
         with self.lock:
             self.predictions, self.match_unpredicted = preds, unpredicted
             self._match_day = self.today()

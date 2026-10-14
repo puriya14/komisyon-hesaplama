@@ -10,7 +10,7 @@ import pandas as pd
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QCheckBox, QDoubleSpinBox, QGridLayout, QHBoxLayout, QLabel
 
-from ...data.leagues import LEAGUES, league_name
+from ...data.leagues import league_name, short_name
 from ...models.engine import MARKET_GROUPS, verify_selection
 from ...models.markets import MARKETS
 from .. import theme
@@ -74,7 +74,7 @@ class LikelyPage(Page):
         self.model.formatters = {
             "kupon": lambda v: "",
             "date": lambda v: pd.Timestamp(v).strftime("%d.%m.%Y"),
-            "league": lambda v: LEAGUES[v].name if v in LEAGUES else v,
+            "league": short_name,
             "prob": fmt_pct, "fair": fmt_num, "odds": fmt_num, "ev": fmt_signed_pct,
         }
         self.model.backgrounds = {
@@ -90,6 +90,10 @@ class LikelyPage(Page):
         self.gate_note.setWordWrap(True)
         self.gate_note.setObjectName("muted")
         self.body.addWidget(self.gate_note)
+        self.cup_note = QLabel("")  # KUPA-01: kupa modelinin aynı eşikteki geçmişi (kartlar lig modelinindir)
+        self.cup_note.setWordWrap(True)
+        self.cup_note.setObjectName("muted")
+        self.body.addWidget(self.cup_note)
         self.kupon = QLabel("Kupon için satırlardaki kutucukları işaretleyin.")
         self.kupon.setWordWrap(True)
         self.kupon.setTextFormat(Qt.RichText)
@@ -187,6 +191,11 @@ class LikelyPage(Page):
             notes.append(f"Uyarılı (bahis adayı olmayan) {warned} maçta oran ve beklenen değer gösterilmez.")
         self.gate_note.setText(" ".join(notes) + (" Neden ve gereken veri için Tahminler sayfasındaki 'Veri durumu' "
                                                   "sütununa bakın." if notes else ""))
+        from ...kupa.gorunum import likely_history_line
+
+        line = likely_history_line(getattr(self.ctl, "cup_engine", None), keys, thr, one)
+        self.cup_note.setText(line)
+        self.cup_note.setVisible(bool(line))
 
     def _update_kupon(self, *args) -> None:
         df = self.model.frame

@@ -22,6 +22,11 @@
     python -m bahis_tahmin arsiv-katalog --ev ARSIV
     python -m bahis_tahmin arsiv-maclar --ev ARSIV --sezon 2024/25 --takim "Arsenal FC"
     python -m bahis_tahmin arsiv-ozet --ev ARSIV --sezon 2024/25
+    python -m bahis_tahmin update --kupalar UCL,UEL,UECL   # kupa / Avrupa turnuvaları (varsayilan, hepsi, yok)
+    python -m bahis_tahmin kupa-turnuvalar          # turnuva kodları
+    python -m bahis_tahmin kupa-egit                # ligler arası kupa modeli + ileriye dönük doğrulama
+    python -m bahis_tahmin kupa-tahmin --turnuva UCL
+    python -m bahis_tahmin kupa-rapor               # kupa verisi ve model doğrulama raporu
 """
 
 from __future__ import annotations
@@ -35,6 +40,7 @@ from .data.leagues import LEAGUES, league_name
 
 ENGINE_FILE = "engine.joblib"
 GOAL_ENGINE_FILE = "goal_engine.joblib"
+CUP_ENGINE_FILE = "kupa_engine.joblib"
 LEDGER_FILE = "gol_pazarlari.sqlite"
 
 
@@ -158,6 +164,11 @@ def cmd_update(a) -> int:
         s.veri_denetimi = a.veri_denetimi
     if a.profil:
         s.data_profile = a.profil
+    if a.kupalar is not None:
+        cups = _parse_cups(a.kupalar, s.leagues)
+        if cups is None:
+            return 2
+        s.kupalar = cups
     s.save()
     from .data.github_kaynak import PROFILE_GITHUB
 
@@ -175,10 +186,141 @@ def cmd_update(a) -> int:
     st.load()
     rep = st.update(s.leagues, s.years_back, progress=_progress, force=a.force,
                     use_mirror_fallback=not a.no_mirror, fixture_days=s.fixture_days,
-                    allowed=s.allowed_sources(), profile=s.data_profile)
+                    allowed=s.allowed_sources(), profile=s.data_profile, cups=list(s.kupalar or []))
+    if not s.kupalar:
+        (app_home() / CUP_ENGINE_FILE).unlink(missing_ok=True)  # turnuva seçimi boş: eski kupa modeli kaldırılır
     print(rep.summary())
     print(st.summary().to_string(index=False))
     return 0 if st.has_data else 1
+
+
+def _parse_cups(text: str, leagues: list[str]) -> list[str] | None:
+    """--kupalar: virgülle kodlar, 'varsayilan' (seçili liglere göre), 'hepsi' veya 'yok'."""
+    from .kupa.turnuvalar import COMPETITIONS, default_for_leagues
+
+    t = text.strip().lower()
+    if t in ("varsayilan", "varsayılan"):
+        return default_for_leagues(leagues)
+    if t == "hepsi":
+        return list(COMPETITIONS)
+    if t in ("yok", ""):
+        return []
+    codes = [c.strip().upper() for c in text.split(",") if c.strip()]
+    bad = [c for c in codes if c not in COMPETITIONS]
+    if bad:
+        print(f"Bilinmeyen turnuva kodu: {', '.join(bad)} (liste: kupa-turnuvalar)", file=sys.stderr)
+        return None
+    return [c for c in COMPETITIONS if c in codes]
+
+
+def _cup_engine():
+    from .kupa.motor import CupEngine
+
+    return CupEngine.load(app_home() / CUP_ENGINE_FILE)
+
+
+def cmd_cup_list(a) -> int:
+    from .kupa.gorunum import choice_groups
+
+    s = Settings.load()
+    chosen = set(s.kupalar or [])
+    for title, comps in choice_groups().items():
+        print(title)
+        for code, name, unverified in comps:
+            print(f"  [{'x' if code in chosen else ' '}] {code:6s} {name}" + ("  (kod doğrulanmadı)" if unverified
+                                                                            else ""))
+    return 0
+
+
+def _print_cup_report(eng) -> None:
+    from .kupa.gorunum import report_rows
+
+    rep = eng.report
+    print(f"Kupa modeli: {rep.n_cup_matches} kupa + {rep.n_domestic} lig maçı; ileriye dönük {rep.n_oos} tahmin "
+          f"(kural {rep.rule}).")
+    print(f"{'Grup / turnuva':42s} {'Maç':>6s} {'Log-kayıp':>10s} {'Taban':>7s} {'İsabet':>7s}  Statü")
+    for r in report_rows(eng):
+        ll = "-" if r["ll"] is None or r["ll"] != r["ll"] else f"{r['ll']:.4f}"
+        tb = "-" if r["taban"] is None or r["taban"] != r["taban"] else f"{r['taban']:.4f}"
+        acc = "-" if r["isabet"] is None or r["isabet"] != r["isabet"] else f"%{100 * r['isabet']:.1f}"
+        st = r["statu"] + (f" ({r['neden']})" if r["neden"] and r["grup"] else "")
+        print(f"{str(r['ad'])[:42]:42s} {r['n']:6d} {ll:>10s} {tb:>7s} {acc:>7s}  {st}")
+
+
+def cmd_cup_train(a) -> int:
+    from .core import cup_training_block_codes, train_cup
+    from .eligibility import reason_texts
+
+    st = _store()
+    cups = getattr(st, "cup_matches", None)
+    if not st.has_data or cups is None or cups.empty:
+        print("Kupa maçı verisi yok. Önce: python -m bahis_tahmin update --kupalar varsayilan", file=sys.stderr)
+        return 2
+    codes = cup_training_block_codes(st, Settings.load())
+    if codes:
+        print("Kupa modeli eğitilmedi (veri kaynağının kullanım kapsamı doğrulanmadı): " + reason_texts(codes),
+              file=sys.stderr)
+        return 3
+    t = time.time()
+    eng, err = train_cup(st.matches, cups, app_home(), _progress)
+    if eng is None:
+        print(f"Kupa modeli eğitilemedi: {err}", file=sys.stderr)
+        return 1
+    print(f"Eğitim {time.time() - t:.0f} sn sürdü.")
+    _print_cup_report(eng)
+    return 0
+
+
+def cmd_cup_report(a) -> int:
+    from .kupa.veri import summary as cup_summary
+
+    st = _store()
+    cs = cup_summary(getattr(st, "cup_matches", None))
+    print("Kupa verileri:" if not cs.empty else "Kupa verisi yok.")
+    if not cs.empty:
+        print(cs.drop(columns=["comp"]).to_string(index=False))
+    fx = getattr(st, "cup_fixtures", None)
+    print(f"Yaklaşan kupa maçı: {0 if fx is None else len(fx)}")
+    eng = _cup_engine()
+    if eng is None or not eng.trained:
+        print("Kupa modeli yok (kupa-egit).")
+        return 0
+    _print_cup_report(eng)
+    return 0
+
+
+def cmd_cup_predict(a) -> int:
+    from .core import cup_predictions
+    from .models.engine import PredictionEngine
+
+    st = _store()
+    eng = _cup_engine()
+    if eng is None or not eng.trained:
+        print("Kupa modeli bulunamadı. Önce 'update --kupalar ...' ve 'kupa-egit' çalıştırın.", file=sys.stderr)
+        return 2
+    s = Settings.load()
+    main_eng = PredictionEngine.load(app_home() / ENGINE_FILE)
+    now = _now_utc()
+    preds, missing = cup_predictions(st, eng, s, now, _eligibility_ctx(st, main_eng))
+    if a.turnuva:
+        code = a.turnuva.strip().upper()
+        preds = [p for p in preds if p.league == code]
+        missing = [v for v in missing if v.league == code]
+    if not preds and not missing:
+        print("Yaklaşan kupa maçı bulunamadı.")
+        return 0
+    for p in sorted(preds, key=lambda x: (x.date, x.time)):
+        head = f"{p.date:%d.%m} {p.time:5s} {p.league:6s} {p.home:>22s} - {p.away:<22s} "
+        if not p.forecast_ok_at(now):
+            print(head + _blocked_line(p.eligibility))
+            continue
+        block = p.data_block(now)
+        gate = f"  (bahis adayı değil: {p.eligibility.short_text()})" if block and p.eligibility is not None else ""
+        print(head + f"1:%{100 * p.p_final[0]:4.1f} X:%{100 * p.p_final[1]:4.1f} 2:%{100 * p.p_final[2]:4.1f} "
+              f"Ü2.5:%{100 * p.markets['O2.5']:4.1f} KG:%{100 * p.markets['BTTS_Y']:4.1f}{gate}")
+    for v in missing:
+        print(f"{v.date:%d.%m} {v.time:5s} {v.league:6s} {v.home:>22s} - {v.away:<22s} {_blocked_line(v.first())}")
+    return 0
 
 
 def cmd_train(a) -> int:
@@ -1200,6 +1342,9 @@ def main(argv: list[str] | None = None) -> int:
                    help="veri denetimi modu (ayar olarak kaydedilir; varsayılan standart)")
     u.add_argument("--profil", choices=["varsayilan", "github"],
                    help="veri profili (kaydedilir): github = yalnızca seçili GitHub depoları, football-data yok")
+    u.add_argument("--kupalar", metavar="KODLAR",
+                   help="kupa / Avrupa turnuvaları (kaydedilir): virgülle kodlar (kupa-turnuvalar), 'varsayilan', "
+                        "'hepsi' veya 'yok'")
     u.set_defaults(fn=cmd_update)
     sub.add_parser("train", help="modeli eğit").set_defaults(fn=cmd_train)
     pr = sub.add_parser("predict", help="yaklaşan maç tahminleri")
@@ -1215,6 +1360,13 @@ def main(argv: list[str] | None = None) -> int:
     bt.add_argument("--source", default="final", choices=["final", "model"])
     bt.set_defaults(fn=cmd_backtest)
     sub.add_parser("self-test", help="kurulum kontrolü").set_defaults(fn=cmd_self_test)
+    sub.add_parser("kupa-turnuvalar", help="kupa / Avrupa turnuva kodları ve seçim durumu").set_defaults(fn=cmd_cup_list)
+    sub.add_parser("kupa-egit", help="ligler arası kupa modelini eğit (+ ileriye dönük doğrulama)").set_defaults(
+        fn=cmd_cup_train)
+    kt = sub.add_parser("kupa-tahmin", help="yaklaşan kupa / Avrupa maçı tahminleri")
+    kt.add_argument("--turnuva", help="turnuva kodu, ör. UCL")
+    kt.set_defaults(fn=cmd_cup_predict)
+    sub.add_parser("kupa-rapor", help="kupa verisi ve kupa modeli doğrulama raporu").set_defaults(fn=cmd_cup_report)
     w = sub.add_parser("web", help="web arayüzünü başlat (tarayıcıdan kullanım; varsayılan yalnızca bu bilgisayar)")
     w.add_argument("--port", type=int, help="sunucu portu (varsayılan 8765)")
     w.add_argument("--paylas", action="store_true", help="aynı ağdaki cihazlardan (ör. telefon) erişime aç; "

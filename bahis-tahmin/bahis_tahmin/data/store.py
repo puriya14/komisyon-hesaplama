@@ -70,6 +70,7 @@ class UpdateReport:
     completed: dict = field(default_factory=dict)  # VERI-02: lig -> openfootball ile eklenen maç sayısı
     txt_sources: dict = field(default_factory=dict)  # FIKSTUR-03: lig -> kullanılan openfootball metin dosyası
     espn: dict = field(default_factory=dict)  # KAYNAK-04: lig -> {"fikstur", "sonuc", "eslesen", "eslesmeyen"}
+    kupa: dict = field(default_factory=dict)  # KUPA-01: turnuva -> {"kaynak": {sezon: kaynak}, "sonuc", "fikstur"}
 
     def summary(self) -> str:
         lines = [
@@ -98,6 +99,14 @@ class UpdateReport:
                 "(lig yaklaşan/sonuç: " + ", ".join(f"{k} {v['fikstur']}/{v['sonuc']}"
                             + (f", {len(v['eslesmeyen'])} ad eşleşmedi" if v["eslesmeyen"] else "")
                             for k, v in self.espn.items()) + ").")
+        if self.kupa:
+            from ..kupa.turnuvalar import competition_name
+
+            got = {k: v for k, v in self.kupa.items() if v.get("sonuc") or v.get("fikstur")}
+            lines.append(f"Kupalar: {sum(v['sonuc'] for v in got.values())} maç sonucu, "
+                         f"{sum(v['fikstur'] for v in got.values())} yaklaşan maç ("
+                         + (", ".join(f"{competition_name(k)} {v['sonuc']}/{v['fikstur']}" for k, v in got.items())
+                            or "veri alınamadı") + ").")
         for key in self.blocked_sources:
             lines.append(f"{SOURCES[key].name}: kullanım koşulları onaylanmadığı için kullanılmadı.")
         lines += self.warnings
@@ -121,6 +130,11 @@ class DataStore:
         self.matches = pd.DataFrame(columns=MATCH_COLUMNS)
         self.fixtures = pd.DataFrame(columns=FIXTURE_COLUMNS)
         self.meta: dict = {}
+        from ..kupa.veri import empty_fixtures, empty_matches
+
+        # KUPA-01: kupa maçları lig verisinden ayrı tutulur (lig modeli, dizi araştırması ve arşiv değişmez)
+        self.cup_matches = empty_matches()
+        self.cup_fixtures = empty_fixtures()
         self._last_unmatched: list[dict] = []
         self._of_memo: dict = {}
 
@@ -136,6 +150,10 @@ class DataStore:
     @property
     def _meta_path(self) -> Path:
         return self.home / "data_meta.json"
+
+    @property
+    def _cup_paths(self) -> tuple[Path, Path]:
+        return self.home / "cup_matches.pkl", self.home / "cup_fixtures.pkl"
 
     def load(self) -> bool:
         try:
@@ -159,12 +177,31 @@ class DataStore:
                     fixtures[col] = [canon.get((_country(lg), spelling_key(t)), t) if isinstance(t, str) else t
                                      for lg, t in zip(fixtures["league"], fixtures[col])]
         self.matches, self.fixtures, self.meta = matches, fixtures, meta
+        self._load_cups()
         return True
+
+    def _load_cups(self) -> None:
+        """Kupa tabloları (yoksa veya okunamazsa boş; lig verisinin yüklenmesini engellemez)."""
+        from ..kupa.veri import CUP_FIXTURE_COLUMNS, CUP_MATCH_COLUMNS, empty_fixtures, empty_matches
+
+        mp, fp = self._cup_paths
+        try:
+            cm = pd.read_pickle(mp) if mp.exists() else empty_matches()
+            cf = pd.read_pickle(fp) if fp.exists() else empty_fixtures()
+            if list(cm.columns) != CUP_MATCH_COLUMNS or list(cf.columns) != CUP_FIXTURE_COLUMNS:
+                raise ValueError("kupa tablosu sütunları uyumsuz")
+        except Exception as e:
+            log.info("Kupa verisi yüklenemedi: %s", e)
+            cm, cf = empty_matches(), empty_fixtures()
+        self.cup_matches, self.cup_fixtures = cm, cf
 
     def save(self) -> None:
         self.home.mkdir(parents=True, exist_ok=True)
         self.matches.to_pickle(self._matches_path)
         self.fixtures.to_pickle(self._fixtures_path)
+        mp, fp = self._cup_paths
+        self.cup_matches.to_pickle(mp)
+        self.cup_fixtures.to_pickle(fp)
         self.meta["version"] = STORE_VERSION
         self._meta_path.write_text(json.dumps(self.meta, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -199,6 +236,7 @@ class DataStore:
         allowed: set[str] | None = None,
         profile: str = PROFILE_DEFAULT,
         github_transport=None,
+        cups: list[str] | None = None,
     ) -> UpdateReport:
         """Verileri indirir. ``allowed``: kullanılmasına izin verilen kaynak anahtarları
         (bkz. ``source_registry``); verilmezse yalnızca onay gerektirmeyen kaynaklar kullanılır.
@@ -207,7 +245,10 @@ class DataStore:
         football-data adreslerine (sonuç ve fikstür) istek gönderilmez, gizli geri dönüş yoktur. Depo ucu bir kez
         çözülür, dosyalar o commit'ten alınır ve depo + commit + yol anahtarlı, özeti doğrulanan önbellekte saklanır.
         Uç çözülemezse son kayıtlı commit'in doğrulanmış kopyası açıkça "eski kopya" olarak kullanılır; hiç kopya
-        yoksa o kaynak atlanır."""
+        yoksa o kaynak atlanır.
+
+        ``cups`` (KUPA-01): kupa turnuvaları (``kupa.turnuvalar``). None ise kupa verisine dokunulmaz; boş liste kupa
+        verisini temizler."""
         if profile not in PROFILES:
             raise ValueError(f"Bilinmeyen veri profili: {profile}")
         github = profile == PROFILE_GITHUB
@@ -343,6 +384,8 @@ class DataStore:
 
         self.matches = matches.reset_index(drop=True)
         self.fixtures = fixtures.reset_index(drop=True)
+        if cups is not None:
+            self._update_cups(dl, gh, cups, years_back, today, fixture_days, allowed, report, force, progress)
         self.meta.update({
             "updated_at": dt.datetime.now().isoformat(timespec="seconds"),
             "leagues": leagues,
@@ -365,6 +408,28 @@ class DataStore:
         self.save()
         progress(100, "Veriler hazır.")
         return report
+
+    def _update_cups(self, dl, gh, cups, years_back, today, fixture_days, allowed, report, force, progress) -> None:
+        """KUPA-01: kupa sonuç ve fikstürleri (``kupa.veri.update_cups``). Lig verisi yoksa kupa verisi kurulmaz
+        (takım kimlikleri lig verisine bağlıdır)."""
+        from ..kupa.veri import empty_fixtures, empty_matches, update_cups
+
+        if not cups or self.matches.empty:
+            self.cup_matches, self.cup_fixtures = empty_matches(), empty_fixtures()
+            self.meta["kupa"] = {"turnuvalar": list(cups or [])}
+            return
+        progress(94, "Kupa verileri alınıyor...")
+        try:
+            res = update_cups(self.raw_dir, dl, gh, cups, years_back, self.matches, today, fixture_days, allowed, force,
+                              progress=lambda m: progress(95, m))
+        except Exception as e:  # kupa verisi lig verisinin güncellenmesini durdurmaz
+            log.exception("Kupa verileri alınamadı")
+            report.warnings.append(f"Kupa verileri alınamadı: {e}")
+            return
+        self.cup_matches, self.cup_fixtures = res.matches, res.fixtures
+        self.meta["kupa"] = res.meta
+        report.kupa = res.report
+        report.warnings += res.warnings
 
     @staticmethod
     def _clean_matches(m: pd.DataFrame) -> pd.DataFrame:

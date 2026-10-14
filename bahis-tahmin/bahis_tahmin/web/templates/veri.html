@@ -28,6 +28,22 @@
     </fieldset>
   {% endfor %}
   </div>
+  <h2>Kupalar ve Avrupa maçları</h2>
+  <p class="muted">Seçilen turnuvaların fikstür ve sonuçları alınır; tahminler ligler arası ortak modelden gelir.
+    UEFA turnuvalarının geçmiş sezonları openfootball'dan (onay gerekmez), içinde bulunulan sezon ESPN'den (onayınızla)
+    gelir. "Doğrulanmadı" işaretli kodlar ESPN'in listesinde yoktu; ESPN vermezse raporda yazılır.</p>
+  <div class="league-tools">
+    <button class="btn small" type="button" data-cups="{{ default_cups }}">Varsayılan kupalar</button>
+    <button class="btn small" type="button" data-cups="*">Tümünü seç</button>
+    <button class="btn small" type="button" data-cups="">Hiçbiri</button>
+  </div>
+  <div class="league-grid">
+  {% for title, items in cup_groups.items() %}
+    <fieldset class="country"><legend>{{ title }}</legend>
+      {% for code, name, unv in items %}<label class="check"><input type="checkbox" name="kupa_{{ code }}" value="1" data-cup="{{ code }}" {% if code in cups_chosen %}checked{% endif %}> {{ name }}{% if unv %} <span class="muted">(doğrulanmadı)</span>{% endif %}</label>{% endfor %}
+    </fieldset>
+  {% endfor %}
+  </div>
   <div class="form-grid">
     <label>Kaç yıllık geçmiş <input type="number" name="yil" min="3" max="33" value="{{ years }}"></label>
     <label class="check"><input type="checkbox" name="zorla" value="1"> Tüm dosyaları yeniden indir</label>
@@ -45,6 +61,29 @@
     <td>{{ r.first }}</td><td>{{ r.last }}</td><td>{{ r.source }}</td></tr>{% endfor %}</tbody>
 </table></div>
 {% else %}<p class="muted">Henüz veri yok.</p>{% endif %}
+<h2>Kupa verileri</h2>
+{% if cup_summary %}
+<div class="table-wrap"><table class="data">
+  <thead><tr><th data-sort>Turnuva</th><th data-sort class="num">Sezon</th><th data-sort class="num">Maç</th><th data-sort>İlk maç</th><th data-sort>Son maç</th><th data-sort>Kaynak</th></tr></thead>
+  <tbody>{% for r in cup_summary %}<tr><td>{{ r['Turnuva'] }}</td><td class="num">{{ r['Sezon'] }}</td><td class="num" data-v="{{ r['Maç'] }}">{{ r['Maç'] }}</td>
+    <td>{{ r['İlk maç'] }}</td><td>{{ r['Son maç'] }}</td><td>{{ r['Kaynak'] }}</td></tr>{% endfor %}</tbody>
+</table></div>
+<p class="muted">Yaklaşan kupa maçı: {{ cup_fixtures }}.</p>
+{% else %}<p class="muted">Henüz kupa verisi yok (turnuvaları seçip verileri güncelleyin).</p>{% endif %}
+{% if cup_report %}
+<h3>Kupa modeli doğrulaması (model o maçları görmeden, ileriye dönük)</h3>
+<div class="table-wrap"><table class="data small">
+  <thead><tr><th>Grup / turnuva</th><th class="num">Maç</th><th class="num">Log-kayıp</th><th class="num">Taban</th><th class="num">İsabet</th>
+    <th class="num">2,5 Üst log-kayıp</th><th class="num">Taban</th><th>Statü</th></tr></thead>
+  <tbody>{% for r in cup_report %}<tr{% if r.grup %} class="strong"{% endif %}><td>{% if r.grup %}<b>{{ r.ad }}</b>{% else %}{{ r.ad }}{% endif %}</td>
+    <td class="num">{{ r.n }}</td><td class="num">{{ r.ll|num(3) }}</td><td class="num">{{ r.taban|num(3) }}</td>
+    <td class="num">{{ r.isabet|pct }}</td><td class="num">{{ r.o25|num(3) }}</td><td class="num">{{ r.o25_taban|num(3) }}</td>
+    <td title="{{ r.neden }}">{{ r.statu }}{% if r.neden %} <span class="muted">({{ r.neden }})</span>{% endif %}</td></tr>{% endfor %}</tbody>
+</table></div>
+<p class="muted">Log-kayıp küçükse daha iyidir. Taban: önceki sezonların kupa maçlarındaki ev/beraberlik/deplasman oranları.
+  "Doğrulandı": en az 300 maç ve farkın %95 güven aralığı sıfırın altında. Doğrulanmayan grubun tahminleri gösterilir ama
+  bahis adayı olmaz.</p>
+{% endif %}
 {% if updated or report %}
 <h2>Son güncelleme</h2>
 {% if updated %}<p class="muted">{{ updated }}</p>{% endif %}

@@ -4,9 +4,12 @@
 <h1>Tahminler</h1>
 <p class="sub">Yaklaşan maçlar için model olasılıkları. Ayrıntı için maça tıklayın.</p>
 <form class="filters" method="get" action="{{ url_for('views.tahminler') }}">
-  <label>Lig <select name="lig" data-autosubmit>
-    <option value="">Tüm ligler</option>
-    {% for c in leagues %}<option value="{{ c }}" {% if c == lig %}selected{% endif %}>{{ c|lig_tam }}</option>{% endfor %}
+  <label>Lig / turnuva <select name="lig" data-autosubmit>
+    <option value="">Tüm maçlar</option>
+    {% if cups %}<option value="@lig" {% if lig == '@lig' %}selected{% endif %}>Yalnızca lig maçları</option>
+    <option value="@kupa" {% if lig == '@kupa' %}selected{% endif %}>Yalnızca kupa ve Avrupa maçları</option>{% endif %}
+    <optgroup label="Ligler">{% for c in leagues %}<option value="{{ c }}" {% if c == lig %}selected{% endif %}>{{ c|lig_tam }}</option>{% endfor %}</optgroup>
+    {% if cups %}<optgroup label="Kupalar">{% for c in cups %}<option value="{{ c }}" {% if c == lig %}selected{% endif %}>{{ c|lig_tam }}</option>{% endfor %}</optgroup>{% endif %}
   </select></label>
   <label>Tarih <select name="gun" data-autosubmit>
     {% for label, _ in date_filters %}<option value="{{ loop.index0 }}" {% if loop.index0 == gun %}selected{% endif %}>{{ label }}</option>{% endfor %}
