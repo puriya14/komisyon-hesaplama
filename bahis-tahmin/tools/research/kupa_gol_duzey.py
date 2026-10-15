@@ -72,14 +72,22 @@ def main() -> int:
         return 1
     o = eng.oos
     pd.set_option("display.width", 200)
-    print("=== Sezon bazında gerçekleşen / tahmin edilen gol (ileriye dönük) ===")
+    if "lam_c0" in o:  # KUPA-GOL-07: motor dinamik gol düzeyi uyguluyor
+        print("=== Düzeysiz model: sezon bazında gerçekleşen / tahmin edilen gol (ileriye dönük) ===")
+        print(season_table(o.assign(lam_c=o["lam_c0"], nu_c=o["nu_c0"])).round(3).to_string(index=False))
+        print("\n=== Uygulamadaki model (dinamik gol düzeyiyle): kalan fark ===")
+    else:
+        print("=== Sezon bazında gerçekleşen / tahmin edilen gol (ileriye dönük) ===")
     print(season_table(o).round(3).to_string(index=False))
-    r = level_series(o)
     print(f"\n=== Dinamik düzey R (yarı ömür {HALF_LIFE:.0f} gün, τ = {TAU:.0f} gol) ===")
+    r = level_series(o.assign(lam_c=o["lam_c0"], nu_c=o["nu_c0"]) if "lam_c0" in o else o)
     for g in sorted(set(o["vgroup"])):
         m = (o["vgroup"] == g).to_numpy()
         last = o.loc[m, "date"].max()
-        print(f"{g}: son maç {str(last)[:10]}, R = {r[m][o.loc[m, 'date'].to_numpy() == last][0]:.3f}")
+        line = f"{g}: son maç {str(last)[:10]}, R = {r[m][o.loc[m, 'date'].to_numpy() == last][0]:.3f}"
+        if getattr(eng, "dynamic_level", False) and eng.last_day is not None:
+            line += f" | tahminde kullanılan (eğitim sonrası ilk hafta): {eng.level_at(g, eng.last_day + 7):.3f}"
+        print(line)
     print("\nR > 1: gerçekleşen gol tahminden fazla (model golü düşük tahmin ediyor); R < 1: tersi.")
     return 0
 

@@ -165,7 +165,8 @@ def test_log_rate_covariance_is_psd_and_reflects_information(engine):
         d = np.random.default_rng(20261015).multivariate_normal(np.zeros(2), cv, size=200, method="cholesky")
         lc, nc = calibrate_rates(r["lam_raw"] * np.exp(d[:, 0]), r["nu_raw"] * np.exp(d[:, 1]), engine.calib,
                                  np.full(200, neutral))
-        ref = market_probs(lc, nc, engine.goal.share)
+        lv = r["gol_duzeyi"]  # dinamik gol düzeyi her çekilişe uygulanır (KUPA-GOL-07; formül test_kupa_gol_07'de)
+        ref = market_probs(lc * lv, nc * lv, engine.goal.share)
         p = _pred(engine, neutral=neutral)
         for key, s in ((A, "A"), (B, "B"), (C, "C")):
             np.testing.assert_allclose(p.intervals[key], np.quantile(ref[s], [0.1, 0.9]), rtol=1e-9)

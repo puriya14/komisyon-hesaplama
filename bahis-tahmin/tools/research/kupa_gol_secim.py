@@ -7,7 +7,8 @@ Kullanım (veri uygulamanın veri klasöründen, ``BAHIS_TAHMIN_HOME``; ağ iste
 ``--test`` verilmezse yalnızca geliştirme dönemi yazdırılır ve seçim yapılır; test dönemi seçimden sonra ayrıca istenir.
 
 ÖN KAYITLI SEÇİM KURALI (ilk çalıştırmadan, sonuçlar görülmeden yazıldı; 2026-10-15; docs/KUPA_GOL_05.md):
-  Adaylar (KUPA-GOL-02 ile aynı): S2, H2, SK1, SK0 (uygulamadaki model), K1, MIX.
+  Adaylar (KUPA-GOL-02 ile aynı): S2, H2, SK1, SK0 (uygulamadaki gol modeli; KUPA-GOL-07'den beri üzerine dinamik
+    gol düzeyi uygulanır), K1, MIX.
   Ana ölçüt: geliştirme dönemi (2019/20–2021/22; ilk örneklem dışı sezon yalnızca kalibrasyon için) bütün kupa
     maçlarında A, B ve C ortalama log-kayıplarının TOPLAMI (KUPA-GOL-02 tablosundaki "Toplam" satırıyla aynı tanım).
   Eşdeğerlik: ana ölçütte en iyiye 0,001'den yakın adaylar eşdeğerdir; eşdeğerler içinde sadelik sırasındaki ilk aday
@@ -280,7 +281,11 @@ def select(dev: pd.DataFrame) -> dict:
 
 
 def engine_check(ev: dict, engine) -> dict:
-    """SK0 olasılıkları ve taban oranları, uygulamanın ölçtüğüyle (``engine.goal.oos``) aynı mı: en büyük farklar."""
+    """SK0 olasılıkları ve taban oranları, uygulamanın ölçtüğüyle (``engine.goal.oos``) aynı mı: en büyük farklar.
+    KUPA-GOL-07'den beri uygulama SK0'ın üzerine dinamik gol düzeyi uygular; denetim düzeysiz motorla
+    (``CupEngine(dynamic_level=False)``) yapılır."""
+    if getattr(engine, "dynamic_level", False):
+        return {"atlandı": "motor dinamik gol düzeyi uyguluyor (KUPA-GOL-07); denetim düzeysiz motorla yapılır"}
     o = ev["o"]
     mine = pd.DataFrame({"i": o["i"], **{f"p{k}": ev["res"]["SK0"][k] for k in "ABC"},
                          **{f"b{k}": ev["base"][k] for k in "ABC"}})[ev["measured"]].set_index("i")

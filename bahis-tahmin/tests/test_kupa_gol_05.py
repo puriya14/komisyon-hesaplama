@@ -34,9 +34,10 @@ def w():
 
 @pytest.fixture(scope="module")
 def engine(w):
+    """KUPA-GOL-05 seçiminin temeli dinamik gol düzeysiz modeldir (KUPA-GOL-07 düzeyi bunun üzerine uygular)."""
     from bahis_tahmin.kupa.motor import CupEngine
 
-    eng = CupEngine()
+    eng = CupEngine(dynamic_level=False)
     eng.train(*w)
     return eng
 

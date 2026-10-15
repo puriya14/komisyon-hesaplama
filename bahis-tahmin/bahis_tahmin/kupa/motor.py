@@ -7,6 +7,9 @@ Eğitim:
    maçlarla kurulur ve o haftanın kupa maçları tahmin edilir (model o maçları görmez).
 3. Kalibrasyon (toplam gol ve güç farkı, ``model.calibrate_rates``): her sezonun tahminleri yalnızca ÖNCEKİ sezonların
    örneklem dışı tahminleriyle kalibre edilir. İlk sezon yalnızca kalibrasyon için ayrılır, ölçümlere girmez.
+   Dinamik gol düzeyi (KUPA-GOL-07): kalibre beklentiler, doğrulama grubu başına R çarpanıyla çarpılır. R, o haftadan
+   ÖNCEKİ haftaların örneklem dışı kupa maçlarında gerçekleşen golün tahmin edilene oranıdır (yarı ömür
+   ``LEVEL_HALF_LIFE`` gün, 1'e çeken önbilgi ``LEVEL_TAU`` gol). Ölçümler ve tahminler aynı R'yi kullanır.
 4. Doğrulama statüsü (önceden tanımlı kural, ``VALIDATION_RULE``) doğrulama grubu başına: örneklem dışı en az
    ``MIN_VALIDATION`` maç ve 1X2 log-kayıp farkının (model − taban) hafta bloklu bootstrap %95 üst sınırı sıfırın
    altında. Taban: sezon başına, önceki sezonların kupa maçlarındaki ev/beraberlik/deplasman oranları. Doğrulanmayan
@@ -39,10 +42,15 @@ from .turnuvalar import COMPETITIONS, VALIDATION_GROUPS, VALIDATION_NAMES, compe
 
 log = logging.getLogger(__name__)
 
-CUP_ENGINE_VERSION = 5  # 2: tarafsız sahada kalibrasyonun iç saha terimi (δ) uygulanmaz; 3: gol pazarları (KUPA-GOL-02);
+CUP_ENGINE_VERSION = 6  # 2: tarafsız sahada kalibrasyonun iç saha terimi (δ) uygulanmaz; 3: gol pazarları (KUPA-GOL-02);
 # 4: taban oranları ve ilk yarı payı doğrulama grubunun kendi geçmişinden (KUPA-IY-03); 5: maç sonu 0-0 maçlar gol
-# pazarı ölçümünde İY 0-0 olarak (KUPA-GOL-04; kayıtlı statüler eski örneklemle ölçüldüğü için yeniden eğitim gerekir)
-MODEL_VERSION = "kupa-model-v2"
+# pazarı ölçümünde İY 0-0 olarak (KUPA-GOL-04; kayıtlı statüler eski örneklemle ölçüldüğü için yeniden eğitim gerekir);
+# 6: dinamik gol düzeyi (KUPA-GOL-07)
+MODEL_VERSION = "kupa-model-v3"
+# v3 (KUPA-GOL-07): dinamik gol düzeyi. KUPA-GOL-06'da ön kayıtlı kuralı geçemedi (yurt içi son dönemi az iyileştiriyor,
+# geliştirme dönemini bozuyor, anlamlı değil); kullanıcı kararıyla uygulandı (docs/KUPA_GOL_07.md).
+LEVEL_HALF_LIFE = 180.0  # gün
+LEVEL_TAU = 150.0  # gol: düzeyi 1'e çeken önbilgi
 # v2 (KUPA-IY-03): taban, aynı doğrulama grubunun önceki sezonları (yurt içi kupalarda ev sahibi %36, UEFA'da %47 kazanır;
 # ortak taban grupların farkını modele üstünlük diye yazardı). Grupta önceki sezon maçı 30'dan azsa bütün kupalar.
 VALIDATION_RULE = ("kupa-dogrulama-v2: örneklem dışı en az 300 maç ve 1X2 log-kayıp farkının (model − aynı doğrulama "
@@ -85,6 +93,26 @@ def key_of(league: str, team: str) -> str:
 def _week_start(day: int) -> int:
     d = EPOCH + pd.Timedelta(days=int(day))
     return int(day) - d.weekday()
+
+
+def level_series(ev: pd.DataFrame, half_life: float = LEVEL_HALF_LIFE, tau: float = LEVEL_TAU) -> np.ndarray:
+    """Dinamik gol düzeyi (KUPA-GOL-07), satır başına: R = (Σ w·gerçekleşen + τ) / (Σ w·tahmin + τ). Toplam, aynı
+    doğrulama grubundan ve satırın haftasından ÖNCEKİ haftaların maçları üzerindendir; w = 0,5^((hafta − maç günü) /
+    yarı ömür). Tahmin, düzeysiz kalibre beklentidir (``lam_c0 + nu_c0``)."""
+    day = (pd.to_datetime(ev["date"]) - EPOCH).dt.days.to_numpy(dtype=float)
+    tot = (ev["hg"] + ev["ag"]).to_numpy(dtype=float)
+    mu = (ev["lam_c0"] + ev["nu_c0"]).to_numpy(dtype=float)
+    week = ev["week"].to_numpy(dtype=float)
+    grp = ev["vgroup"].to_numpy()
+    out = np.ones(len(ev))
+    for g in np.unique(grp):
+        idx = np.nonzero(grp == g)[0]
+        for wk in np.unique(week[idx]):
+            past = idx[week[idx] < wk]
+            if len(past):
+                w = 0.5 ** ((wk - day[past]) / half_life)
+                out[idx[week[idx] == wk]] = (np.sum(w * tot[past]) + tau) / (np.sum(w * mu[past]) + tau)
+    return out
 
 
 def probs_from_rates(lam, nu, max_goals: int = 10):
@@ -162,8 +190,10 @@ class CupReport:
 
 
 class CupEngine:
-    def __init__(self, cfg: ModelConfig | None = None):
+    def __init__(self, cfg: ModelConfig | None = None, dynamic_level: bool = True):
         self.version = CUP_ENGINE_VERSION
+        self.dynamic_level = dynamic_level  # KUPA-GOL-07; kapalıyken R = 1 (KUPA-GOL-06 öncesi model)
+        self.level_rows: dict = {}  # doğrulama grubu -> (hafta, gün, gerçekleşen gol, düzeysiz tahmin) dizileri
         self.app_version = __version__
         self.cfg = cfg or ModelConfig()
         self.params = None
@@ -282,7 +312,8 @@ class CupEngine:
             [MODEL_VERSION, self.last_day, self.params.n_matches, round(self.params.mu, 9),
              hashlib.sha256(np.round(np.r_[self.params.attack, self.params.defense], 9).tobytes()).hexdigest(),
              self.calib, round(self.goal.share, 9) if self.goal is not None else None,
-             sorted((k, round(v, 9)) for k, v in getattr(self.goal, "share_by_group", {}).items())],
+             sorted((k, round(v, 9)) for k, v in getattr(self.goal, "share_by_group", {}).items()),
+             sorted((g, round(self.level_at(g, self.last_day + 1), 9)) for g in self.level_rows)],
             default=str).encode()).hexdigest()
         rep = self.report
         rep.trained_at = dt.datetime.now().isoformat(timespec="seconds")
@@ -323,7 +354,20 @@ class CupEngine:
         self.calib = fit_calibration(oos["lam"], oos["nu"], oos["hg"], oos["ag"], oos["neutral"])
         rep.calibration = tuple(round(x, 4) for x in self.calib)
         ev = oos[used].copy()
-        ev["lam_c"], ev["nu_c"] = lam[used], nu[used]
+        ev["vgroup"] = [vgroup_of(c) for c in ev["comp"]]
+        # Dinamik gol düzeyi (KUPA-GOL-07): düzeysiz kalibre beklentiler (lam_c0, nu_c0) grup ve hafta başına R ile
+        # çarpılır; R yalnızca önceki haftaların sonuçlarından
+        ev["lam_c0"], ev["nu_c0"] = lam[used], nu[used]
+        ev["duzey"] = level_series(ev) if (self.dynamic_level and len(ev)) else 1.0
+        ev["lam_c"], ev["nu_c"] = ev["lam_c0"] * ev["duzey"], ev["nu_c0"] * ev["duzey"]
+        self.level_rows = {}
+        if self.dynamic_level:
+            day = (pd.to_datetime(ev["date"]) - EPOCH).dt.days.to_numpy(dtype=float)
+            for vg in ev["vgroup"].unique():
+                m = (ev["vgroup"] == vg).to_numpy()
+                self.level_rows[vg] = (ev["week"].to_numpy(dtype=float)[m], day[m],
+                                       (ev["hg"] + ev["ag"]).to_numpy(dtype=float)[m],
+                                       (ev["lam_c0"] + ev["nu_c0"]).to_numpy(dtype=float)[m])
         P, o25, btts = probs_from_rates(ev["lam_c"], ev["nu_c"]) if len(ev) else (np.zeros((0, 3)), [], [])
         ev[["ph", "pd", "pa"]] = P
         ev["po25"], ev["pbtts"] = o25, btts
@@ -336,7 +380,6 @@ class CupEngine:
         co = ((cups["fthg"] + cups["ftag"]) >= 3).to_numpy()
         cb = ((cups["fthg"] > 0) & (cups["ftag"] > 0)).to_numpy()
         cvg = np.array([vgroup_of(c) for c in cups["comp"]])
-        ev["vgroup"] = [vgroup_of(c) for c in ev["comp"]]
         base = np.zeros((len(ev), 3))
         bo = np.zeros(len(ev))
         bb = np.zeros(len(ev))
@@ -409,11 +452,26 @@ class CupEngine:
         if raw is None:
             return None
         lam, nu = calibrate_rates([raw[0]], [raw[1]], self.calib, [bool(neutral)])
+        lvl = self.level_at(VALIDATION_GROUPS.get(grp, "YURTICI"), day)
         hs = self.params.team_strength(home_key, hl)
         as_ = self.params.team_strength(away_key, al)
-        return {"lam": float(lam[0]), "nu": float(nu[0]), "lam_raw": raw[0], "nu_raw": raw[1], "home_league": hl,
-                "away_league": al, "group": grp, "neutral": bool(neutral), "home_strength": hs,
-                "away_strength": as_}
+        return {"lam": float(lam[0]) * lvl, "nu": float(nu[0]) * lvl, "lam_raw": raw[0], "nu_raw": raw[1],
+                "home_league": hl, "away_league": al, "group": grp, "neutral": bool(neutral), "home_strength": hs,
+                "away_strength": as_, "gol_duzeyi": lvl}
+
+    def level_at(self, vgroup: str, day: int) -> float:
+        """Doğrulama grubunun ``day`` günündeki dinamik gol düzeyi (KUPA-GOL-07): ``level_series`` ile aynı formül; o
+        günün haftasından önceki haftaların örneklem dışı maçlarıyla. Kapalıysa veya grupta ölçüm yoksa 1."""
+        rows = self.level_rows.get(vgroup) if getattr(self, "dynamic_level", False) else None
+        if not rows:
+            return 1.0
+        week, d, tot, mu = rows
+        wk = _week_start(int(day))
+        m = week < wk
+        if not m.any():
+            return 1.0
+        w = 0.5 ** ((wk - d[m]) / LEVEL_HALF_LIFE)
+        return float((np.sum(w * tot[m]) + LEVEL_TAU) / (np.sum(w * mu[m]) + LEVEL_TAU))
 
     def team_n(self, key: str, before_day: int, days: int = 365) -> int:
         return sum(1 for d in self.team_days.get(key, ()) if before_day - days <= d < before_day)
@@ -463,11 +521,11 @@ class CupEngine:
         share = getattr(goal, "share_by_group", {}).get(vg, goal.share)  # doğrulama grubunun ilk yarı payı
         pr = market_probs([r["lam"]], [r["nu"]], share)
         probs = {k: float(v[0]) for k, v in pr.items()}
-        calib = self.calib
+        calib, lvl = self.calib, r["gol_duzeyi"]
 
         def draw(lam, nu):
             lc, nc = calibrate_rates(lam, nu, calib, np.full(len(lam), bool(neutral)))
-            return market_probs(lc, nc, share)
+            return market_probs(lc * lvl, nc * lvl, share)
 
         cov = (self.params.log_rate_cov(home_key, away_key, r["home_league"], r["away_league"], r["group"], neutral)
                if with_interval else None)
@@ -486,6 +544,7 @@ class CupEngine:
         ko = kickoff_utc(date, time_str or "", source, kickoff_country(comp, source))
         info = {"kupa": True, "comp": comp, "home_key": home_key, "away_key": away_key, "home_country": home_country,
                 "away_country": away_country, "lam": r["lam"], "nu": r["nu"], "share": share, "neutral": bool(neutral),
+                "gol_duzeyi": r["gol_duzeyi"],
                 "home_league": r["home_league"], "away_league": r["away_league"], "validation_group": vg,
                 "h_n365": float(n_h), "a_n365": float(n_a),
                 "model_version": f"{MODEL_VERSION}/{GOAL_MODEL_VERSION}",

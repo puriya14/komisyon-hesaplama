@@ -203,6 +203,18 @@ def goal_status_line(engine) -> str:
     return "Kupa ve Avrupa maçları (ligler arası ortak model): " + "; ".join(parts) + "."
 
 
+def level_line(engine) -> str:
+    """Dinamik gol düzeyi (KUPA-GOL-07) bilgi satırı: doğrulama grubu başına eğitim sonundaki çarpan. Motor eğitilmemiş
+    ya da düzey kapalıysa boş."""
+    rows = getattr(engine, "level_rows", None) if engine is not None else None
+    if not rows or not getattr(engine, "dynamic_level", False) or engine.last_day is None:
+        return ""
+    parts = " · ".join(f"{VALIDATION_NAMES.get(g, g)} ×{engine.level_at(g, engine.last_day + 1):.3f}".replace(".", ",")
+                       for g in VALIDATION_NAMES if g in rows)
+    return ("Dinamik gol düzeyi (son 180 gün ağırlıklı gerçekleşen / tahmin edilen gol; KUPA-GOL-07): " + parts
+            + ". Ön kayıtlı kuralı geçmedi, kullanıcı kararıyla uygulandı (docs/KUPA_GOL_06.md, KUPA_GOL_07.md).")
+
+
 def goal_model_card(p, engine) -> dict:
     """Maç analizi panelindeki "kullanılan model" bilgisi (kupa maçı)."""
     from .gol import GOAL_RULE
@@ -215,15 +227,17 @@ def goal_model_card(p, engine) -> dict:
     res = (g.results.get(vg, {}) if g is not None else {})
     n = max((m.get("n", 0) for m in res.values()), default=0)
     return {
-        "version": f"{info.get('model_version', '-')} · ilk yarı payı {fmt_pct(info.get('share'))} · kural: {GOAL_RULE}",
+        "version": (f"{info.get('model_version', '-')} · ilk yarı payı {fmt_pct(info.get('share'))} · gol düzeyi "
+                    f"×{info.get('gol_duzeyi', 1.0):.3f}".replace(".", ",") + f" · kural: {GOAL_RULE}"),
         "training": (f"{rep.trained_at} · veri kesimi {info.get('data_cutoff', '-')} · {rep.n_domestic:,} lig + "
                      f"{rep.n_cup_matches:,} kupa maçı").replace(",", ".") if rep is not None else "-",
         "validation": (f"{VALIDATION_NAMES.get(vg, vg)}: {n} örneklem dışı kupa maçı (her sezon yalnızca önceki "
                        "sezonlarla kalibre)") if n else "örneklem dışı ölçüm yok",
         "uncertainty": f"{meta.get('method', '-')}; {meta.get('draws', '-')} çekiliş, tohum {meta.get('seed', '-')}",
         "inputs": ("bütün lig ve kupa maçlarından ligler arası ortak Poisson modeli (takım + lig gücü, iç saha, tarafsız "
-                   "saha), maç sonu gol beklentisinin önceki sezonlarla kalibrasyonu ve kupa maçlarında ilk yarı gol "
-                   "payı. Bahis oranları, kadro, sakatlık, xG ve hava durumu verisi KULLANILMIYOR."),
+                   "saha), maç sonu gol beklentisinin önceki sezonlarla kalibrasyonu, doğrulama grubunun son 180 "
+                   "gündeki gerçekleşen / tahmin edilen gol oranıyla dinamik gol düzeyi ve kupa maçlarında ilk yarı "
+                   "gol payı. Bahis oranları, kadro, sakatlık, xG ve hava durumu verisi KULLANILMIYOR."),
     }
 
 
@@ -357,4 +371,4 @@ def analyze(engine, store, dctx, settings, *, comp: str, home_key: str, away_key
 
 __all__ = ["compare_rows", "notes", "team_recent", "head_to_head", "is_cup_prediction", "league_label",
            "validation_line", "teams_for_analysis", "team_country", "analyze", "choice_groups", "report_rows", "likely_history_line", "goal_part", "goal_status_line",
-           "goal_model_card", "goal_validation_rows", "goal_calibration_bins", "cup_ht_coverage", "goal_match", "key_of"]
+           "goal_model_card", "level_line", "goal_validation_rows", "goal_calibration_bins", "cup_ht_coverage", "goal_match", "key_of"]

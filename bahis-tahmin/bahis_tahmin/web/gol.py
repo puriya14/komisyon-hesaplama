@@ -339,7 +339,7 @@ def gol():
             c = SvgCanvas(7, 4)
             plot_goal_calibration(c, bins)
             chart = svg_img(c)
-        from ..kupa.gorunum import goal_calibration_bins, goal_validation_rows
+        from ..kupa.gorunum import goal_calibration_bins, goal_validation_rows, level_line
         from ..kupa.gol import GOAL_RULE
 
         cup = _cup_engine(core)
@@ -349,7 +349,7 @@ def gol():
             plot_goal_calibration(c2, goal_calibration_bins(cup, pazar))
             cup_chart = svg_img(c2)
         ctx.update(cup_rows=goal_validation_rows(cup), cup_chart=cup_chart, cup_rule=GOAL_RULE,
-                   has_cup=cup is not None)
+                   cup_level=level_line(cup), has_cup=cup is not None)
         ctx.update(val_rows=rows, chart=chart, pazar=pazar,
                    val_years=", ".join(f"{y}/{(y + 1) % 100:02d}" for y in eng.validation_years) if eng else "",
                    val_rule=(eng.validation.get("rule", "") or "") if (eng is not None and eng.validation) else "",

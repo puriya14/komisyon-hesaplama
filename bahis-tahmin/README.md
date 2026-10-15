@@ -82,7 +82,8 @@ kupaların geçmiş sezonları ilk yarı skorlarıyla openfootball ülke depolar
 [`docs/KUPA_GOL_04.md`](docs/KUPA_GOL_04.md). Kupa gol modelinin seçimi, düzeltilmiş örneklemle yeniden (KUPA-GOL-05):
 [`docs/KUPA_GOL_05.md`](docs/KUPA_GOL_05.md), araç `tools/research/kupa_gol_secim.py`. Yurt içi kupalarda son
 sezonlardaki gol düzeyi kayması ve izleme aracı (KUPA-GOL-06): [`docs/KUPA_GOL_06.md`](docs/KUPA_GOL_06.md),
-`tools/research/kupa_gol_duzey.py`.
+`tools/research/kupa_gol_duzey.py`. Dinamik gol düzeyi, kullanıcı kararıyla uygulandı (KUPA-GOL-07):
+[`docs/KUPA_GOL_07.md`](docs/KUPA_GOL_07.md).
 
 Tek ligde gerçek veri pilotu (S4; openfootball sonuçları, İngiltere Premier League; bütün yazmalar yalnızca `--ev`
 ile verilen ayrı pilot klasörüne): `pilot-hazirla`, `pilot-kapsam` (salt okunur), `pilot-egit`, `pilot-tahmin`
@@ -151,6 +152,7 @@ dokunmaz (`tests/conftest.py`: `BAHIS_TAHMIN_HOME` geçici dizine yönlendirilir
 - [`docs/KUPA_GOL_04.md`](docs/KUPA_GOL_04.md) — yurt içi kupa gol modeli: model varyantları ve ön kayıtlı seçim kuralı, asıl neden (0-0 maçlar devre skoru yazılmadığı için ölçümden düşüyordu), düzeltme (maç sonu 0-0 ise İY 0-0; sonuçlandırmada `UNKNOWN` güncellemesi), düzeltilmiş örneklemle yeniden seçim (mevcut model korundu), gerçek veri sonuçları (yurt içi B ve C doğrulandı) ve kalan sınırlılıklar
 - [`docs/KUPA_GOL_05.md`](docs/KUPA_GOL_05.md) — kupa gol modelinin seçimi (KUPA-GOL-02'nin altı adayı), 0-0 düzeltmesiyle ve ön kayıtlı kuralla yeniden: geliştirme ve test dönemi, bootstrap aralıkları, tek grup duyarlılığı, SK0 = uygulama denetimi, tekrar çalıştırma aracı (`tools/research/kupa_gol_secim.py`); sonuç: uygulamadaki model (SK0) korundu
 - [`docs/KUPA_GOL_06.md`](docs/KUPA_GOL_06.md) — yurt içi kupalarda son sezonlardaki düşük gol tahmini: teşhis (2023/24–2024/25 gol düzeyi kayması, liglerde de artış), iki ön kayıtlı düzeltme turu (sahte lig düzeyi; dinamik gol düzeyi) ve neden kabul edilmedikleri, kahin üst sınırı, 3,5 Alt için pratik risk, izleme aracı (`tools/research/kupa_gol_duzey.py`); model değişmedi
+- [`docs/KUPA_GOL_07.md`](docs/KUPA_GOL_07.md) — dinamik gol düzeyi (kullanıcı kararıyla, ön kayıtlı kuralı geçmeden uygulandı): formül, eğitim/tahmin/görünürlük, gerçek veride kalan fark ve 3,5 Üst ortalamaları önce/şimdi, doğrulama statüleri, bedeli (geliştirme dönemi, UEFA, İY 1,5 Üst'ün kırılganlığı), izleme
 - [`docs/KUPA_GOL_02.md`](docs/KUPA_GOL_02.md) — Gol Pazarlarında kupa maçları: ilk yarı skoru kapsamı, `kupa-gol-v1` modeli ve geliştirme döneminde seçimi, `kupa-gol-dogrulama-v1` kuralı (ECE eşiği uyarlaması dahil), gerçek veri sonuçları, uygunluk/karar/sanal takip, sınırlar
 - [`docs/WEB_01.md`](docs/WEB_01.md) — web sürümü: açma, telefondan parolalı erişim, sayfalar, masaüstüyle ortak çekirdek, güvenlik önlemleri
 - [`docs/KAYNAK_06.md`](docs/KAYNAK_06.md) — bütün ligler için ESPN: lig kodları, önceki sezonun play-off maçlarını takvim dışında tutma, geride kalan veri deposu (ek ligler), ad değişikliği, ligler arası kanıt, ESPN benzetimi

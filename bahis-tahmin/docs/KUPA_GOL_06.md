@@ -1,5 +1,8 @@
 # KUPA-GOL-06: Yurt içi kupalarda son sezonlardaki düşük gol tahmini
 
+> **Sonraki karar (KUPA-GOL-07).** D1, bu belgedeki kuralı geçmediği halde kullanıcı kararıyla uygulandı;
+> bedeli ve gerçek veri sonuçları: [`KUPA_GOL_07.md`](KUPA_GOL_07.md).
+
 İstek: "yurt içi kupalarda son sezonlardaki düşük gol tahminini düzelt".
 
 ## Kısa sonuç
