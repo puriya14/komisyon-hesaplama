@@ -39,10 +39,13 @@ from .turnuvalar import COMPETITIONS, VALIDATION_GROUPS, VALIDATION_NAMES, compe
 
 log = logging.getLogger(__name__)
 
-CUP_ENGINE_VERSION = 3  # 2: tarafsız sahada kalibrasyonun iç saha terimi (δ) uygulanmaz; 3: gol pazarları (KUPA-GOL-02)
+CUP_ENGINE_VERSION = 4  # 2: tarafsız sahada kalibrasyonun iç saha terimi (δ) uygulanmaz; 3: gol pazarları (KUPA-GOL-02);
+# 4: taban oranları ve ilk yarı payı doğrulama grubunun kendi geçmişinden (KUPA-IY-03)
 MODEL_VERSION = "kupa-model-v2"
-VALIDATION_RULE = ("kupa-dogrulama-v1: örneklem dışı en az 300 maç ve 1X2 log-kayıp farkının (model − önceki "
-                   "sezonların sonuç oranları) hafta bloklu bootstrap %95 üst sınırı < 0")
+# v2 (KUPA-IY-03): taban, aynı doğrulama grubunun önceki sezonları (yurt içi kupalarda ev sahibi %36, UEFA'da %47 kazanır;
+# ortak taban grupların farkını modele üstünlük diye yazardı). Grupta önceki sezon maçı 30'dan azsa bütün kupalar.
+VALIDATION_RULE = ("kupa-dogrulama-v2: örneklem dışı en az 300 maç ve 1X2 log-kayıp farkının (model − aynı doğrulama "
+                   "grubunun önceki sezonlarındaki sonuç oranları) hafta bloklu bootstrap %95 üst sınırı < 0")
 MIN_VALIDATION = 300
 WARMUP_DAYS = 730  # ilk örneklem dışı tahminden önce en az bu kadar günlük lig verisi
 BOOTSTRAP = 2000
@@ -64,12 +67,12 @@ def vgroup_of(comp: str) -> str:
 
 def kickoff_country(comp: str, source: str) -> str:
     """Fikstür saatinin zaman dilimi için ülke: ESPN'de UEFA ve kıta turnuvaları İstanbul saatiyle, yurt içi kupalar
-    ülkenin saatiyle; openfootball UEFA dosyalarında Orta Avrupa saati."""
+    ülkenin saatiyle; openfootball UEFA dosyalarında Orta Avrupa saati, yurt içi kupa dosyalarında ülkenin saati."""
     c = COMPETITIONS.get(str(comp))
-    if source == "openfootball-kupa":
-        return "Almanya"
     if c is not None and c.country:
         return c.country
+    if source == "openfootball-kupa":
+        return "Almanya"
     return "Türkiye"
 
 
@@ -277,7 +280,9 @@ class CupEngine:
         self.digest = hashlib.sha256(json.dumps(
             [MODEL_VERSION, self.last_day, self.params.n_matches, round(self.params.mu, 9),
              hashlib.sha256(np.round(np.r_[self.params.attack, self.params.defense], 9).tobytes()).hexdigest(),
-             self.calib, round(self.goal.share, 9) if self.goal is not None else None], default=str).encode()).hexdigest()
+             self.calib, round(self.goal.share, 9) if self.goal is not None else None,
+             sorted((k, round(v, 9)) for k, v in getattr(self.goal, "share_by_group", {}).items())],
+            default=str).encode()).hexdigest()
         rep = self.report
         rep.trained_at = dt.datetime.now().isoformat(timespec="seconds")
         rep.duration = time.time() - t0
@@ -323,28 +328,34 @@ class CupEngine:
         ev["po25"], ev["pbtts"] = o25, btts
         y = np.where(ev["hg"] > ev["ag"], 0, np.where(ev["hg"] == ev["ag"], 1, 2))
         ev["y"] = y
-        # Taban: her sezon için önceki sezonların bütün kupa maçlarındaki oranlar
+        # Taban: her sezon için aynı doğrulama grubunun önceki sezonlarındaki kupa maçlarının oranları (grupta 30 maçtan
+        # azsa bütün kupalar; o da yoksa varsayılan)
         cd = pd.to_datetime(cups["date"])
         cy = np.where(cups["fthg"] > cups["ftag"], 0, np.where(cups["fthg"] == cups["ftag"], 1, 2))
         co = ((cups["fthg"] + cups["ftag"]) >= 3).to_numpy()
         cb = ((cups["fthg"] > 0) & (cups["ftag"] > 0)).to_numpy()
+        cvg = np.array([vgroup_of(c) for c in cups["comp"]])
+        ev["vgroup"] = [vgroup_of(c) for c in ev["comp"]]
         base = np.zeros((len(ev), 3))
         bo = np.zeros(len(ev))
         bb = np.zeros(len(ev))
         for s in ev["season"].unique():
-            cur = (ev["season"] == s).to_numpy()
-            before = (cd < ev.loc[cur, "date"].min()).to_numpy()
-            if before.sum() >= 30:
-                b = np.bincount(cy[before], minlength=3) / before.sum()
-                base[cur] = b
-                bo[cur] = co[before].mean()
-                bb[cur] = cb[before].mean()
-            else:
-                base[cur] = DEFAULT_BASE
-                bo[cur], bb[cur] = 0.55, 0.5
+            in_season = (ev["season"] == s).to_numpy()
+            before_all = (cd < ev.loc[in_season, "date"].min()).to_numpy()
+            for vg in ev.loc[in_season, "vgroup"].unique():
+                cur = in_season & (ev["vgroup"] == vg).to_numpy()
+                before = before_all & (cvg == vg)
+                if before.sum() < 30:
+                    before = before_all
+                if before.sum() >= 30:
+                    base[cur] = np.bincount(cy[before], minlength=3) / before.sum()
+                    bo[cur] = co[before].mean()
+                    bb[cur] = cb[before].mean()
+                else:
+                    base[cur] = DEFAULT_BASE
+                    bo[cur], bb[cur] = 0.55, 0.5
         ev["b_h"], ev["b_d"], ev["b_a"] = base[:, 0], base[:, 1], base[:, 2]
         ev["b_o25"], ev["b_btts"] = bo, bb
-        ev["vgroup"] = [VALIDATION_GROUPS.get(group_of(c), "YURTICI") for c in ev["comp"]]
         self.oos = ev.reset_index(drop=True)
         self.oos_markets = _market_frame(self.oos)
         rep.n_oos = int(len(ev))
@@ -447,7 +458,8 @@ class CupEngine:
         r = self.rates(home_key, away_key, home_country, away_country, date, comp, neutral)
         if r is None:
             return None
-        share = goal.share
+        vg = VALIDATION_GROUPS.get(r["group"], "YURTICI")
+        share = getattr(goal, "share_by_group", {}).get(vg, goal.share)  # doğrulama grubunun ilk yarı payı
         pr = market_probs([r["lam"]], [r["nu"]], share)
         probs = {k: float(v[0]) for k, v in pr.items()}
         calib = self.calib
@@ -459,7 +471,6 @@ class CupEngine:
         cov = (self.params.log_rate_cov(home_key, away_key, r["home_league"], r["away_league"], r["group"], neutral)
                if with_interval else None)
         iv = interval(draw, cov, (r["lam_raw"], r["nu_raw"])) if with_interval else {}
-        vg = VALIDATION_GROUPS.get(r["group"], "YURTICI")
         day = int((pd.Timestamp(date).normalize() - EPOCH).days)
         notes, codes = [], []
         n_h, n_a = self.team_n(home_key, day), self.team_n(away_key, day)

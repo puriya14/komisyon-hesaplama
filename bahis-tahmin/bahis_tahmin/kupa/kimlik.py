@@ -17,6 +17,17 @@ bağlanır ve ikisi çelişirse bağlanmaz:
 2. kupa kanıtı: ESPN kupa maçları ile openfootball kupa maçları aynı turnuvada, tarih ±1 gün ve aynı normal süre (varsa
    ilk yarı) skoruyla tek adaylı eşleşir; en az iki maç ve oyların hepsi aynı takımda olmalıdır.
 
+**Yurt içi kupa dosyaları (KUPA-IY-03).** Adlarda ülke kodu yoktur; ülke turnuvadan gelir. Bu dosyalarda depoda
+olmayan alt lig ve amatör kulüpler çoktur ve ad normalleştirmesi ("CF Benfica" -> "benfica") farklı kulüpleri aynı
+anahtara düşürebilir. Bu yüzden iki ek koruma uygulanır:
+
+1. ters çakışma: aynı dosyada birden çok ad aynı depo takımına düşüyorsa yalnızca doğrulanmış takma adla eşleşenler
+   bağlanır (Portekiz Kupası'nda "SL Benfica" takma adla Benfica'dır; amatör "CF Benfica" bağlanmaz);
+2. kulüp türü eki çelişkisi: normal adla (takma ad olmadan) eşleşmede iki adın da kulüp türü eki varsa ve ortak eki
+   yoksa bağlanmaz (2022'de kurulan "CD Extremadura", 2020'de dağılan "Extremadura UD" değildir).
+
+Sezon kadrosu şartı aranmaz: depo liglerinden düşen kulüpler (ör. 3. kademedeki Bolton, Portsmouth) aynı kulüptür.
+
 **Kapsam dışı takımlar.** Ligi uygulamada olmayan (ör. Çekya, Azerbaycan) veya depoda bulunamayan takımlar depodaki
 bir takımla birleştirilmez; kendi kupa geçmişleriyle ayrı bir kimlik alır (openfootball: ülke kodu + normalleştirilmiş
 ad; ESPN: kimlik numarası, kupa kanıtıyla openfootball kimliğine bağlanabilir). Bu takımların tahmini yapılabilir ama
@@ -37,8 +48,12 @@ from ..data.leagues import LEAGUES
 from ..data.teams import norm_key, resolve_teams
 from .turnuvalar import CC_COUNTRY
 
-KIMLIK_SURUMU = "kupa-kimlik-v1"
+KIMLIK_SURUMU = "kupa-kimlik-v2"  # v2 (KUPA-IY-03): yurt içi kupa dosyalarında ters çakışma ve tür eki koruması
 MIN_CUP_EVIDENCE = 2  # ESPN ↔ openfootball kupa kanıtı: en az bu kadar tekil maç ve oyların hepsi aynı takımda
+# Kulüp türü ekleri (``data.teams`` normalleştirmesinin attığı parçaların kulüp türünü belirtenleri)
+DESIGNATORS = frozenset({"fc", "cf", "afc", "sc", "ac", "as", "ssc", "ss", "cd", "ud", "sd", "rcd", "rc", "sv", "vfb",
+                         "vfl", "tsg", "fsv", "bsc", "ogc", "cfc", "sk", "fk", "jk", "kv", "krc", "rsc", "sco", "aj",
+                         "us", "if", "bk", "ik", "cp", "sl", "ad", "ce", "ca", "cs", "gd", "ssd", "spvgg", "rkc"})
 
 
 @dataclass(frozen=True)
@@ -95,11 +110,25 @@ class OpenfootballMap:
         return hit if hit is not None else TeamIdentity(outside_key(cc, name), name, cc, False, "kapsam_disi")
 
 
-def map_openfootball(files: dict, matches: pd.DataFrame) -> OpenfootballMap:
-    """``files``: dosya etiketi -> maç sözlükleri (``kupa.openfootball.parse_cup_txt``). Her dosya ayrı bağlamdır."""
+def designators(name: str) -> frozenset:
+    """Adın kulüp türü ekleri ("CD Extremadura" -> {"cd"}; "Extremadura UD" -> {"ud"})."""
+    import re
+    import unicodedata
+
+    s = unicodedata.normalize("NFKD", str(name)).encode("ascii", "ignore").decode("ascii").lower()
+    s = re.sub(r"\b([a-z])\.", r"\1", s)
+    return frozenset(t for t in re.split(r"[^a-z0-9]+", s) if t in DESIGNATORS)
+
+
+def map_openfootball(files: dict, matches: pd.DataFrame, domestic=None) -> OpenfootballMap:
+    """``files``: dosya etiketi -> maç sözlükleri (``kupa.openfootball.parse_cup_txt``). Her dosya ayrı bağlamdır.
+
+    ``domestic``: yurt içi kupa dosyalarının etiketleri; bu dosyalarda ters çakışma ve tür eki korumaları uygulanır
+    (modül açıklaması)."""
     out = OpenfootballMap()
     teams = store_teams(matches)
     league_of = {c: _country_league(c, matches) for c in teams}
+    domestic = set(domestic or ())
     for label, recs in files.items():
         by_cc: dict[str, set] = {}
         for r in recs:
@@ -114,14 +143,41 @@ def map_openfootball(files: dict, matches: pd.DataFrame) -> OpenfootballMap:
                                                                "ligi_veride_yok" if country is None else "ulke_verisi_yok")
                 continue
             res = resolve_teams(sorted(names), cands, league_of.get(country), "openfootball")
+            if label in domestic:
+                res = _domestic_guard(res)
             for n, m in res.items():
                 if m.exact:
                     out.by_file[(label, cc, n)] = TeamIdentity(store_key(country, m.team), m.team, country, True,
                                                                f"{m.basis} ({m.evidence()})")
                 else:
-                    out.by_file[(label, cc, n)] = TeamIdentity(outside_key(cc, n), n, cc, False,
-                                                               f"eslesmedi:{m.status}")
-                    out.unmapped[(cc, n)] = (m.status, tuple(m.suggestions or m.candidates))
+                    why = f"{m.status}:{m.basis}" if m.basis else m.status
+                    out.by_file[(label, cc, n)] = TeamIdentity(outside_key(cc, n), n, cc, False, f"eslesmedi:{why}")
+                    out.unmapped[(cc, n)] = (why, tuple(m.suggestions or m.candidates))
+    return out
+
+
+def _domestic_guard(res: dict) -> dict:
+    """Yurt içi kupa dosyası için ters çakışma ve tür eki korumaları (``resolve_teams`` sonucuna)."""
+    from dataclasses import replace
+
+    from ..data.teams import BELIRSIZ, BULUNAMADI
+
+    out = dict(res)
+    by_team: dict[str, list[str]] = {}
+    for n, m in res.items():
+        if m.exact:
+            by_team.setdefault(m.team, []).append(n)
+    for team, ns in by_team.items():
+        if len(ns) > 1 and any(res[n].basis == "takma_ad" for n in ns):
+            for n in ns:
+                if res[n].basis != "takma_ad":
+                    out[n] = replace(res[n], team=None, status=BELIRSIZ, basis="ters_cakisma_yurt_ici",
+                                     candidates=(team,))
+    for n, m in out.items():
+        if m.exact and m.basis != "takma_ad":
+            a, b = designators(n), designators(m.team)
+            if a and b and not (a & b):
+                out[n] = replace(m, team=None, status=BULUNAMADI, basis="tur_eki_celiskisi", candidates=(m.team,))
     return out
 
 

@@ -1,22 +1,24 @@
 """Kupa ve Avrupa maçlarında gol pazarları (KUPA-GOL-02): A (iki yarıda da KG), B (maç sonu 3,5 Üst), C (İY 1,5 Üst).
 
-Model ``kupa-gol-v1`` ("maç sonu bölme"): ligler arası ortak modelin (``kupa.model``) KALİBRE maç sonu gol beklentileri
+Model ``kupa-gol-v2`` ("maç sonu bölme"): ligler arası ortak modelin (``kupa.model``) KALİBRE maç sonu gol beklentileri
 λ (ev), ν (deplasman) ilk yarı payı s ile yarılara bölünür:
 
     İY golleri  ~ Poisson(s·λ) × Poisson(s·ν)
     2Y golleri  ~ Poisson((1−s)·λ) × Poisson((1−s)·ν)
 
 Bütün pazarlar bu tek ortak dağılımdan (``goals.joint.joint_probs``) türetilir: A ⊆ B ∩ C yapısal olarak korunur, kırpma
-yoktur. s, tahmin anından ÖNCEKİ kupa maçlarında ilk yarı gollerinin bütün gollere oranıdır (lig önbilgisi 0,44 ile
-yumuşatılır).
+yoktur. s, tahmin anından ÖNCEKİ ve AYNI doğrulama grubundaki (UEFA / yurt içi / kıta) kupa maçlarında ilk yarı
+gollerinin bütün gollere oranıdır (lig önbilgisi 0,44 ile yumuşatılır). v1'den farkı (KUPA-IY-03): v1'de bütün kupalar
+birlikteydi; kupa verisinin tamamı UEFA'dan geldiği için UEFA'da v1 ile v2 aynıdır.
 
 Seçim (docs/KUPA_GOL_02.md): ayrı ilk yarı / ikinci yarı ligler arası takım güçleri, ikinci yarı skor durumu çarpanları,
 pazar kalibrasyonu (Platt + IPF) ve yarı yoğunluk kalibrasyonu denendi. Geliştirme döneminde (2019/20–2021/22 kupa
 maçları) en iyi seçenekler log-kayıpta eşdeğerdi (fark < 0,001); ek parametresi olmayan ve A, B'de kalibrasyon hatası en
 düşük olan bu en sade kurgu seçildi.
 
-Doğrulama kuralı ``kupa-gol-dogrulama-v1`` (doğrulama grubu ve pazar başına; lig gol motorunun dört ölçütü): örneklem dışı
-log-kayıp farkının (model − önceki sezonların kupa taban oranı) hafta bloklu %95 üst sınırı < 0, kalibrasyon eğimi
+Doğrulama kuralı ``kupa-gol-dogrulama-v2`` (doğrulama grubu ve pazar başına; lig gol motorunun dört ölçütü): örneklem dışı
+log-kayıp farkının (model − aynı doğrulama grubunun önceki sezonlarındaki kupa taban oranı; grupta 30 maçtan azsa bütün
+kupalar) hafta bloklu %95 üst sınırı < 0, kalibrasyon eğimi
 0,8–1,25, ECE ≤ max(0,02; mükemmel kalibrasyonda örneklem gürültüsüyle beklenen ECE'nin %95 üst sınırı), en az 200
 gerçekleşen (pozitif) örnek. ECE ölçütündeki örneklem payı: lig motorunun on binlerce maçına karşı kupada birkaç bin maç
 vardır; kusursuz kalibre bir model bile bu örneklemde gürültüden ötürü 0,02'yi aşabilir.
@@ -31,10 +33,11 @@ import pandas as pd
 
 from ..goals.markets import PRIMARY_YES, SHORT
 
-GOAL_MODEL_VERSION = "kupa-gol-v1"
-GOAL_RULE = ("kupa-gol-dogrulama-v1: örneklem dışı log-kayıp farkının (model − önceki sezonların kupa taban oranı) hafta "
-             "bloklu %95 üst sınırı < 0, kalibrasyon eğimi 0,8–1,25, ECE ≤ max(0,02; mükemmel kalibrasyonda örneklem "
-             "gürültüsünün %95 üst sınırı), en az 200 pozitif")
+GOAL_MODEL_VERSION = "kupa-gol-v2"  # v2 (KUPA-IY-03): ilk yarı payı doğrulama grubunun kendi geçmişinden
+GOAL_RULE = ("kupa-gol-dogrulama-v2: örneklem dışı log-kayıp farkının (model − aynı doğrulama grubunun önceki "
+             "sezonlarındaki kupa taban oranı) hafta bloklu %95 üst sınırı < 0, kalibrasyon eğimi 0,8–1,25, ECE ≤ "
+             "max(0,02; mükemmel kalibrasyonda örneklem gürültüsünün %95 üst sınırı), en az 200 pozitif")
+MIN_GROUP_BASE = 30  # taban oranı için grupta en az bu kadar önceki maç; yoksa bütün kupalar
 MIN_POSITIVE = 200
 SHARE_PRIOR = 0.44  # lig önbilgisi (ilk yarı gol payı)
 SHARE_PRIOR_GOALS = 100.0
@@ -133,7 +136,8 @@ def measure(y, p, base, weeks) -> dict:
 @dataclass
 class GoalPart:
     """Kupa motorunun gol pazarları bölümü (eğitimde kurulur, tahminde kullanılır)."""
-    share: float = SHARE_PRIOR
+    share: float = SHARE_PRIOR  # bütün kupalar (gösterim)
+    share_by_group: dict = field(default_factory=dict)  # doğrulama grubu -> ilk yarı payı (tahminde bu kullanılır)
     base: dict = field(default_factory=dict)  # doğrulama grubu -> {"A","B","C"} kupa taban oranları
     comp_ht_share: dict = field(default_factory=dict)  # turnuva -> geçerli İY skoru oranı
     results: dict = field(default_factory=dict)  # doğrulama grubu -> pazar anahtarı -> ölçümler
@@ -146,20 +150,22 @@ class GoalPart:
 
 def build_goal_part(ev: pd.DataFrame, cups: pd.DataFrame, vgroup_of, group_names: dict) -> GoalPart:
     """Kupa motorunun ölçülen örneklem dışı tahminlerinden (``ev``: i, comp, season, date, week, lam_c, nu_c) gol
-    pazarları ölçümü. Her sezonun ilk yarı payı ve taban oranları yalnızca o sezondan ÖNCEKİ kupa maçlarından."""
+    pazarları ölçümü. Her sezonun ilk yarı payı ve taban oranları yalnızca o sezondan ÖNCEKİ ve aynı doğrulama
+    grubundaki kupa maçlarından (taban: grupta ``MIN_GROUP_BASE`` maçtan azsa bütün kupalar)."""
     part = GoalPart()
     cups = cups.reset_index(drop=True)
     ok_all = ht_mask(cups) if len(cups) else np.zeros(0, dtype=bool)
     part.n_ht = int(ok_all.sum())
     cd = pd.to_datetime(cups["date"]) if len(cups) else pd.Series(dtype="datetime64[ns]")
     lab_all = labels(cups) if len(cups) else {k: np.zeros(0) for k in "ABC"}
+    vg_all = np.array([vgroup_of(c) for c in cups["comp"]]) if len(cups) else np.zeros(0, dtype=object)
     if len(cups):
         part.comp_ht_share = {str(c): float(g.mean()) for c, g in pd.Series(ok_all).groupby(cups["comp"].to_numpy())}
-        vg_all = np.array([vgroup_of(c) for c in cups["comp"]])
         for vg in group_names:
             sel = ok_all & (vg_all == vg)
             src = sel if sel.sum() >= 100 else ok_all
             part.base[vg] = {k: float(lab_all[k][src].mean()) if src.any() else float("nan") for k in "ABC"}
+            part.share_by_group[vg] = first_half_share(cups[sel])  # az veride önbilgiye yakın kalır
         part.share = first_half_share(cups[ok_all])
     if ev is None or ev.empty or not len(cups):
         part.results = {vg: {k: {"n": 0, "pozitif": 0, "statu": False, "neden": "örneklem dışı maç yok"}
@@ -176,20 +182,23 @@ def build_goal_part(ev: pd.DataFrame, cups: pd.DataFrame, vgroup_of, group_names
         rows[f"y{k}"] = v
     pa, pb, pc = (np.full(len(rows), np.nan) for _ in range(3))
     ba, bb, bc = (np.full(len(rows), np.nan) for _ in range(3))
+    rows["vgroup"] = [vgroup_of(c) for c in rows["comp"]]
     for season in rows["season"].unique():
-        cur = (rows["season"] == season).to_numpy()
-        start = rows.loc[cur, "date"].min()
-        before = ok_all & (cd < start).to_numpy()
-        s = first_half_share(cups[before])
-        pr = market_probs(rows.loc[cur, "lam_c"], rows.loc[cur, "nu_c"], s)
-        pa[cur], pb[cur], pc[cur] = pr["A"], pr["B"], pr["C"]
-        if before.sum() >= 30:
-            ba[cur], bb[cur], bc[cur] = (lab_all[k][before].mean() for k in "ABC")
-        else:  # önceki kupa maçı yoksa lig gol motorunun tipik oranları (yalnızca ilk sezonlarda olabilir)
-            ba[cur], bb[cur], bc[cur] = 0.08, 0.27, 0.33
+        in_season = (rows["season"] == season).to_numpy()
+        before_all = ok_all & (cd < rows.loc[in_season, "date"].min()).to_numpy()
+        for vg in rows.loc[in_season, "vgroup"].unique():
+            cur = in_season & (rows["vgroup"] == vg).to_numpy()
+            before = before_all & (vg_all == vg)
+            s = first_half_share(cups[before])
+            pr = market_probs(rows.loc[cur, "lam_c"], rows.loc[cur, "nu_c"], s)
+            pa[cur], pb[cur], pc[cur] = pr["A"], pr["B"], pr["C"]
+            src = before if before.sum() >= MIN_GROUP_BASE else before_all
+            if src.sum() >= MIN_GROUP_BASE:
+                ba[cur], bb[cur], bc[cur] = (lab_all[k][src].mean() for k in "ABC")
+            else:  # önceki kupa maçı yoksa lig gol motorunun tipik oranları (yalnızca ilk sezonlarda olabilir)
+                ba[cur], bb[cur], bc[cur] = 0.08, 0.27, 0.33
     rows["pA"], rows["pB"], rows["pC"] = pa, pb, pc
     rows["bA"], rows["bB"], rows["bC"] = ba, bb, bc
-    rows["vgroup"] = [vgroup_of(c) for c in rows["comp"]]
     part.oos = rows
     for vg in group_names:
         g = rows[rows["vgroup"] == vg]

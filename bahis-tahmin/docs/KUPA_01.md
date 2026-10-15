@@ -34,12 +34,14 @@ bunlara veri vermezse güncelleme raporu bunu açıkça yazar; tahmin uydurulmaz
 | Kaynak | Ne verir | Koşul |
 |---|---|---|
 | [openfootball/champions-league](https://github.com/openfootball/champions-league) (CC0) | UEFA turnuvalarının geçmiş sezonları (Şampiyonlar Ligi 2011'den, Avrupa Ligi ve Konferans Ligi dosyası olan sezonlar, eleme turları) | onay gerekmez |
+| openfootball ülke depoları (CC0; KUPA-IY-03) | Yurt içi kupaların geçmiş sezonları, ilk yarı skorlarıyla: DFB-Pokal, FA Cup ve EFL Kupası 2018/19'dan; Kral Kupası ve İtalya Kupası 2020/21'den; Türkiye, Fransa, Hollanda, Portekiz ve Belçika kupaları 2024/25 (bkz. [`KUPA_IY_03.md`](KUPA_IY_03.md)) | onay gerekmez |
 | ESPN skor tablosu (resmi olmayan uç) | Bütün turnuvaların içinde bulunulan ve önceki sezonu: fikstür, sonuç, tarafsız saha, takım numarası | onay + kişisel kullanım beyanı; "Yalnızca GitHub" profilinde kullanılmaz |
 
 Kurallar:
 
 - **Bir turnuvanın bir sezonu tek kaynaktan alınır.** Bitmiş sezonda openfootball dosyası varsa o, yoksa ESPN.
-  İçinde bulunulan sezonda ESPN (yoksa openfootball). Kaynaklar birbirine karıştırılmaz.
+  İçinde bulunulan sezonda ESPN (yoksa openfootball). Kaynaklar birbirine karıştırılmaz. KUPA-IY-03: bitmiş sezonun
+  openfootball dosyası eksikse (oynanmış maç sayısı ESPN'dekinin %90'ından az) o sezon ESPN'den alınır.
 - **Skor her zaman 90 dakikadır.** openfootball'da "1-1 a.e.t. (1-1, 0-1)" satırında normal süre parantezdeki ilk
   skordur. Normal süre skoru yazılmamış uzatmalı maç atlanır. ESPN'de uzatmaya/penaltıya giden maçın normal süre
   skoru yalnızca dönem skorları maç skoruyla tutarlıysa okunur, değilse maç atlanır. Penaltılar sonuç sayılmaz.
@@ -57,7 +59,8 @@ Kupa kaynaklarındaki adlar depodaki adlardan farklıdır ("Manchester City FC (
 
 - **openfootball:** Adın yanındaki ülke kodu ülkeyi verir. Ad yalnızca **o ülkenin** depo takımları arasında aranır
   (aynı ad, normal ad veya o ülkenin doğrulanmış takma adı). İspanyol bir "Arsenal" İngiliz Arsenal'le birleşmez.
-  Bulunamayan ad hiçbir takıma bağlanmaz ve raporda gösterilir.
+  Bulunamayan ad hiçbir takıma bağlanmaz ve raporda gösterilir. Yurt içi kupa dosyalarında ülke kodu yoktur; ülke
+  turnuvadan gelir ve iki ek koruma uygulanır (ters çakışma, kulüp türü eki çelişkisi; [`KUPA_IY_03.md`](KUPA_IY_03.md)).
 - **ESPN:** Takım numarası iki yoldan bağlanır: (1) aynı takımın ESPN'deki **lig** maçları depodaki lig maçlarıyla
   maç kanıtıyla eşleşir (KAYNAK-04 kuralı), (2) ESPN kupa maçları openfootball kupa maçlarıyla aynı turnuvada, tarih
   ±1 gün ve aynı skorla tek adaylı eşleşir (en az 2 maç, oyların hepsi aynı takımda). İki kanıt çelişirse numara
@@ -91,6 +94,11 @@ tahmin edilir (model o maçları görmez). İlk örneklem dışı sezon yalnızc
 Önceden tanımlı kural (`kupa-dogrulama-v1`), doğrulama grubu başına (UEFA / yurt içi / diğer kıtalar): en az 300
 örneklem dışı maç **ve** 1X2 log-kayıp farkının (model − önceki sezonların kupa sonuç oranları) hafta bloklu bootstrap
 %95 üst sınırı sıfırın altında → **doğrulandı**. Doğrulanmayan grubun tahmini gösterilir ama bahis adayı olmaz.
+
+**`kupa-dogrulama-v2` (KUPA-IY-03):** taban artık aynı doğrulama grubunun önceki sezonlarıdır. Grupta önceki maç
+30'dan azsa bütün kupalar kullanılır. Yurt içi kupalarda ev sahibi %36, UEFA'da %47 kazanır; ortak taban bu farkı
+modele üstünlük gibi gösterirdi. Kupa verisinin tamamı UEFA'dan geldiği sürece v1 ile aynıdır. Yurt içi kupalar
+eklendikten sonraki gerçek veri sonuçları: [`KUPA_IY_03.md`](KUPA_IY_03.md).
 
 Gerçek veriyle (16 varsayılan lig, 10 yıl; UEFA turnuvaları openfootball'dan; eğitim 17 sn):
 
@@ -162,9 +170,11 @@ seçimi boşaltılırsa kupa verisi ve kayıtlı kupa modeli kaldırılır.
 
 - **Oran yok:** kupa maçları için ücretsiz veride piyasa oranı yoktur. "Değer" yalnızca Maç Analizi'nde kendi
   oranınızı girerseniz hesaplanır; geçmiş getiri hesaplanamaz.
-- **Yurt içi kupalar ve diğer kıtalar:** geçmişleri yalnızca ESPN'den (iki sezon) gelir. İlk örneklem dışı sezon
-  kalibrasyona ayrıldığı için 300 maçlık doğrulama eşiğine ulaşmayabilirler. Bu durumda tahmin gösterilir ama
-  "doğrulanmadı" olarak bahis adayı olmaz. Doğrulama gerçek verinizle her eğitimde yeniden ölçülür.
+- **Diğer kıtalar ve openfootball dosyası olmayan yurt içi kupalar** (İskoçya ve Yunanistan kupaları, süper kupalar):
+  geçmişleri yalnızca ESPN'den (iki sezon) gelir. İlk örneklem dışı sezon kalibrasyona ayrıldığı için 300 maçlık
+  doğrulama eşiğine ulaşmayabilirler. Bu durumda tahmin gösterilir ama "doğrulanmadı" olarak bahis adayı olmaz.
+  Doğrulama gerçek verinizle her eğitimde yeniden ölçülür. KUPA-IY-03'ten beri yurt içi kupaların çoğu openfootball
+  ülke depolarından geçmiş sezonlarıyla gelir.
 - **Alt lig takımları** (ör. FA Cup'ta National League takımları, Türkiye Kupası'nda 2. Lig takımları) uygulamanın
   liglerinde yoksa "ligi veride yok" olur, bahis adayı olmaz.
 - Tahmin 90 dakikalık sonuçtur. Uzatma, penaltı ve "tur atlama" olasılığı tahmin edilmez.

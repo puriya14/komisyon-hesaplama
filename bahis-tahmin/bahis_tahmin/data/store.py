@@ -107,6 +107,10 @@ class UpdateReport:
                          f"{sum(v['fikstur'] for v in got.values())} yaklaşan maç ("
                          + (", ".join(f"{competition_name(k)} {v['sonuc']}/{v['fikstur']}" for k, v in got.items())
                             or "veri alınamadı") + ").")
+            for k, v in self.kupa.items():  # KUPA-IY-03: bitmiş sezonun openfootball dosyası eksik -> ESPN
+                for season, n in sorted((v.get("eksik_openfootball") or {}).items()):
+                    lines.append(f"{competition_name(k)} {season}: openfootball dosyası eksik ({n['openfootball']} maç; "
+                                 f"ESPN'de {n['espn']}), sezon ESPN'den alındı.")
         for key in self.blocked_sources:
             lines.append(f"{SOURCES[key].name}: kullanım koşulları onaylanmadığı için kullanılmadı.")
         lines += self.warnings

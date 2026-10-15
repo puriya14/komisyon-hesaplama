@@ -4,9 +4,11 @@ ESPN lig kodları, ESPN lig listesinin topluluk derlemesinden doğrulandı (pseu
 ``docs/sports/soccer.md``; 2026-10-14). Listede olmayan kodlar ``unverified`` işaretlidir: ESPN bu kodu vermezse
 güncelleme raporu bunu yazar ve turnuva için veri alınmaz (uydurulmaz).
 
-openfootball (CC0) yalnızca UEFA turnuvalarının geçmiş sezonlarını içerir (``openfootball/champions-league``:
-Şampiyonlar Ligi 2011/12'den, Avrupa Ligi 2020/21'den, Konferans Ligi 2021/22'den, eleme turları 2024/25'ten).
-Güncel sezonun fikstür ve sonuçları ESPN'den (kullanıcı onayıyla) gelir.
+openfootball (CC0) geçmiş sezonları: UEFA turnuvaları ``openfootball/champions-league`` (Şampiyonlar Ligi 2011/12'den,
+Avrupa Ligi 2020/21'den, Konferans Ligi 2021/22'den, eleme turları 2024/25'ten); yurt içi kupalar ülke depolarında
+(KUPA-IY-03; ``of_repo``/``of_path``): DFB-Pokal ve FA Cup/EFL Kupası 2018/19'dan, Kral Kupası ve İtalya Kupası
+2020/21'den, Türkiye/Fransa/Hollanda/Portekiz/Belçika kupaları 2024/25'ten (dosyası olan sezonlar). Bu dosyalar ilk yarı
+skorlarını içerir. Güncel sezonun fikstür ve sonuçları ESPN'den (kullanıcı onayıyla) gelir.
 
 Gruplar (modeldeki iç saha avantajı ve doğrulama grupları):
 
@@ -45,12 +47,32 @@ class Competition:
     unverified: bool = False  # ESPN kodu listede yok (ülke.kupa düzenine göre yazıldı)
     default: bool = True
     super_cup: bool = False  # tek maçlık süper kupa (ESPN tarafsız saha bilgisine bakılır)
+    # KUPA-IY-03: yurt içi kupanın openfootball ülke deposu ve dosya yolu ("{d}" = sezon klasörü, ör. "2024-25"), ilk
+    # sezonu ve finalden başka tarafsız sahadaki turları (küçük harf; FA Cup yarı finalleri Wembley'de)
+    of_repo: str = ""
+    of_path: str = ""
+    of_first: int = 0
+    of_neutral: tuple = ()
 
     @property
     def label(self) -> str:
         return self.full
 
+    def of_file(self, d: str) -> tuple[str, str] | None:
+        """openfootball (depo, dosya yolu) veya None. UEFA: ``openfootball/champions-league`` ``{d}/{of_stem}.txt``."""
+        if self.of_path:
+            return self.of_repo, self.of_path.format(d=d)
+        if self.of_stem:
+            return "openfootball/champions-league", f"{d}/{self.of_stem}.txt"
+        return None
 
+    @property
+    def default_cc(self) -> str:
+        """Yurt içi kupa dosyasında ülke kodu yazılmayan takımların ülke kodu ("" = UEFA/kıta)."""
+        return COUNTRY_CC.get(self.country, "") if self.group == "C" else ""
+
+
+_EU = "openfootball/europe"
 _ALL = [
     # UEFA
     Competition("UCL", "Şampiyonlar Ligi", "UEFA Şampiyonlar Ligi", "U", UEFA_REGION, "uefa.champions", "cl"),
@@ -65,39 +87,42 @@ _ALL = [
     Competition("USC", "UEFA Süper Kupa", "UEFA Süper Kupa", "U", UEFA_REGION, "uefa.super_cup", super_cup=True),
     # Yurt içi kupalar (uygulamanın varsayılan liglerinin ülkeleri)
     Competition("TRC", "Türkiye Kupası", "Türkiye Kupası", "C", "Türkiye", "tur.cup", country="Türkiye",
-                unverified=True),
-    Competition("FAC", "FA Cup", "İngiltere FA Cup", "C", "İngiltere", "eng.fa", country="İngiltere"),
+                unverified=True, of_repo=_EU, of_path="turkey/{d}_trcup.txt", of_first=2024),
+    Competition("FAC", "FA Cup", "İngiltere FA Cup", "C", "İngiltere", "eng.fa", country="İngiltere",
+                of_repo="openfootball/england", of_path="{d}/facup.txt", of_first=2018,
+                of_neutral=("semifinals", "semi-finals")),
     Competition("EFL", "Lig Kupası (İngiltere)", "İngiltere Lig Kupası (Carabao Cup)", "C", "İngiltere",
-                "eng.league_cup", country="İngiltere"),
+                "eng.league_cup", country="İngiltere", of_repo="openfootball/england", of_path="{d}/eflcup.txt",
+                of_first=2018),
     Competition("ENGS", "Community Shield", "İngiltere FA Community Shield", "C", "İngiltere", "eng.charity",
                 country="İngiltere", super_cup=True),
     Competition("CDR", "Kral Kupası", "İspanya Kral Kupası (Copa del Rey)", "C", "İspanya", "esp.copa_del_rey",
-                country="İspanya"),
+                country="İspanya", of_repo="openfootball/espana", of_path="{d}/cup.txt", of_first=2020),
     Competition("ESPS", "İspanya Süper Kupası", "İspanya Süper Kupası (Supercopa)", "C", "İspanya",
                 "esp.super_cup", country="İspanya", super_cup=True),
     Competition("DFB", "Almanya Kupası", "Almanya Kupası (DFB-Pokal)", "C", "Almanya", "ger.dfb_pokal",
-                country="Almanya"),
+                country="Almanya", of_repo="openfootball/deutschland", of_path="{d}/cup.txt", of_first=2018),
     Competition("GERS", "Almanya Süper Kupası", "Almanya Süper Kupası (DFL-Supercup)", "C", "Almanya",
                 "ger.super_cup", country="Almanya", super_cup=True),
     Competition("CIT", "İtalya Kupası", "İtalya Kupası (Coppa Italia)", "C", "İtalya", "ita.coppa_italia",
-                country="İtalya"),
+                country="İtalya", of_repo="openfootball/italy", of_path="{d}/cup.txt", of_first=2020),
     Competition("ITAS", "İtalya Süper Kupası", "İtalya Süper Kupası (Supercoppa)", "C", "İtalya", "ita.super_cup",
                 country="İtalya", super_cup=True),
     Competition("CDF", "Fransa Kupası", "Fransa Kupası (Coupe de France)", "C", "Fransa", "fra.coupe_de_france",
-                country="Fransa"),
+                country="Fransa", of_repo=_EU, of_path="france/{d}_frcup.txt", of_first=2024),
     Competition("FRAS", "Fransa Süper Kupası", "Fransa Şampiyonlar Kupası (Trophée des Champions)", "C", "Fransa",
                 "fra.super_cup", country="Fransa", super_cup=True),
     Competition("KNVB", "Hollanda Kupası", "Hollanda Kupası (KNVB Beker)", "C", "Hollanda", "ned.cup",
-                country="Hollanda"),
+                country="Hollanda", of_repo=_EU, of_path="netherlands/{d}_nlcup.txt", of_first=2024),
     Competition("NEDS", "Johan Cruyff Kalkanı", "Hollanda Süper Kupası (Johan Cruyff Kalkanı)", "C", "Hollanda",
                 "ned.supercup", country="Hollanda", super_cup=True),
     Competition("TDP", "Portekiz Kupası", "Portekiz Kupası (Taça de Portugal)", "C", "Portekiz",
-                "por.taca.portugal", country="Portekiz"),
+                "por.taca.portugal", country="Portekiz", of_repo=_EU, of_path="portugal/{d}_ptcup.txt", of_first=2024),
     Competition("SCOC", "İskoçya Kupası", "İskoçya Kupası (Scottish Cup)", "C", "İskoçya", "sco.tennents",
                 country="İskoçya"),
     Competition("SCOL", "İskoçya Lig Kupası", "İskoçya Lig Kupası", "C", "İskoçya", "sco.cis", country="İskoçya"),
     Competition("BELC", "Belçika Kupası", "Belçika Kupası", "C", "Belçika", "bel.cup", country="Belçika",
-                unverified=True),
+                unverified=True, of_repo="openfootball/belgium", of_path="{d}/becup.txt", of_first=2024),
     Competition("GREC", "Yunanistan Kupası", "Yunanistan Kupası", "C", "Yunanistan", "gre.cup", country="Yunanistan",
                 unverified=True),
     # Diğer kıtalar (ilgili ligler seçilmedikçe kapalı)
@@ -133,6 +158,8 @@ CC_COUNTRY = {
     "AUT": "Avusturya", "DEN": "Danimarka", "SUI": "İsviçre", "LIE": "İsviçre", "SWE": "İsveç", "NOR": "Norveç",
     "POL": "Polonya", "ROU": "Romanya", "RUS": "Rusya", "FIN": "Finlandiya", "IRL": "İrlanda",
 }
+# Ülke -> openfootball ülke kodu (yurt içi kupa dosyalarında ülke kodu yazılmayan takımlar; Monaco/Liechtenstein hariç)
+COUNTRY_CC = {country: cc for cc, country in CC_COUNTRY.items() if cc not in ("MCO", "LIE")}
 
 
 def competition_name(code: str) -> str:

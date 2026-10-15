@@ -210,7 +210,22 @@ _CUP_ALIASES: dict[str, dict[str, str]] = {
     "Yunanistan": {"pae olympiakos sfp": "Olympiakos"},
     "İtalya": {"lazio roma": "Lazio"},
 }
-for _extra in (_DERIVED_ALIASES, _TXT_ALIASES, _CUP_ALIASES):
+# KUPA-IY-03: openfootball ülke depolarının yurt içi kupa dosyalarındaki (2018/19–2025/26) adlar. Yalnızca mevcut
+# eşleyicinin bulamadığı ve kupa sezonunda ülkenin depo kadrosunda tek bir kulübe karşılık gelen adlar: "AD Alcorcón"
+# (2020/21, 2021/22, 2023/24 SP2 "Alcorcon"), "CE Sabadell" (2020/21 SP2), "MSV Duisburg" (2018/19 D2), "Chievo Verona"
+# (2020/21 I2), "L.R. Vicenza Virtus"/"L.R. Vicenza" (2020/21, 2021/22 I2; kulübün 2021'deki yeni adı), "Reggina 1914"
+# (2020/21–2022/23 I2), "SPAL 2013 Ferrara" (2020/21–2022/23 I1/I2), "US Alessandria 1912" (2021/22 I2), "Havre AC"
+# (2024/25 F1 "Le Havre"), "Estrela Amadora" (2024/25 P1). Aynı sezonda depoda bulunmayan kulüpler (ör. 2024/25 Niort,
+# Bordeaux, Eupen) ve farklı kulüpler (ör. "Viktoria Köln", "Stuttgarter Kickers", "Estrela FC V. Novas") eklenmedi.
+_CUP_DOMESTIC_ALIASES: dict[str, dict[str, str]] = {
+    "İspanya": {"ad alcorcon": "Alcorcon", "ce sabadell": "Sabadell"},
+    "Almanya": {"msv duisburg": "Duisburg"},
+    "İtalya": {"chievo verona": "Chievo", "lr vicenza": "Vicenza", "lr vicenza virtus": "Vicenza",
+               "reggina 1914": "Reggina", "spal 2013 ferrara": "Spal", "alessandria 1912": "Alessandria"},
+    "Fransa": {"havre": "Le Havre"},
+    "Portekiz": {"estrela amadora": "Estrela"},
+}
+for _extra in (_DERIVED_ALIASES, _TXT_ALIASES, _CUP_ALIASES, _CUP_DOMESTIC_ALIASES):
     for _country, _group in _extra.items():
         _base = ALIASES_BY_COUNTRY.setdefault(_country, {})
         assert not set(_base) & set(_group), (_country, set(_base) & set(_group))

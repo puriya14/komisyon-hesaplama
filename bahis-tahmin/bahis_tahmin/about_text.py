@@ -69,6 +69,10 @@ buradan gelir.</li>
 Şampiyonlar Ligi, Avrupa Ligi ve Konferans Ligi'nin (eleme turlarıyla) geçmiş sezon sonuçları. Takımlar ülke kodu ve
 uygulamanın doğrulanmış takım adlarıyla eşlenir; eşlenemeyen takım hiçbir lig takımıyla birleştirilmez, ayrı takım
 olarak tutulur (maçları bahis adayı olmaz).</li>
+<li>openfootball ülke depoları (deutschland, england, espana, italy, europe, belgium) – CC0 (serbest); yurt içi
+kupaların (DFB-Pokal, FA Cup, Lig Kupası, Kral Kupası, İtalya Kupası; Türkiye, Fransa, Hollanda, Portekiz ve Belçika
+kupalarının 2024/25 sezonu) geçmiş sezon sonuçları, ilk yarı skorlarıyla. Takımlar turnuvanın ülkesindeki doğrulanmış
+takım adlarıyla eşlenir.</li>
 </ul>
 <p>Veriler yalnızca bilgisayarınızda saklanır ve uygulama ile dağıtılmaz: <code>{home}</code></p>
 

@@ -16,9 +16,12 @@ from scipy.stats import poisson
 
 from kupa_yardim import AS_OF, CUP_DAY, SLAVIA_KEY, league_context, world, write_cup_calendar
 
+from bahis_tahmin.kupa.gol import GOAL_MODEL_VERSION, GOAL_RULE
+
 UTC = dt.timezone.utc
 HK, AK = "İngiltere|Arsenal", "Türkiye|Galatasaray"
 A, B, C = "BTTS_BOTH_HALVES_YES", "FT_OVER_3_5", "FH_OVER_1_5"
+GOAL_RULE_ID = GOAL_RULE.split(":")[0]
 
 
 @pytest.fixture(scope="module")
@@ -94,7 +97,7 @@ def test_prediction_is_one_coherent_joint_distribution(engine):
     assert pr["A"] <= pr["BC"] + 1e-12 <= min(pr["B"], pr["C"]) + 2e-12  # A ⊆ B∩C (kırpma yok)
     assert p.league == "UCL" and p.info["kupa"] and p.event_id == f"UCL|{CUP_DAY}|Arsenal|Galatasaray"
     assert p.state_digest == engine.digest and p.validated == engine.goal.validated["UEFA"]
-    assert p.info["model_version"].endswith("/kupa-gol-v1") and p.base_rates == engine.goal.base["UEFA"]
+    assert p.info["model_version"].endswith(f"/{GOAL_MODEL_VERSION}") and p.base_rates == engine.goal.base["UEFA"]
     # Belirsizlik aralığı: nokta tahmini içerir, sıfır genişlikte değil, kayıtlı tohum ve yöntem
     for key, s_ in ((A, "A"), (B, "B"), (C, "C")):
         lo, hi = p.intervals[key]
@@ -313,7 +316,7 @@ def test_decisions_use_cup_validation_and_record_settle(cupctx, engine, w, tmp_p
     assert all(d.status == "DATA_NOT_ELIGIBLE" for d in decisions_for(p, eng, led, AS_OF))
     ids = record_decisions(led, p, list(decs.values()), eng, record_time=AS_OF)
     recs = {r["market_key"]: r for r in led.predictions() if r["id"] in ids}
-    assert recs[B]["stake_units"] == 1.0 and recs[B]["model_version"].endswith("/kupa-gol-v1")
+    assert recs[B]["stake_units"] == 1.0 and recs[B]["model_version"].endswith(f"/{GOAL_MODEL_VERSION}")
     assert recs[B]["data_cutoff"] == p.info["data_cutoff"] and recs[A]["stake_units"] == 0.0
     # Sonuç kupa maçından gelir (turnuva kodu = lig alanı); ilk yarı skoru A ve C için gerekir
     dom, cups = w
@@ -387,7 +390,7 @@ def test_web_goal_pages_show_cup_matches_and_record(tmp_home, w, engine, monkeyp
     assert "DOĞRULANMADI / ORAN YOK / DOĞRULANMADI" in h and "TAHMİN YOK" not in h
     aday = re.search(r'aday=(UCL[^"&]+)', h).group(1)
     d = c.get(f"/gol/?sekme=mac&aday={aday}").get_data(as_text=True)
-    assert "kupa taban oranı" in d and "kupa-gol-v1" in d and "lig taban oranı" not in d
+    assert "kupa taban oranı" in d and GOAL_MODEL_VERSION in d and "lig taban oranı" not in d
     assert "sanal takip için doğrulandı" in d and "DOĞRULANMADI" in d
     m = c.get("/gol/?sekme=mac&turnuva=UCL&ev_k=T%C3%BCrkiye%7CGalatasaray&ev=&dep_k=%C4%B0ngiltere%7CArsenal")
     t = m.get_data(as_text=True)
@@ -398,9 +401,9 @@ def test_web_goal_pages_show_cup_matches_and_record(tmp_home, w, engine, monkeyp
     assert r.status_code == 302 and "takip" in r.headers["Location"]
     with core.ledger(create=False) as led:
         recs = led.predictions()
-    assert len(recs) == 6 and all(x["model_version"].endswith("/kupa-gol-v1") for x in recs)
+    assert len(recs) == 6 and all(x["model_version"].endswith(f"/{GOAL_MODEL_VERSION}") for x in recs)
     v = c.get("/gol/?sekme=dogrulama").get_data(as_text=True)
-    assert "kupa-gol-dogrulama-v1" in v and "UEFA turnuvaları (elemeler dahil)" in v
+    assert GOAL_RULE_ID in v and "UEFA turnuvaları (elemeler dahil)" in v
     k = c.get("/gol/?sekme=kapsam").get_data(as_text=True)
     assert "Kupa ve Avrupa maçlarında ilk yarı skoru" in k and "Şampiyonlar Ligi" in k
 
@@ -419,7 +422,7 @@ def test_cli_cup_goal_command(tmp_home, w, engine, monkeypatch, capsys):
     st.save()
     assert main(["kupa-egit"]) == 0
     out = capsys.readouterr().out
-    assert "Gol pazarları (kural kupa-gol-dogrulama-v1" in out and "Maç sonu 3,5 Üst" in out
+    assert f"Gol pazarları (kural {GOAL_RULE_ID}" in out and "Maç sonu 3,5 Üst" in out
     assert main(["kupa-gol-tahmin", "--turnuva", "UCL"]) == 0
     out = capsys.readouterr().out
     assert "Arsenal - Galatasaray" in out and "UEFA turnuvaları" in out
@@ -463,10 +466,10 @@ def test_desktop_goal_page_cup(tmp_home, w, engine, monkeypatch):
         pg.cb_fixture.setCurrentIndex(1)
         app.processEvents()
         assert pg._current is not None and pg._current.info["kupa"] and pg._panel_valid()
-        assert "kupa-gol-v1" in pg.used.toPlainText() and pg.dec_model.rowCount() == 6
+        assert GOAL_MODEL_VERSION in pg.used.toPlainText() and pg.dec_model.rowCount() == 6
         pg._record()
         recs = ctl.ledger.predictions()
-        assert len(recs) == 6 and all(r["model_version"].endswith("/kupa-gol-v1") for r in recs)
+        assert len(recs) == 6 and all(r["model_version"].endswith(f"/{GOAL_MODEL_VERSION}") for r in recs)
         pg.cb_khome.setCurrentIndex(pg.cb_khome.findData(AK))
         pg.cb_kaway.setCurrentIndex(pg.cb_kaway.findData(HK))
         pg._analyze_manual_cup()

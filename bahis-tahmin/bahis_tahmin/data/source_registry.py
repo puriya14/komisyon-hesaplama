@@ -254,7 +254,10 @@ USE_RIGHTS: dict[str, dict] = {
                                               "espana 09afd6cd836e, italy 48954d163c31, south-america 119fa1724b20 "
                                               "LICENSE.md dosyaları aynı git nesnesi (670154e3538863b2). "
                                               "2026-10-14 (KUPA-01): openfootball/champions-league abfaeddc2ee3 "
-                                              "LICENSE.md aynı git nesnesi."),
+                                              "LICENSE.md aynı git nesnesi. 2026-10-15 (KUPA-IY-03, yurt içi kupa "
+                                              "dosyaları): deutschland c34532ab6950, england 9ee7a0c35180, espana "
+                                              "80035a93dd49, italy 48954d163c31, europe 63df627f3c87, belgium "
+                                              "1166d3c9c572 LICENSE.md aynı git nesnesi."),
                            "sinirlar": ("CC0 doğruluk garantisi vermez ve üçüncü kişi haklarını temizlemez (madde 4); "
                                         "uygulama ham veriyi dağıtmaz.")},
     # KAYNAK-04: koşul metni yok; hiçbir alan izinli sayılmaz. Kullanıcının onayı erişimi, kişisel kullanım beyanı

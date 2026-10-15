@@ -57,6 +57,9 @@ bölünür:
   simetrik değişir (testle denetlenir).
 - Sürüm bilgisi kayıtlarda `kupa-model-v2/kupa-gol-v1` olarak yazılır. Kayıtlı kupa modelinin dosya sürümü 3'e çıktı.
   Eski kayıtlı kupa modeli yüklenmez; "Kaydet, Güncelle ve Eğit" ya da `kupa-egit` onu yeniden eğitir.
+- **KUPA-IY-03 güncellemesi (`kupa-gol-v2`, kural `kupa-gol-dogrulama-v2`, dosya sürümü 4):** s ve taban oranları
+  doğrulama grubunun kendi geçmişinden hesaplanır (UEFA ayrı, yurt içi kupalar ayrı). Kupa verisinin tamamı UEFA'dan
+  geldiği sürece v1 ile aynıdır. Gerekçe ve yurt içi kupaların sonuçları: [`KUPA_IY_03.md`](KUPA_IY_03.md).
 
 ### Seçim: geliştirme döneminde karşılaştırma
 
@@ -124,11 +127,17 @@ UEFA turnuvaları (elemeler dahil), 2.874 ilk yarı skorlu örneklem dışı ma�
 | B: 3,5 Üst | 1.026 | 0,6454 | 0,6522 | −0,0027 | 1,04 | 0,025 | 0,031 | **doğrulandı (sanal takip)** |
 | C: İY 1,5 Üst | 1.129 | 0,6688 | 0,6716 | +0,0016 | 0,83 | 0,034 | 0,031 | DOĞRULANMADI: log-kayıp farkı anlamlı değil, ECE yüksek |
 
-Yurt içi kupalar ve diğer kıtalar için örneklem dışı ölçüm yok, üç pazar da "doğrulanmadı".
+Yurt içi kupalar ve diğer kıtalar için örneklem dışı ölçüm yok, üç pazar da "doğrulanmadı" (bu ölçüm anında yurt içi
+kupalarda ilk yarı skoru yoktu; KUPA-IY-03 ile eklendi).
 
 Sonuç olarak kupa maçlarında yalnızca **UEFA turnuvalarının maç sonu 3,5 Üst** pazarı karar motorunda avantaj adayı
 olabilir. Bunun için de sizin girdiğiniz güncel gerçek oran ve karar politikasının bütün eşikleri gerekir. A ve C
 tahminleri bilgi olarak gösterilir. Pozitif sayısı arttıkça A ileride eşiğe ulaşabilir; ölçüm her eğitimde yenilenir.
+
+**KUPA-IY-03 sonrası güncel ölçüm.** Yurt içi kupalar 3.612 maçla modele girdi. Ortak modelin takım güçleri de
+değiştiği için UEFA sayıları biraz değişti. Statüler aynı kaldı: UEFA'da yalnızca B doğrulandı (LL 0,6439 / taban
+0,6522; Δ üst −0,0039; eğim 0,98; ECE 0,028 ≤ 0,032). Yurt içi kupalarda (2.510 maç) üç pazar da doğrulanmadı. Tablo
+ve teşhis: [`KUPA_IY_03.md`](KUPA_IY_03.md).
 
 ## Tahmin ve belirsizlik aralığı
 

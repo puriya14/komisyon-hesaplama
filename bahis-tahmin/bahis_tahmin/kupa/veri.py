@@ -5,12 +5,16 @@ Kaynaklar:
 * **openfootball/champions-league** (CC0, onay gerekmez): UEFA turnuvalarının geçmiş sezonları. Dosyanın kullanılan
   baytları özetiyle ayrıca saklanır; satırlar yalnızca bu kopyadan aynı okuyucuyla yeniden üretilebiliyorsa hak kazanır
   (``verify_cup_rows``; VERI-02 tamamlama kuralıyla aynı ilke).
+* **openfootball ülke depoları** (CC0; KUPA-IY-03): yurt içi kupaların geçmiş sezonları, ilk yarı skorlarıyla
+  (``Competition.of_file``). Köken kuralı aynıdır; kayıt deposu ve sezon klasörünü de saklar.
 * **ESPN** (kullanıcı onayıyla; GitHub profilinde kullanılmaz): bütün turnuvaların içinde bulunulan ve bir önceki
   sezonu (fikstür, sonuç, tarafsız saha bilgisi). ESPN takım numaraları ``kupa.kimlik`` ile kanıtla eşlenir; bunun için
   ESPN'deki yurt içi lig maçları (son ``EVIDENCE_DAYS`` gün) depodaki lig maçlarıyla karşılaştırılır.
 
 Bir turnuvanın bir sezonu tek kaynaktan alınır: bitmiş sezonlarda openfootball dosyası varsa o, yoksa ESPN; içinde
-bulunulan sezonda ESPN (yoksa openfootball). Lig maçlarının verisine (``DataStore.matches``) dokunulmaz.
+bulunulan sezonda ESPN (yoksa openfootball). KUPA-IY-03: bitmiş sezonun openfootball dosyası eksikse (oynanmış maç sayısı
+ESPN'inkinin ``OF_COMPLETE_SHARE`` katından az; ör. 2025/26 DFB-Pokal dosyası finalsiz) o sezon ESPN'den alınır. Lig
+maçlarının verisine (``DataStore.matches``) dokunulmaz.
 """
 
 from __future__ import annotations
@@ -25,7 +29,7 @@ from pathlib import Path
 import pandas as pd
 
 from .kimlik import KIMLIK_SURUMU, EspnMap, TeamIdentity, domestic_espn_ids, map_espn, map_openfootball
-from .openfootball import CUP_LABEL, CUP_PARSER, CUP_RAW_BASE, CUP_REPO, SKIP_REASONS, parse_cup_txt
+from .openfootball import CUP_BRANCH, CUP_LABEL, CUP_PARSER, CUP_REPO, SKIP_REASONS, parse_cup_txt
 from .turnuvalar import COMPETITIONS, UEFA_REGION, openfootball_dir, season_bounds, season_label, season_start
 
 CUP_MATCH_COLUMNS = ["comp", "season", "stage", "date", "time", "home", "away", "home_key", "away_key",
@@ -36,6 +40,10 @@ CUP_FIXTURE_COLUMNS = ["comp", "season", "stage", "date", "time", "home", "away"
                        "provider_id"]
 OF_FIRST_SEASON = 2011  # openfootball/champions-league ilk sezonu
 OF_MAX_AGE_H = 6.0
+OF_COMPLETE_SHARE = 0.9  # bitmiş sezonda openfootball, ESPN'deki oynanmış maçların en az bu kadarını içermeli
+# Köken kaydında kabul edilen okuyucu sürümleri: v2, v1'in okuyabildiği dosyalarda birebir aynı satırları üretir (25 UEFA
+# dosyasında denetlendi); doğrulama yine kopyayı yeniden okuyup satır özetini karşılaştırır.
+COMPATIBLE_PARSERS = frozenset({"kupa-football-txt-v1", CUP_PARSER})
 ESPN_SEASONS = 2  # ESPN: içinde bulunulan + bir önceki sezon
 EVIDENCE_DAYS = 100  # ESPN yurt içi lig kanıtı penceresi
 MAX_FAILS = 3
@@ -150,6 +158,35 @@ def _proof(raw_dir: Path, data: bytes, stem: str) -> tuple[str, str]:
     return rel, sha
 
 
+@dataclass(frozen=True)
+class OfSpec:
+    """Bir turnuva-sezonun openfootball dosyası. ``label``: bağlam/köken etiketi (UEFA: "2025-26/cl.txt"; yurt içi:
+    "openfootball/deutschland:2024-25/cup.txt" — üç ülkenin dosya adı aynı olduğundan depo adı etikete girer)."""
+    repo: str
+    path: str
+    label: str
+    stem: str  # köken kopyasının dosya adı parçası
+    d: str  # sezon klasörü ("2024-25")
+
+
+def of_spec(code: str, d: str) -> OfSpec | None:
+    c = COMPETITIONS[code]
+    f = c.of_file(d)
+    if f is None:
+        return None
+    repo, path = f
+    if repo == CUP_REPO:
+        return OfSpec(repo, path, path, f"{d}_{c.of_stem}", d)
+    return OfSpec(repo, path, f"{repo}:{path}", f"{d}_{code.lower()}", d)
+
+
+def parse_of(data: bytes, code: str, d: str):
+    """Turnuvanın kurallarıyla (varsayılan ülke kodu, tarafsız turlar) okuma; güncelleme ve köken doğrulaması aynısını
+    kullanır."""
+    c = COMPETITIONS[code]
+    return parse_cup_txt(data, d, c.default_cc, frozenset(c.of_neutral))
+
+
 def _openfootball_files(dl, gh, comps, years_back: int, today: dt.date, force: bool, warnings: list) -> dict:
     """(comp, sezon klasörü) -> baytlar. Dosyası olmayan sezon (ör. turnuva o yıl yoktu) sessizce atlanır."""
     from ..data.sources import DownloadError
@@ -159,23 +196,26 @@ def _openfootball_files(dl, gh, comps, years_back: int, today: dt.date, force: b
     out = {}
     for code in comps:
         c = COMPETITIONS[code]
-        if not c.of_stem:
+        if not (c.of_path or c.of_stem):
             continue
-        for y in range(max(OF_FIRST_SEASON, cur - years_back), cur + 1):
-            d = openfootball_dir(y)
-            path = f"{d}/{c.of_stem}.txt"
+        first = c.of_first or OF_FIRST_SEASON
+        for y in range(max(first, cur - years_back), cur + 1):
+            spec = of_spec(code, openfootball_dir(y))
+            # UEFA önbellek yolu KUPA-01'deki gibi kalır; ülke depoları kendi alt klasöründe
+            rel = (f"openfootball_kupa/{spec.path}" if spec.repo == CUP_REPO
+                   else f"openfootball_kupa/{spec.repo.split('/')[-1]}/{spec.path}")
             try:
                 if gh is not None:
-                    data = gh.get(CUP_REPO, path)
+                    data = gh.get(spec.repo, spec.path)
                 else:
-                    data = dl.get(f"{CUP_RAW_BASE}/{path}", f"openfootball_kupa/{path}",
+                    data = dl.get(f"https://raw.githubusercontent.com/{spec.repo}/{CUP_BRANCH}/{spec.path}", rel,
                                   None if y < cur - 1 else OF_MAX_AGE_H, force)
             except (DownloadError, _GitHubUnavailable) as e:
                 status = getattr(e, "status", None)
                 if status not in (404, 410) and not isinstance(e, _GitHubUnavailable) and not getattr(e, "network", 0):
-                    warnings.append(f"openfootball kupa dosyası {path} alınamadı: {e}")
+                    warnings.append(f"openfootball kupa dosyası {spec.label} alınamadı: {e}")
                 continue
-            out[(code, d)] = data
+            out[(code, spec.d)] = data
     return out
 
 
@@ -268,27 +308,28 @@ def update_cups(raw_dir, dl, gh, comps, years_back: int, matches: pd.DataFrame, 
     raw_dir = Path(raw_dir)
     cur_lo = {c: season_start(today, COMPETITIONS[c].calendar_year) for c in comps}
 
-    # 1) openfootball (CC0)
+    # 1) openfootball (CC0): UEFA ve yurt içi kupaların geçmiş sezonları
     of_data = {}
     if "openfootball" in allowed:
-        say("Kupa verileri: openfootball (UEFA geçmiş sezonları)...")
+        say("Kupa verileri: openfootball (UEFA ve yurt içi kupaların geçmiş sezonları)...")
         of_data = _openfootball_files(dl, gh, comps, years_back, today, force, warnings)
     parsed = {}
     for (code, d), data in sorted(of_data.items()):
-        pr = parse_cup_txt(data, d)
-        label = f"{d}/{COMPETITIONS[code].of_stem}.txt"
-        parsed[(code, d)] = (label, pr, data)
+        spec = of_spec(code, d)
+        pr = parse_of(data, code, d)
+        parsed[(code, d)] = (spec, pr, data)
         skipped = {k: v for k, v in pr.skipped.items() if k not in ("NOT_HUKMEN", "NOT_IPTAL")}
         if skipped:
-            warnings.append(f"openfootball kupa {label}: {sum(skipped.values())} satır okunmadı ("
+            warnings.append(f"openfootball kupa {spec.label}: {sum(skipped.values())} satır okunmadı ("
                             + "; ".join(f"{v} × {SKIP_REASONS.get(k, k)}" for k, v in sorted(skipped.items())) + ").")
-    ofmap = map_openfootball({lab: pr.matches for lab, pr, _ in parsed.values()}, matches)
+    domestic = {spec.label for (code, _d), (spec, _pr, _data) in parsed.items() if COMPETITIONS[code].default_cc}
+    ofmap = map_openfootball({spec.label: pr.matches for spec, pr, _ in parsed.values()}, matches, domestic)
     of_played: dict = {}
     of_todo: dict = {}
-    for (code, d), (label, pr, _data) in parsed.items():
+    for (code, d), (spec, pr, _data) in parsed.items():
         start = int(d[:4])
         season = season_label(start, COMPETITIONS[code].calendar_year)
-        pl, td = of_rows(pr.matches, code, season, label, ofmap)
+        pl, td = of_rows(pr.matches, code, season, spec.label, ofmap)
         of_played[(code, season)] = pl
         of_todo[(code, season)] = td
 
@@ -345,9 +386,14 @@ def update_cups(raw_dir, dl, gh, comps, years_back: int, matches: pd.DataFrame, 
         finished = season_bounds(start, c.calendar_year)[1] < today
         has_of = (code, season) in of_played and bool(of_played[(code, season)] or of_todo.get((code, season)))
         has_es = bool(es_played.get((code, season)) or es_todo.get((code, season)))
-        use = ("openfootball" if (has_of and (finished or not has_es)) else "espn" if has_es else None)
+        n_of, n_es = len(of_played.get((code, season), [])), len(es_played.get((code, season), []))
+        of_complete = n_of >= OF_COMPLETE_SHARE * n_es  # ESPN'de bu sezon yoksa (n_es = 0) tam sayılır
+        use = ("openfootball" if (has_of and ((finished and of_complete) or not has_es))
+               else "espn" if has_es else None)
         if use is None:
             continue
+        if has_of and finished and not of_complete and use == "espn":
+            report[code].setdefault("eksik_openfootball", {})[season] = {"openfootball": n_of, "espn": n_es}
         sources[f"{code} {season}"] = use
         report[code]["kaynak"][season] = use
         if use == "openfootball":
@@ -356,12 +402,12 @@ def update_cups(raw_dir, dl, gh, comps, years_back: int, matches: pd.DataFrame, 
             if not finished:
                 todo += of_todo.get((code, season), [])
             d = openfootball_dir(start)
-            label, pr, data = parsed[(code, d)]
-            rel, sha = _proof(raw_dir, data, f"{d}_{c.of_stem}")
+            spec, pr, data = parsed[(code, d)]
+            rel, sha = _proof(raw_dir, data, spec.stem)
             df = pd.DataFrame(rows, columns=CUP_MATCH_COLUMNS)
-            records.append({"turnuva": code, "sezon": season, "depo": CUP_REPO, "yol": label, "kopya": rel,
-                            "sha256": sha, "ayristirici": CUP_PARSER, "kimlik": KIMLIK_SURUMU, "satir": len(df),
-                            "satir_ozeti": rows_sha256(df) if len(df) else "", "alinma": now_iso})
+            records.append({"turnuva": code, "sezon": season, "depo": spec.repo, "yol": spec.path, "klasor": d,
+                            "kopya": rel, "sha256": sha, "ayristirici": CUP_PARSER, "kimlik": KIMLIK_SURUMU,
+                            "satir": len(df), "satir_ozeti": rows_sha256(df) if len(df) else "", "alinma": now_iso})
         else:
             played += es_played.get((code, season), [])
             if not finished:
@@ -466,8 +512,11 @@ def verify_cup_rows(cup_matches: pd.DataFrame | None, records, raw_dir) -> tuple
         if rec is None:
             problems.append(f"{code} {season}: köken kaydı yok")
             continue
-        if rec.get("ayristirici") != CUP_PARSER or rec.get("depo") != CUP_REPO:
-            problems.append(f"{code} {season}: kaynak deposu veya okuyucu sürümü farklı")
+        d = str(rec.get("klasor") or str(rec.get("yol", "")).split("/")[0])
+        spec = of_spec(code, d) if code in COMPETITIONS else None
+        if rec.get("ayristirici") not in COMPATIBLE_PARSERS or spec is None or rec.get("depo") != spec.repo \
+                or str(rec.get("yol", "")) != spec.path:
+            problems.append(f"{code} {season}: kaynak deposu, dosya yolu veya okuyucu sürümü farklı")
             continue
         path = Path(raw_dir) / str(rec.get("kopya", ""))
         if not path.is_file():
@@ -477,8 +526,7 @@ def verify_cup_rows(cup_matches: pd.DataFrame | None, records, raw_dir) -> tuple
         if hashlib.sha256(data).hexdigest() != rec.get("sha256"):
             problems.append(f"{code} {season}: dosya özeti kayıtla uyuşmuyor")
             continue
-        d = str(rec.get("yol", "")).split("/")[0]
-        pr = parse_cup_txt(data, d)
+        pr = parse_of(data, code, d)
         again = []
         for r in pr.matches:
             sc = r.get("score")
