@@ -355,10 +355,15 @@ def gol():
                    val_rule=(eng.validation.get("rule", "") or "") if (eng is not None and eng.validation) else "",
                    validated=bool(eng is not None and eng.validation))
     else:  # takip
+        from ..goals.clv import closing_candidates, clv_summary, summary_line
+
         with core.ledger(create=False) as led:
             rows = ledger_rows(led)
             summ = led.summary() if (led is not None and rows) else None
-        ctx.update(ledger=pd.DataFrame(rows), summ=summ)
+            clv_line = summary_line(clv_summary(led)) if summ else ""
+            cands = closing_candidates(led) if led is not None else []
+        ctx.update(ledger=pd.DataFrame(rows), summ=summ, clv_line=clv_line,
+                   close_opts=[(f"{eid}§{mk}", label) for eid, mk, label in cands])
     return render_template("gol.html", **ctx)
 
 
@@ -443,6 +448,41 @@ def kaydet():
         decs = decisions_for(v.prediction, eng, led, now, eligibility=v)
         record_decisions(led, v.prediction, decs, eng, record_time=now)
     flash("Kararlar sanal takibe kaydedildi (değiştirilemez).", "info")
+    return redirect(url_for("gol.gol", sekme="takip"))
+
+
+@bp.route("/kapanis", methods=["POST"])
+def kapanis():
+    """Kapanış oranı girişi (ORAN-03): değiştirilemez kayıt; düzeltme gerekçeyle yeni kayıt olarak eklenir."""
+    from ..goals.clv import add_closing
+
+    core = get_state().core
+    key = request.form.get("kayit") or ""
+    eid, _, mk = key.partition("§")
+
+    def num(name):
+        raw = (request.form.get(name) or "").replace(",", ".").strip()
+        try:
+            v = float(raw) if raw else None
+        except ValueError:
+            return None
+        return v if v is not None and 1.0 < v <= 1000.0 else None
+
+    odds, opp = num("oran"), num("karsi")
+    if not eid or not mk or odds is None:
+        flash("Kayıt seçin ve 1,00'den büyük bir kapanış oranı girin.", "warn")
+        return redirect(url_for("gol.gol", sekme="takip"))
+    with core.ledger(create=False) as led:
+        if led is None:
+            flash("Henüz sanal kayıt yok.", "warn")
+            return redirect(url_for("gol.gol", sekme="takip"))
+        try:
+            added = add_closing(led, eid, mk, odds, opp, (request.form.get("sirket") or "").strip()[:60], core.now(),
+                                (request.form.get("not") or "").strip()[:200])
+        except (ValueError, KeyError) as e:
+            flash(f"Kapanış oranı kaydedilmedi: {e}", "warn")
+            return redirect(url_for("gol.gol", sekme="takip"))
+    flash("Kapanış oranı kaydedildi (değiştirilemez)." if added else "Aynı kapanış oranı zaten kayıtlı.", "info")
     return redirect(url_for("gol.gol", sekme="takip"))
 
 

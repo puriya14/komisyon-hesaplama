@@ -223,12 +223,14 @@ def ledger_rows(ledger: Ledger | None) -> list[dict]:
     """Sanal takip tablosu ve CSV dışa aktarımı için satırlar. Olasılık/oran yalnızca sonlu sayıysa yazılır (NaN,
     sonsuz veya sahte sıfır taşınmaz); veri uygunluğu bilgisi olmayan eski kayıtlar olduğu gibi okunur."""
     from ..timeutil import ISTANBUL
+    from .clv import record_clv
     from .decision import STATUS_TR
 
     if ledger is None:
         return []
     rows = []
     for r in ledger.predictions():
+        c = record_clv(ledger, r) or {}
         o = r.get("outcome") or {}
         t = dt.datetime.fromisoformat(r["decision_time"])
         status = r["decision_status"]
@@ -258,6 +260,9 @@ def ledger_rows(ledger: Ledger | None) -> list[dict]:
             "Oran": finite_or_none(r.get("odds")), "Karar": karar, "Veri uygunluğu": veri,
             "Sanal birim": finite_or_none(r.get("stake_units")),
             "Sonuç": o.get("settlement", "PENDING" if p is not None else "-"), "Model": r.get("model_version", ""),
+            # Kapanış oranı karşılaştırması (ORAN-03): yalnızca oranlı ve kapanış oranı girilmiş kayıtlarda
+            "Kapanış oranı": finite_or_none(c.get("kapanis")), "CLV (ham)": finite_or_none(c.get("ham")),
+            "CLV (marjsız)": finite_or_none(c.get("marjsiz")), "Kapanış zamanlaması": c.get("zamanlama", ""),
         })
     return rows
 

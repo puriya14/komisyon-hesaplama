@@ -14,6 +14,8 @@
     python -m bahis_tahmin gol-sanal                # sanal takip özeti ve kayıt zinciri doğrulaması
     python -m bahis_tahmin gol-oran-ice-aktar --csv oranlar.csv            # yalnızca doğrulama
     python -m bahis_tahmin gol-oran-ice-aktar --csv oranlar.csv --uygula   # doğrulananları ekle
+    python -m bahis_tahmin gol-kapanis-ekle                 # kapanış oranı girilebilecek kayıtlar (CLV)
+    python -m bahis_tahmin gol-kapanis-ekle --olay "E0|2026-10-18|Arsenal|Chelsea" --pazar FT_OVER_3_5 --oran 2.9
     python -m bahis_tahmin dizi-olay --takim "PSV Eindhoven" --iyms 2/1    # geçmiş inceleme (olay seçimli)
     python -m bahis_tahmin dizi-arastir --isci 3                           # ön-kayıtlı dizi araştırması
     python -m bahis_tahmin dizi-benzer --takim "PSV Eindhoven"             # maç öncesi benzer diziler
@@ -655,14 +657,53 @@ def cmd_goal_ledger(a) -> int:
     if not path.exists():
         print("Henüz sanal takip kaydı yok.")
         return 0
+    from .goals.clv import clv_summary, summary_line
+
     led = Ledger(path)
     ok, msg = led.verify_chain()
     s = led.summary()
+    clv = summary_line(clv_summary(led))
     led.close()
     y = f"{100 * s['yield']:+.1f}%" if s["yield"] is not None else "hesaplanamıyor"
     print(f"{msg}. {s['kayit']} kayıt · {s['sanal_bahis']} sanal bahis · {s['sonuclanan']} sonuçlandı · "
           f"net {s['net']:+.2f} birim · yield {y}")
+    print(clv)
     return 0 if ok else 1
+
+
+def cmd_goal_closing(a) -> int:
+    """Kapanış oranı girişi (ORAN-03). --olay verilmezse kapanış oranı girilebilecek kayıtları listeler."""
+    import datetime as dt
+
+    from .goals.clv import add_closing, closing_candidates
+    from .goals.ledger import Ledger
+
+    path = app_home() / LEDGER_FILE
+    if not path.exists():
+        print("Henüz sanal takip kaydı yok.")
+        return 0
+    led = Ledger(path)
+    try:
+        if not a.olay:
+            cands = closing_candidates(led)
+            if not cands:
+                print("Oranlı sanal kayıt yok; kapanış oranı girilecek kayıt bulunmuyor.")
+            for eid, mk, label in cands:
+                print(f"{eid}\t{mk}\t{label}")
+            return 0
+        if not a.pazar or a.oran is None:
+            print("--pazar ve --oran zorunlu.", file=sys.stderr)
+            return 2
+        now = dt.datetime.now(dt.timezone.utc)
+        try:
+            added = add_closing(led, a.olay, a.pazar, a.oran, a.karsi, a.sirket, now, note=a.not_ or "")
+        except ValueError as e:
+            print(f"Kaydedilmedi: {e}", file=sys.stderr)
+            return 2
+        print("Kapanış oranı kaydedildi (değiştirilemez)." if added else "Aynı kapanış oranı zaten kayıtlı.")
+        return 0
+    finally:
+        led.close()
 
 
 def cmd_goal_odds_import(a) -> int:
@@ -685,6 +726,15 @@ def cmd_goal_odds_import(a) -> int:
         print("Kuru çalıştırma: hiçbir kayıt yazılmadı. Yazmak için --uygula ekleyin.")
         return 0
     led = Ledger(app_home() / LEDGER_FILE)
+    if getattr(a, "kapanis", False):  # ORAN-03: satırlar karar oranı değil, kapanış oranı olarak yazılır
+        from .goals.clv import closing_from_quotes
+
+        n, skipped = closing_from_quotes(led, quotes)
+        led.close()
+        print(f"{n} yeni kapanış oranı kaydı eklendi (aynı kayıtlar tekrar eklenmez).")
+        for line in skipped[:20]:
+            print(f"  atlandı: {line}")
+        return 0
     n = led.add_odds(quotes)
     led.close()
     print(f"{n} yeni oran kaydı eklendi (aynı kayıtlar tekrar eklenmez).")
@@ -1434,7 +1484,18 @@ def main(argv: list[str] | None = None) -> int:
     go = sub.add_parser("gol-oran-ice-aktar", help="gerçek oran CSV'sini doğrula (varsayılan) veya --uygula ile ekle")
     go.add_argument("--csv", required=True)
     go.add_argument("--uygula", action="store_true", help="doğrulanan kayıtları sanal takip veritabanına yaz")
+    go.add_argument("--kapanis", action="store_true", help="satırları kapanış oranı olarak yaz (CLV; karar oranı "
+                                                           "olarak kullanılmaz)")
     go.set_defaults(fn=cmd_goal_odds_import)
+    gc = sub.add_parser("gol-kapanis-ekle", help="sanal takipte kapanış oranı gir (CLV); --olay olmadan oranlı "
+                                                 "kayıtları listeler")
+    gc.add_argument("--olay", help="olay kimliği (lig|YYYY-AA-GG|ev|deplasman; listeden kopyalayın)")
+    gc.add_argument("--pazar", help="pazar anahtarı, ör. FT_OVER_3_5")
+    gc.add_argument("--oran", type=float, help="kapanış oranı (ondalık)")
+    gc.add_argument("--karsi", type=float, help="aynı anda karşı tarafın kapanış oranı (marjsız CLV için)")
+    gc.add_argument("--sirket", default="", help="bahis şirketi")
+    gc.add_argument("--not", dest="not_", default="", help="önceki kapanış oranını düzeltirken gerekçe (zorunlu)")
+    gc.set_defaults(fn=cmd_goal_closing)
     gf = sub.add_parser("gol-olcum-kaydet", help="ileriye dönük ölçüm: yaklaşan maçların A/B/C tahmin kayıtları "
                                                  "(varsayılan kuru çalıştırma)")
     gf.add_argument("--uygula", action="store_true", help="kayıtları değişmez deftere yaz")

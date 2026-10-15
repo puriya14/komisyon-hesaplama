@@ -212,6 +212,20 @@ def test_goals_page(app, window, goal_setup):
     assert len(ctl.ledger.predictions()) == 6
     assert all(r["veri_uygunlugu"]["tahmin_uygun"] for r in ctl.ledger.predictions())
     assert page.led_model.rowCount() == 6
+    # ORAN-03: kapanış oranı girişi (oranlı tek kayıt: 3,5 Üst)
+    assert page.cb_close.count() == 1 and "alınan 2.10" in page.cb_close.itemText(0)
+    page.sp_close.setValue(1.95)
+    page.sp_opp.setValue(1.85)
+    page.ed_close_book.setText("Test")
+    page._save_closing()
+    assert ctl.ledger.closing_count() == 1 and "kapanış 1.95" in page.cb_close.itemText(0)
+    row = page.led_model.frame.dropna(subset=["Kapanış oranı"])
+    assert len(row) == 1 and row["CLV (ham)"].iloc[0] == pytest.approx(2.10 / 1.95 - 1)
+    assert row["CLV (marjsız)"].iloc[0] == pytest.approx(2.10 * (1 / 1.95) / (1 / 1.95 + 1 / 1.85) - 1)
+    assert page.lbl_clv.text().startswith("Kapanış oranı (CLV)")
+    page.sp_close.setValue(2.0)
+    page._save_closing()  # düzeltme gerekçesiz: kaydedilmez, açıklanır
+    assert ctl.ledger.closing_count() == 1 and "gerekçe" in page.lbl_clv.text()
     # T01 (ana ekran): bilinen eksik tamamlanmış maç → olasılık gösterilmez, hiçbir pazar aday olmaz
     team = fx.loc[0, "home"]
     idx = m[(m["home"] == team) | (m["away"] == team)].index[-3]

@@ -364,6 +364,23 @@ def test_goal_markets_scan_decide_record_and_ledger(app, full):
     assert "✔" in c.post("/gol/zincir", data={"csrf": tok}, follow_redirects=True).get_data(as_text=True)
     csv = c.get("/gol/takip.csv")
     assert csv.headers["Content-Disposition"].endswith("sanal_takip.csv") and len(csv.data) > 10
+    # ORAN-03: kapanış oranı girişi ve CLV
+    assert "Kapanış oranı gir (CLV)" in takip and "Kapanış oranı (CLV):" in takip
+    key = f"{aday}§FT_OVER_3_5"
+    assert f'value="{key}"' in takip
+    r = c.post("/gol/kapanis", data={"csrf": tok, "kayit": key, "oran": "0,9"}, follow_redirects=True)
+    assert "Kayıt seçin" in r.get_data(as_text=True)
+    r = c.post("/gol/kapanis", data={"csrf": tok, "kayit": key, "oran": "3,10", "karsi": "1,40", "sirket": "Test"},
+               follow_redirects=True)
+    assert "Kapanış oranı kaydedildi" in r.get_data(as_text=True)
+    r = c.post("/gol/kapanis", data={"csrf": tok, "kayit": key, "oran": "3,20"}, follow_redirects=True)
+    assert "gerekçe" in r.get_data(as_text=True)
+    with core.ledger(create=False) as led:
+        c0 = led.closing(aday, "FT_OVER_3_5")
+        assert c0["odds"] == 3.1 and c0["opposite_odds"] == 1.4 and c0["bookmaker"] == "Test"
+        assert led.closing_count() == 1
+    assert "kapanış 3.10" in c.get("/gol/?sekme=takip").get_data(as_text=True)
+    assert c.post("/gol/kapanis", data={"kayit": key, "oran": "3,10"}).status_code in (400, 403)  # CSRF zorunlu
     # Elle seçilen maç da aynı uygunluk kontrolünden geçer
     manual = c.get("/gol/", query_string={"sekme": "mac", "lig": "T1", "ev": teams[0], "dep": teams[1]})
     assert "Karar tablosu" in manual.get_data(as_text=True)

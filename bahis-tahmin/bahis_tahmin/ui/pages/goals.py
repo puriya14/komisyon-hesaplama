@@ -907,26 +907,92 @@ class GoalsPage(Page):
             row.addWidget(b)
         row.addStretch(1)
         lay.addLayout(row)
+        lay.addWidget(self._build_closing())
         self.led_model = DataFrameModel()
         lv, _ = make_table(self.led_model)
         lv.setMinimumHeight(520)
         lay.addWidget(lv)
         return w
 
+    def _build_closing(self) -> QWidget:
+        """Kapanış oranı girişi (ORAN-03): oranlı bir kayıt seçilir, maç başlamadan önceki son oran girilir."""
+        box = QGroupBox("Kapanış oranı (CLV): maç başlamadan hemen önceki son oranı girin")
+        g = QGridLayout(box)
+        self.cb_close = QComboBox()
+        self.cb_close.setMinimumWidth(420)
+        self.sp_close = QDoubleSpinBox()
+        self.sp_opp = QDoubleSpinBox()
+        for sp in (self.sp_close, self.sp_opp):
+            sp.setRange(0.0, 1000.0)
+            sp.setDecimals(2)
+            sp.setSpecialValueText("–")
+        self.ed_close_book = QLineEdit()
+        self.ed_close_book.setPlaceholderText("Bahis şirketi adı")
+        self.ed_close_note = QLineEdit()
+        self.ed_close_note.setPlaceholderText("Yalnızca düzeltmede: gerekçe")
+        btn = QPushButton("Kapanış oranını kaydet")
+        btn.clicked.connect(self._save_closing)
+        g.addWidget(QLabel("Kayıt:"), 0, 0)
+        g.addWidget(self.cb_close, 0, 1, 1, 3)
+        g.addWidget(QLabel("Kapanış oranı:"), 1, 0)
+        g.addWidget(self.sp_close, 1, 1)
+        g.addWidget(QLabel("Karşı taraf (isteğe bağlı):"), 1, 2)
+        g.addWidget(self.sp_opp, 1, 3)
+        g.addWidget(QLabel("Bahis şirketi:"), 2, 0)
+        g.addWidget(self.ed_close_book, 2, 1)
+        g.addWidget(self.ed_close_note, 2, 2)
+        g.addWidget(btn, 2, 3)
+        self.lbl_clv = QLabel("")
+        self.lbl_clv.setWordWrap(True)
+        g.addWidget(self.lbl_clv, 3, 0, 1, 4)
+        return box
+
+    def _save_closing(self) -> None:
+        from ...goals.clv import add_closing
+
+        data = self.cb_close.currentData()
+        if not data or self.sp_close.value() <= 1.0:
+            self.lbl_clv.setText("Kayıt seçin ve 1,00'den büyük bir kapanış oranı girin.")
+            return
+        opp = self.sp_opp.value() if self.sp_opp.value() > 1.0 else None
+        try:
+            added = add_closing(self.ctl.ledger, data[0], data[1], float(self.sp_close.value()), opp,
+                                self.ed_close_book.text().strip(), self.ctl.now(), self.ed_close_note.text().strip())
+        except ValueError as e:
+            self.lbl_clv.setText(f"Kaydedilmedi: {e}")
+            return
+        self.ed_close_note.clear()
+        self.refresh_ledger()
+        if not added:
+            self.lbl_clv.setText(self.lbl_clv.text() + "  ·  aynı kapanış oranı zaten kayıtlı")
+
     def _ledger_frame(self) -> pd.DataFrame:
         return pd.DataFrame(ledger_rows(self.ctl.ledger_if_exists()))
 
     def refresh_ledger(self) -> None:
+        from ...goals.clv import closing_candidates, clv_summary, summary_line
+
         df = self._ledger_frame()
         self.led_model.set_frame(df)
+        led = self.ctl.ledger_if_exists()
+        keep = self.cb_close.currentData()
+        self.cb_close.clear()
+        for eid, mk, label in (closing_candidates(led) if led is not None else []):
+            self.cb_close.addItem(label, (eid, mk))
+        if keep is not None:
+            i = self.cb_close.findData(keep)
+            if i >= 0:
+                self.cb_close.setCurrentIndex(i)
         if df.empty:
             self.led_sum.setText("Henüz sanal kayıt yok. Maç analizi sekmesinden kararları kaydedebilirsiniz.")
+            self.lbl_clv.setText("")
             return
         s = self.ctl.ledger.summary()
         y = f"{100 * s['yield']:+.1f}%" if s["yield"] is not None else "hesaplanamıyor"
         self.led_sum.setText(
             f"{s['kayit']} kayıt · {s['sanal_bahis']} sanal bahis (yalnızca avantaj adayları) · {s['sonuclanan']} sonuçlandı · "
             f"{s['bekleyen_veya_iade']} bekleyen/iade (paydaya girmez) · net {s['net']:+.2f} birim · yield {y}")
+        self.lbl_clv.setText(summary_line(clv_summary(self.ctl.ledger)))
 
     def _settle(self) -> None:
         led = self.ctl.ledger_if_exists()

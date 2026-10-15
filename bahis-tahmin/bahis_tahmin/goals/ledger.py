@@ -4,6 +4,8 @@
 * Sonuç ve düzeltmeler ayrı olay olarak eklenir; eski kayıt silinmez.
 * Her kayıt bir önceki kaydın özetini (hash) içerir; zincir doğrulanarak sessiz değişiklik tespit edilir.
 * Oran kayıtları benzersiz anahtarla saklanır; aynı dosya tekrar alındığında çoğalmaz.
+* Kapanış oranları (ORAN-03) ayrı, değiştirilemez ve zincirli tabloda saklanır; karar oranı olarak kullanılmaz.
+  Düzeltme yeni kayıt olarak, gerekçeyle eklenir.
 
 Veritabanı dosyası yalnızca kullanıcı bu özelliği kullandığında, uygulama veri klasöründe oluşturulur.
 """
@@ -13,13 +15,14 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import json
+import math
 import sqlite3
 import uuid
 from pathlib import Path
 
 from .value import OddsQuote
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2  # 2: kapanış oranları tablosu (ORAN-03); eski dosyalarda tablo açılışta boş olarak eklenir
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
@@ -46,6 +49,19 @@ CREATE TABLE IF NOT EXISTS odds (
     status TEXT NOT NULL, settlement_rule_version TEXT NOT NULL,
     UNIQUE(event_id, market_key, provider, bookmaker, quoted_at)
 );
+CREATE TABLE IF NOT EXISTS closing_odds (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id TEXT NOT NULL,
+    market_key TEXT NOT NULL,
+    recorded_at TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    prev_hash TEXT NOT NULL,
+    hash TEXT NOT NULL
+);
+CREATE TRIGGER IF NOT EXISTS closing_no_update BEFORE UPDATE ON closing_odds
+BEGIN SELECT RAISE(ABORT, 'Kapanış oranı kaydı değiştirilemez; düzeltme yeni kayıt olarak eklenir'); END;
+CREATE TRIGGER IF NOT EXISTS closing_no_delete BEFORE DELETE ON closing_odds
+BEGIN SELECT RAISE(ABORT, 'Kapanış oranı kaydı silinemez'); END;
 CREATE TRIGGER IF NOT EXISTS predictions_no_update BEFORE UPDATE ON predictions
 BEGIN SELECT RAISE(ABORT, 'Tahmin kaydı değiştirilemez'); END;
 CREATE TRIGGER IF NOT EXISTS predictions_no_delete BEFORE DELETE ON predictions
@@ -90,6 +106,9 @@ class Ledger:
         self.conn = sqlite3.connect(self.path)
         self.conn.executescript(SCHEMA)
         self.conn.execute("INSERT OR IGNORE INTO meta VALUES ('schema_version', ?)", (str(SCHEMA_VERSION),))
+        row = self.conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+        if int(row[0]) < SCHEMA_VERSION:  # eski dosya: yeni tablolar yukarıda boş olarak eklendi
+            self.conn.execute("UPDATE meta SET value=? WHERE key='schema_version'", (str(SCHEMA_VERSION),))
         self.conn.commit()
 
     def close(self) -> None:
@@ -151,7 +170,7 @@ class Ledger:
         return out
 
     def verify_chain(self) -> tuple[bool, str]:
-        for table in ("predictions", "outcomes"):
+        for table in ("predictions", "outcomes", "closing_odds"):
             prev = GENESIS
             for seq, payload, p, h in self.conn.execute(f"SELECT seq, payload, prev_hash, hash FROM {table} ORDER BY seq"):  # noqa: S608
                 if p != prev or _hash(prev, payload) != h:
@@ -204,3 +223,58 @@ class Ledger:
 
     def odds_count(self) -> int:
         return self.conn.execute("SELECT COUNT(*) FROM odds").fetchone()[0]
+
+    # ------------------------------------------------------- kapanış oranları
+    def record_closing(self, event: str, market_key: str, odds: float, observed_at: dt.datetime, bookmaker: str,
+                       source: str, opposite_odds: float | None = None, note: str = "") -> bool:
+        """Kapanış oranı (maç başlamadan önceki son oran) kaydı. ``opposite_odds``: aynı şirketin aynı andaki karşı
+        taraf oranı (varsa marjsız kapanış olasılığı hesaplanır). Aynı değerler tekrar gelirse eklenmez; farklı bir
+        değer yalnızca gerekçeyle (düzeltme) eklenir. Dönen: yeni kayıt eklendi mi."""
+        from .markets import MARKETS
+
+        m = MARKETS.get(market_key)
+        if m is None or not m.complement:
+            raise ValueError(f"Kapanış oranı yalnızca iki seçenekli pazarlarda kaydedilir: {market_key}")
+        for v in (odds, opposite_odds):
+            if v is not None and not (isinstance(v, (int, float)) and math.isfinite(v) and 1.0 < v <= 1000.0):
+                raise ValueError("Oran 1'den büyük, sonlu bir sayı olmalı")
+        prev = self.closing(event, market_key)
+        if prev is not None:
+            same = (abs(prev["odds"] - odds) < 1e-9 and prev["bookmaker"] == bookmaker
+                    and (prev["opposite_odds"] is None) == (opposite_odds is None)
+                    and (opposite_odds is None or abs(prev["opposite_odds"] - opposite_odds) < 1e-9))
+            if same:
+                return False
+            if not note:
+                raise ValueError("Önceki kapanış oranını değiştiren kayıt için düzeltme gerekçesi zorunlu")
+        now = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+        payload = _canon({"event_id": event, "market_key": market_key, "odds": float(odds),
+                          "opposite_odds": float(opposite_odds) if opposite_odds is not None else None,
+                          "observed_at": _utc(observed_at), "recorded_at": now, "bookmaker": bookmaker,
+                          "source": source, "note": note, "correction_of": prev["recorded_at"] if prev else None})
+        h_prev = self._last_hash("closing_odds")
+        with self.conn:
+            self.conn.execute("INSERT INTO closing_odds (event_id, market_key, recorded_at, payload, prev_hash, hash) "
+                              "VALUES (?,?,?,?,?,?)", (event, market_key, now, payload, h_prev, _hash(h_prev, payload)))
+        return True
+
+    def closing(self, event: str, market_key: str) -> dict | None:
+        """Pazarın en son kapanış oranı kaydı, bu pazarın yönünde: karşı tarafın (tümleyen pazar) kaydı da kullanılır,
+        oranlar yer değiştirir. Kayıt yoksa None."""
+        from .markets import MARKETS
+
+        m = MARKETS.get(market_key)
+        keys = [market_key] + ([m.complement] if m is not None and m.complement else [])
+        rows = self.conn.execute(
+            f"SELECT payload FROM closing_odds WHERE event_id=? AND market_key IN ({','.join('?' * len(keys))}) "  # noqa: S608
+            "ORDER BY seq DESC", (event, *keys)).fetchall()
+        for (payload,) in rows:
+            rec = json.loads(payload)
+            if rec["market_key"] == market_key:
+                return rec
+            if rec["opposite_odds"] is not None:  # karşı tarafın kaydı: bu pazarın yönüne çevir
+                return dict(rec, market_key=market_key, odds=rec["opposite_odds"], opposite_odds=rec["odds"])
+        return None
+
+    def closing_count(self) -> int:
+        return self.conn.execute("SELECT COUNT(*) FROM closing_odds").fetchone()[0]

@@ -201,6 +201,21 @@
   <form method="post" action="{{ url_for('gol.zincir') }}">{{ csrf_field() }}<button class="btn" type="submit">Kayıt zincirini doğrula</button></form>
   <a class="btn" href="{{ url_for('gol.takip_csv') }}">CSV dışa aktar</a>
 </div>
+{% if clv_line %}<p>{{ clv_line }}</p>{% endif %}
+{% if close_opts %}
+<details class="why"><summary>Kapanış oranı gir (CLV)</summary>
+<form method="post" action="{{ url_for('gol.kapanis') }}" class="form-grid">{{ csrf_field() }}
+  <label>Kayıt <select name="kayit">{% for v, label in close_opts %}<option value="{{ v }}">{{ label }}</option>{% endfor %}</select></label>
+  <label>Kapanış oranı <input name="oran" inputmode="decimal" placeholder="ör. 2,10" required></label>
+  <label>Karşı taraf (isteğe bağlı) <input name="karsi" inputmode="decimal" placeholder="ör. 1,75"></label>
+  <label>Bahis şirketi <input name="sirket" maxlength="60"></label>
+  <label>Düzeltme gerekçesi <input name="not" maxlength="200" placeholder="yalnızca önceki oranı değiştirirken"></label>
+  <button class="btn" type="submit">Kapanış oranını kaydet</button>
+</form>
+<p class="muted small">Maç başlamadan hemen önceki son oranı girin. Karşı tarafın oranı da girilirse marjsız CLV hesaplanır.
+  Kayıt değiştirilemez; düzeltme gerekçeyle yeni kayıt olarak eklenir.</p>
+</details>
+{% endif %}
 {{ frame_table(ledger, {}, {}, [], 'Kayıt yok.') }}
 {% endif %}
 {% endblock %}
