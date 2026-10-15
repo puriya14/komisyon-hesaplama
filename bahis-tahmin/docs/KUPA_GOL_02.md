@@ -99,6 +99,11 @@ seçim sırasında görüldü. Seçim kuralı geliştirme dönemi + sadelik olar
 sonuçları: A 0,2205 (taban 0,2233), B 0,6404 (taban 0,6503), C 0,6636 (taban 0,6678). Uygulamadaki nihai sayılar
 aşağıdaki motor ölçümünden gelir; prototip hattı birebir aynı olmadığından küçük farklar vardır.
 
+**Yeniden seçim (KUPA-GOL-05).** Bu seçim 0-0 maçların düştüğü örneklemde yapılmıştı. Düzeltilmiş örneklemle,
+önceden yazılmış kuralla ve yurt içi kupalar da dahil yeniden çalıştırıldı. Eşdeğer üçlü yine SK0, SK1 ve MIX; kural
+yine **SK0**'ı seçti. Test döneminde de en iyi toplam SK0'ın. Prototip hattı artık uygulamanın ölçümüyle birebir aynı.
+Ayrıntılar ve araç: [`KUPA_GOL_05.md`](KUPA_GOL_05.md), `tools/research/kupa_gol_secim.py`.
+
 ## Doğrulama kuralı: `kupa-gol-dogrulama-v1`
 
 Ölçüm her doğrulama grubu (UEFA turnuvaları, yurt içi kupalar, diğer kıtalar) ve her pazar için ayrı yapılır. Ölçülen

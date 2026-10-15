@@ -198,9 +198,8 @@ kanıtı değildir; bahis adayı olmak için sizin girdiğiniz gerçek oran gere
   kayıtlı kurala göre seçilmediler; geliştirme döneminde iyi değillerdi. İleriye dönük izlenmeli (sanal takip).
 - **A (iki yarıda KG)** iki grupta da az gerçekleşiyor (144 ve 193 maç). Kuraldaki en az 200 pozitif şartı karşılanana
   kadar doğrulanamaz.
-- **KUPA-GOL-02'deki model seçimi** de 0-0'ların düştüğü örneklemde yapılmıştı. Ayrı ilk yarı / ikinci yarı güçleri,
-  skor durumu çarpanları ve pazar kalibrasyonu adayları orada birbirine 0,001'den yakındı; bu iş kapsamında yeniden
-  çalıştırılmadı.
+- **KUPA-GOL-02'deki model seçimi** de 0-0'ların düştüğü örneklemde yapılmıştı. Bu seçim KUPA-GOL-05'te düzeltilmiş
+  örneklemle yeniden çalıştırıldı; kural yine uygulamadaki modeli (SK0) seçti: [`KUPA_GOL_05.md`](KUPA_GOL_05.md).
 
 ## 7. Testler
 
