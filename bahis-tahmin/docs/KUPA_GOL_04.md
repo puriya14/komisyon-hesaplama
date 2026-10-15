@@ -196,6 +196,7 @@ kanıtı değildir; bahis adayı olmak için sizin girdiğiniz gerçek oran gere
   (Türkiye, Fransa, Hollanda, Portekiz, Belçika kupaları) ve güç farkı büyük maçlar arttı. Gruba özgü kalibrasyon (V1)
   ve yakın dönem ağırlığı (V5) test döneminde yurt içi B'de biraz daha iyiydi (0,6476–0,6483'e karşı 0,6493). Ön
   kayıtlı kurala göre seçilmediler; geliştirme döneminde iyi değillerdi. İleriye dönük izlenmeli (sanal takip).
+  Ayrıntılı teşhis ve iki düzeltme denemesi: [`KUPA_GOL_06.md`](KUPA_GOL_06.md).
 - **A (iki yarıda KG)** iki grupta da az gerçekleşiyor (144 ve 193 maç). Kuraldaki en az 200 pozitif şartı karşılanana
   kadar doğrulanamaz.
 - **KUPA-GOL-02'deki model seçimi** de 0-0'ların düştüğü örneklemde yapılmıştı. Bu seçim KUPA-GOL-05'te düzeltilmiş
