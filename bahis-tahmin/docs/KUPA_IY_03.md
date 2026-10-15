@@ -157,6 +157,12 @@ alt lig takımlı maçlar "ligi veride yok" olarak bahis adayı olmaz.
 
 **Gol pazarları (`kupa-gol-dogrulama-v2`):**
 
+> **Düzeltme (KUPA-GOL-04).** Bu tablo ve aşağıdaki teşhis, 0-0 biten maçlar ölçümden düşmüş haliyle hesaplandı:
+> openfootball 0-0 maçlarda devre skorunu neredeyse hiç yazmıyor. Maç sonu 0-0 ise İY 0-0 sayılınca model değişmeden
+> yurt içi B ve C doğrulandı; "golü düşük tahmin" farkı 2,92'ye karşı 3,15'ten 2,92'ye karşı 2,96'ya indi. Geçerli İY
+> skoru oranları da yükseldi (yurt içi %93,1'den %99,1'e; Türkiye Kupası %79,6'dan %84,4'e). Ayrıntılar:
+> [`KUPA_GOL_04.md`](KUPA_GOL_04.md).
+
 | Grup / pazar | Maç | Pozitif | LL model | LL taban | Δ üst | Eğim | ECE | Eşik | Statü |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---|
 | UEFA · A | 2.874 | 193 | 0,2441 | 0,2475 | −0,0004 | 0,96 | 0,015 | 0,020 | DOĞRULANMADI (pozitif 193 < 200) |

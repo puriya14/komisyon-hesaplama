@@ -16,7 +16,11 @@ pazar kalibrasyonu (Platt + IPF) ve yarı yoğunluk kalibrasyonu denendi. Geliş
 maçları) en iyi seçenekler log-kayıpta eşdeğerdi (fark < 0,001); ek parametresi olmayan ve A, B'de kalibrasyon hatası en
 düşük olan bu en sade kurgu seçildi.
 
-Doğrulama kuralı ``kupa-gol-dogrulama-v2`` (doğrulama grubu ve pazar başına; lig gol motorunun dört ölçütü): örneklem dışı
+Ölçüm örneklemi (KUPA-GOL-04): maç sonu 0-0 biten maçlar, kaynak devre skorunu yazmasa da İY 0-0 olarak ölçüme girer
+(``ht_scores``). openfootball 0-0 maçlarda devre skorunu neredeyse hiç yazmıyor; v2 kuralında bu maçlar "İY skoru yok"
+diye dışarıda kalıyor, ölçülen örneklem gol yönünde seçilmiş oluyordu (gerçek veride kupa maçlarının yaklaşık %6'sı).
+
+Doğrulama kuralı ``kupa-gol-dogrulama-v3`` (doğrulama grubu ve pazar başına; lig gol motorunun dört ölçütü): örneklem dışı
 log-kayıp farkının (model − aynı doğrulama grubunun önceki sezonlarındaki kupa taban oranı; grupta 30 maçtan azsa bütün
 kupalar) hafta bloklu %95 üst sınırı < 0, kalibrasyon eğimi
 0,8–1,25, ECE ≤ max(0,02; mükemmel kalibrasyonda örneklem gürültüsüyle beklenen ECE'nin %95 üst sınırı), en az 200
@@ -34,9 +38,11 @@ import pandas as pd
 from ..goals.markets import PRIMARY_YES, SHORT
 
 GOAL_MODEL_VERSION = "kupa-gol-v2"  # v2 (KUPA-IY-03): ilk yarı payı doğrulama grubunun kendi geçmişinden
-GOAL_RULE = ("kupa-gol-dogrulama-v2: örneklem dışı log-kayıp farkının (model − aynı doğrulama grubunun önceki "
+# v3 (KUPA-GOL-04): eşikler v2 ile aynı; maç sonu 0-0 maçlar İY 0-0 olarak örnekleme girer (``ht_scores``)
+GOAL_RULE = ("kupa-gol-dogrulama-v3: örneklem dışı log-kayıp farkının (model − aynı doğrulama grubunun önceki "
              "sezonlarındaki kupa taban oranı) hafta bloklu %95 üst sınırı < 0, kalibrasyon eğimi 0,8–1,25, ECE ≤ "
-             "max(0,02; mükemmel kalibrasyonda örneklem gürültüsünün %95 üst sınırı), en az 200 pozitif")
+             "max(0,02; mükemmel kalibrasyonda örneklem gürültüsünün %95 üst sınırı), en az 200 pozitif; maç sonu 0-0 "
+             "maçlar İY 0-0 olarak örneklemde")
 MIN_GROUP_BASE = 30  # taban oranı için grupta en az bu kadar önceki maç; yoksa bütün kupalar
 MIN_POSITIVE = 200
 SHARE_PRIOR = 0.44  # lig önbilgisi (ilk yarı gol payı)
@@ -49,16 +55,29 @@ ECE_NOISE_REPS = 400
 ECE_NOISE_SEED = 20261015
 
 
+def ht_scores(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
+    """İlk yarı skorları. Maç sonu (normal süre) 0-0 ise ve kaynak iki devre skorunu da yazmamışsa İY 0-0'dır: golsüz
+    maçın ilk yarısı da golsüzdür (tahmin değil, mantıksal zorunluluk). openfootball dosyaları 0-0 maçlarda devre skorunu
+    neredeyse hiç yazmaz; bu satırlar ölçümden düşünce örneklem gol yönünde seçilmiş oluyordu (KUPA-GOL-04). Depodaki
+    ham satır değişmez."""
+    hh, ha = df["hthg"].to_numpy(dtype=float).copy(), df["htag"].to_numpy(dtype=float).copy()
+    fh, fa = df["fthg"].to_numpy(dtype=float), df["ftag"].to_numpy(dtype=float)
+    nil = (fh == 0) & (fa == 0) & np.isnan(hh) & np.isnan(ha)
+    hh[nil] = 0.0
+    ha[nil] = 0.0
+    return hh, ha
+
+
 def ht_mask(df: pd.DataFrame) -> np.ndarray:
-    """İlk yarı skoru geçerli satırlar (İY ≤ MS)."""
-    hh, ha = df["hthg"].to_numpy(dtype=float), df["htag"].to_numpy(dtype=float)
+    """İlk yarı skoru geçerli satırlar (İY ≤ MS; maç sonu 0-0 ise İY 0-0, ``ht_scores``)."""
+    hh, ha = ht_scores(df)
     fh, fa = df["fthg"].to_numpy(dtype=float), df["ftag"].to_numpy(dtype=float)
     return np.isfinite(hh) & np.isfinite(ha) & (hh <= fh) & (ha <= fa)
 
 
 def labels(df: pd.DataFrame) -> dict[str, np.ndarray]:
     """A, B, C gerçekleşmeleri (yalnızca İY skoru geçerli satırlarda anlamlıdır)."""
-    hh, ha = df["hthg"].to_numpy(dtype=float), df["htag"].to_numpy(dtype=float)
+    hh, ha = ht_scores(df)
     fh, fa = df["fthg"].to_numpy(dtype=float), df["ftag"].to_numpy(dtype=float)
     return {"A": ((hh >= 1) & (ha >= 1) & (fh - hh >= 1) & (fa - ha >= 1)).astype(float),
             "B": (fh + fa >= 4).astype(float), "C": (hh + ha >= 2).astype(float)}
@@ -69,8 +88,9 @@ def first_half_share(cups: pd.DataFrame) -> float:
     if cups is None or cups.empty:
         return SHARE_PRIOR
     ok = ht_mask(cups)
-    ht = float((cups.loc[ok, "hthg"] + cups.loc[ok, "htag"]).sum())
-    ft = float((cups.loc[ok, "fthg"] + cups.loc[ok, "ftag"]).sum())
+    hh, ha = ht_scores(cups)
+    ht = float((hh[ok] + ha[ok]).sum())
+    ft = float((cups["fthg"].to_numpy(dtype=float)[ok] + cups["ftag"].to_numpy(dtype=float)[ok]).sum())
     return (ht + SHARE_PRIOR * SHARE_PRIOR_GOALS) / (ft + SHARE_PRIOR_GOALS)
 
 
@@ -242,4 +262,4 @@ def interval(draw_fn, cov, raw: tuple[float, float]) -> dict:
 
 
 __all__ = ["GOAL_MODEL_VERSION", "GOAL_RULE", "GoalPart", "build_goal_part", "market_probs", "first_half_share",
-           "labels", "ht_mask", "measure", "interval"]
+           "labels", "ht_mask", "ht_scores", "measure", "interval"]

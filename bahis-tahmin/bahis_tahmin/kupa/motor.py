@@ -39,8 +39,9 @@ from .turnuvalar import COMPETITIONS, VALIDATION_GROUPS, VALIDATION_NAMES, compe
 
 log = logging.getLogger(__name__)
 
-CUP_ENGINE_VERSION = 4  # 2: tarafsız sahada kalibrasyonun iç saha terimi (δ) uygulanmaz; 3: gol pazarları (KUPA-GOL-02);
-# 4: taban oranları ve ilk yarı payı doğrulama grubunun kendi geçmişinden (KUPA-IY-03)
+CUP_ENGINE_VERSION = 5  # 2: tarafsız sahada kalibrasyonun iç saha terimi (δ) uygulanmaz; 3: gol pazarları (KUPA-GOL-02);
+# 4: taban oranları ve ilk yarı payı doğrulama grubunun kendi geçmişinden (KUPA-IY-03); 5: maç sonu 0-0 maçlar gol
+# pazarı ölçümünde İY 0-0 olarak (KUPA-GOL-04; kayıtlı statüler eski örneklemle ölçüldüğü için yeniden eğitim gerekir)
 MODEL_VERSION = "kupa-model-v2"
 # v2 (KUPA-IY-03): taban, aynı doğrulama grubunun önceki sezonları (yurt içi kupalarda ev sahibi %36, UEFA'da %47 kazanır;
 # ortak taban grupların farkını modele üstünlük diye yazardı). Grupta önceki sezon maçı 30'dan azsa bütün kupalar.

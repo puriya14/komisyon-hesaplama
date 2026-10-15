@@ -205,10 +205,16 @@ def settle_pending(ledger: Ledger, matches: pd.DataFrame, source: str = "veri de
             pending += 1
             continue
         ht_ok = pd.notna(r.hthg) and pd.notna(r.htag)
-        ps = PeriodScore(fthg=r.fthg, ftag=r.ftag, hthg=r.hthg if ht_ok else None, htag=r.htag if ht_ok else None,
-                         status=MatchStatus.FINISHED)
+        hthg, htag = (r.hthg, r.htag) if ht_ok else (None, None)
+        if pd.isna(r.hthg) and pd.isna(r.htag) and r.fthg == 0 and r.ftag == 0:
+            hthg, htag = 0, 0  # maç sonu 0-0 ise ilk yarı da 0-0 (kupa kaynakları 0-0'da devre skorunu yazmaz; KUPA-GOL-04)
+        ps = PeriodScore(fthg=r.fthg, ftag=r.ftag, hthg=hthg, htag=htag, status=MatchStatus.FINISHED)
         st = settle(rec["market_key"], ps)
-        ledger.record_outcome(rec["id"], st.value, label(rec["market_key"], ps).value, source)
+        # Önceki sonuç UNKNOWN idiyse (gerekli skor o gün yoktu) belli olan sonuç gerekçesiyle eklenir; eski olay silinmez
+        note = ("sonuç verisi tamamlandı (önceki sonuç: UNKNOWN)"
+                if rec["outcome"] is not None and rec["outcome"]["settlement"] == "UNKNOWN" and st.value != "UNKNOWN"
+                else "")
+        ledger.record_outcome(rec["id"], st.value, label(rec["market_key"], ps).value, source, note)
         done += 1
     return {"sonuclanan": done, "bekleyen": pending}
 

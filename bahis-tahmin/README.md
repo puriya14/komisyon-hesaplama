@@ -78,7 +78,8 @@ Kupa ve Avrupa maçları (KUPA-01): `kupa-turnuvalar` (kodlar), `kupa-egit` (lig
 doğrulama), `kupa-tahmin`, `kupa-rapor`. Ayrıntılar: [`docs/KUPA_01.md`](docs/KUPA_01.md). Kupa maçlarında gol
 pazarları (KUPA-GOL-02): `kupa-gol-tahmin`; ayrıntılar: [`docs/KUPA_GOL_02.md`](docs/KUPA_GOL_02.md). Yurt içi
 kupaların geçmiş sezonları ilk yarı skorlarıyla openfootball ülke depolarından gelir (KUPA-IY-03):
-[`docs/KUPA_IY_03.md`](docs/KUPA_IY_03.md).
+[`docs/KUPA_IY_03.md`](docs/KUPA_IY_03.md). Yurt içi kupa gol modeli ve 0-0 maçların ölçüme alınması (KUPA-GOL-04):
+[`docs/KUPA_GOL_04.md`](docs/KUPA_GOL_04.md).
 
 Tek ligde gerçek veri pilotu (S4; openfootball sonuçları, İngiltere Premier League; bütün yazmalar yalnızca `--ev`
 ile verilen ayrı pilot klasörüne): `pilot-hazirla`, `pilot-kapsam` (salt okunur), `pilot-egit`, `pilot-tahmin`
@@ -144,6 +145,7 @@ dokunmaz (`tests/conftest.py`: `BAHIS_TAHMIN_HOME` geçici dizine yönlendirilir
 - [`docs/ILERIYE_DONUK_OLCUM.md`](docs/ILERIYE_DONUK_OLCUM.md) — A/B/C için ileriye dönük ölçüm protokolü ve elle günlük akış
 - [`docs/KUPA_01.md`](docs/KUPA_01.md) — kupa ve Avrupa maçları: neden yoktu, kaynaklar (openfootball + ESPN), kanıtlı takım kimliği, ligler arası ortak model, ileriye dönük doğrulama sonuçları, uygunluk kodları, sınırlar
 - [`docs/KUPA_IY_03.md`](docs/KUPA_IY_03.md) — yurt içi kupalar için ilk yarı skorları: openfootball ülke depoları (CC0), okuyucu v2 (skor-ortada satır, uzatmasız penaltı), ülke kapsamlı kimlik ve iki koruma, eksik dosyada ESPN, doğrulama grubuna özgü taban ve ilk yarı payı, gerçek veri sonuçları (yurt içi 1X2 doğrulandı; gol pazarları doğrulanmadı) ve teşhis
+- [`docs/KUPA_GOL_04.md`](docs/KUPA_GOL_04.md) — yurt içi kupa gol modeli: model varyantları ve ön kayıtlı seçim kuralı, asıl neden (0-0 maçlar devre skoru yazılmadığı için ölçümden düşüyordu), düzeltme (maç sonu 0-0 ise İY 0-0; sonuçlandırmada `UNKNOWN` güncellemesi), düzeltilmiş örneklemle yeniden seçim (mevcut model korundu), gerçek veri sonuçları (yurt içi B ve C doğrulandı) ve kalan sınırlılıklar
 - [`docs/KUPA_GOL_02.md`](docs/KUPA_GOL_02.md) — Gol Pazarlarında kupa maçları: ilk yarı skoru kapsamı, `kupa-gol-v1` modeli ve geliştirme döneminde seçimi, `kupa-gol-dogrulama-v1` kuralı (ECE eşiği uyarlaması dahil), gerçek veri sonuçları, uygunluk/karar/sanal takip, sınırlar
 - [`docs/WEB_01.md`](docs/WEB_01.md) — web sürümü: açma, telefondan parolalı erişim, sayfalar, masaüstüyle ortak çekirdek, güvenlik önlemleri
 - [`docs/KAYNAK_06.md`](docs/KAYNAK_06.md) — bütün ligler için ESPN: lig kodları, önceki sezonun play-off maçlarını takvim dışında tutma, geride kalan veri deposu (ek ligler), ad değişikliği, ligler arası kanıt, ESPN benzetimi

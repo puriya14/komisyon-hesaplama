@@ -60,6 +60,10 @@ bölünür:
 - **KUPA-IY-03 güncellemesi (`kupa-gol-v2`, kural `kupa-gol-dogrulama-v2`, dosya sürümü 4):** s ve taban oranları
   doğrulama grubunun kendi geçmişinden hesaplanır (UEFA ayrı, yurt içi kupalar ayrı). Kupa verisinin tamamı UEFA'dan
   geldiği sürece v1 ile aynıdır. Gerekçe ve yurt içi kupaların sonuçları: [`KUPA_IY_03.md`](KUPA_IY_03.md).
+- **KUPA-GOL-04 düzeltmesi (kural `kupa-gol-dogrulama-v3`, dosya sürümü 5):** openfootball 0-0 maçlarda devre skorunu
+  neredeyse hiç yazmaz; bu maçlar "İY skoru yok" diye ölçümden düşüyordu (kupa maçlarının yaklaşık %6'sı). Maç sonu 0-0
+  ise İY 0-0 sayılır. Bu belgedeki ölçümler ve aşağıdaki seçim 0-0'ların düştüğü örneklemle yapılmıştır. Model
+  (`kupa-gol-v2`) ve tahminler değişmedi. Güncel sonuçlar: [`KUPA_GOL_04.md`](KUPA_GOL_04.md).
 
 ### Seçim: geliştirme döneminde karşılaştırma
 
@@ -138,6 +142,9 @@ tahminleri bilgi olarak gösterilir. Pozitif sayısı arttıkça A ileride eşi�
 değiştiği için UEFA sayıları biraz değişti. Statüler aynı kaldı: UEFA'da yalnızca B doğrulandı (LL 0,6439 / taban
 0,6522; Δ üst −0,0039; eğim 0,98; ECE 0,028 ≤ 0,032). Yurt içi kupalarda (2.510 maç) üç pazar da doğrulanmadı. Tablo
 ve teşhis: [`KUPA_IY_03.md`](KUPA_IY_03.md).
+
+**KUPA-GOL-04 sonrası güncel ölçüm (0-0 maçlar örneklemde).** UEFA'da B ve C, yurt içi kupalarda B ve C doğrulandı;
+iki grupta da A doğrulanmadı (pozitif < 200). Tablo: [`KUPA_GOL_04.md`](KUPA_GOL_04.md).
 
 ## Tahmin ve belirsizlik aralığı
 
