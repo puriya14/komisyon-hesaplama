@@ -34,6 +34,8 @@ from ...goals.service import (
     decisions_for,
     gated_goal_match,
     is_cup_prediction,
+    market_short,
+    market_verdict,
     model_validated,
     ledger_csv,
     ledger_rows,
@@ -41,6 +43,7 @@ from ...goals.service import (
     settle_pending,
     settlement_matches,
 )
+from ...goals.piyasa import league_inputs_text, league_validation_rows, market_status_text
 from ...goals.value import OddsQuote
 from .. import theme
 from ..charts import ChartCanvas, plot_goal_calibration
@@ -129,8 +132,8 @@ class GoalsPage(Page):
         self.scan_model.headers = {
             "when": "Tarih (İstanbul)", "league": "Lig", "match": "Maç",
             "A": "A: İki yarı KG", "A_iv": "A aralık", "B": "B: 3,5 Üst", "B_iv": "B aralık",
-            "C": "C: İY 1,5 Üst", "C_iv": "C aralık", "data": "Veri durumu", "decision": "Karar (A/B/C)",
-            "neden": "Veri ayrıntısı (neden · veri kesimi · gereken)",
+            "C": "C: İY 1,5 Üst", "C_iv": "C aralık", "piyasa": "Piyasa gol düzeyi", "data": "Veri durumu",
+            "decision": "Karar (A/B/C)", "neden": "Veri ayrıntısı (neden · veri kesimi · gereken)",
         }
         self.scan_model.tooltips = {"neden": lambda v, r: v, "data": lambda v, r: r["neden"]}
         self.scan_model.formatters = {"A": fmt_pct, "B": fmt_pct, "C": fmt_pct,
@@ -176,7 +179,10 @@ class GoalsPage(Page):
         now = self.ctl.now()
         rows = []
         n_blocked = 0
+        led = self.ctl.ledger_if_exists()
         for i, v in enumerate(verdicts):
+            # ORAN-04: kaydedilmiş 2,5 Üst/Alt oranı varsa piyasa düzeyli tahmin (fikstür oranından önceliklidir)
+            v = market_verdict(v, self._engine_for(v.prediction), led, now)
             p = v.prediction
             # Kararlar aynı uygunluk sonucuyla üretilir; uygunluk yoksa karar motoru DATA_NOT_ELIGIBLE döndürür.
             decs = (decisions_for(p, self._engine_for(p), self.ctl.ledger_if_exists(), now, eligibility=v)
@@ -199,7 +205,7 @@ class GoalsPage(Page):
                 "when": p.kickoff_text if p is not None else f"{v.date:%d.%m.%Y}", "league": v.league,
                 "match": f"{v.home} - {v.away}" + ("" if v.canonical_id else " (takım eşleşmedi)"),
                 "A": probs["A"], "A_iv": ivs["A"], "B": probs["B"], "B_iv": ivs["B"], "C": probs["C"],
-                "C_iv": ivs["C"], "data": _data_label(v, now),
+                "C_iv": ivs["C"], "piyasa": market_short(p), "data": _data_label(v, now),
                 "decision": (" / ".join(STATUS_SHORT.get(by[k].status, by[k].status) for k in PRIMARY_YES)
                              if decs else "TAHMİN YOK"),
                 "neden": _data_text(v, now),
@@ -215,7 +221,9 @@ class GoalsPage(Page):
             + f"{len(verdicts)} maç · tahmini gösterilemeyen {n_blocked} maçta olasılık yok (nedeni veri sütununda) · "
             f"{n_val} avantaj adayı · karar politikası: {DecisionPolicy().version}. "
             "'En olası' görünümü avantaj göstermez; yüksek olasılık düşük oranla birlikte gelir. "
-            "Bu pazarlar için veri setinde gerçek oran yoktur: oranları Maç analizi sekmesinde siz girersiniz.")
+            "Bu pazarlar için veri setinde gerçek oran yoktur: oranları Maç analizi sekmesinde siz girersiniz. "
+            "Maçın 2,5 Üst/Alt oranı (girdiğiniz ya da fikstür dosyasındaki) varsa tahmin piyasanın gol düzeyine "
+            "ölçeklenir (ORAN-04).")
         self._fill_match_combo()
 
     def _open_from_scan(self, index) -> None:
@@ -286,13 +294,23 @@ class GoalsPage(Page):
             self.odds_spin[key] = sp
             ol.addWidget(QLabel(MARKETS[key].name_tr), i // 2, (i % 2) * 2)
             ol.addWidget(sp, i // 2, (i % 2) * 2 + 1)
+        # ORAN-04: maçın 2,5 Üst/Alt oranı yalnızca gol düzeyi için (bu pazara karar üretilmez); iki taraf birlikte
+        for j, key in enumerate(("FT_OVER_2_5", "FT_UNDER_2_5")):
+            sp = QDoubleSpinBox()
+            sp.setRange(0.0, 1000.0)
+            sp.setDecimals(2)
+            sp.setSpecialValueText("–")
+            sp.setToolTip("Maçın 2,5 Üst ve 2,5 Alt oranlarını birlikte girin: tahmin piyasanın gol düzeyine ölçeklenir.")
+            self.odds_spin[key] = sp
+            ol.addWidget(QLabel(MARKETS[key].name_tr + " (gol düzeyi)"), 3, j * 2)
+            ol.addWidget(sp, 3, j * 2 + 1)
         self.ed_book = QLineEdit()
         self.ed_book.setPlaceholderText("Bahis şirketi adı")
-        ol.addWidget(QLabel("Bahis şirketi:"), 3, 0)
-        ol.addWidget(self.ed_book, 3, 1)
+        ol.addWidget(QLabel("Bahis şirketi:"), 4, 0)
+        ol.addWidget(self.ed_book, 4, 1)
         btn_odds = QPushButton("Oranları şimdi geçerli olarak kaydet")
         btn_odds.clicked.connect(self._save_odds)
-        ol.addWidget(btn_odds, 3, 3)
+        ol.addWidget(btn_odds, 4, 3)
         lay.addWidget(odds)
         lay.addWidget(section("Karar tablosu"))
         self.dec_model = DataFrameModel()
@@ -329,6 +347,7 @@ class GoalsPage(Page):
         self.cb_league.currentIndexChanged.connect(self._fill_teams)
         self._current = None
         self._current_verdict = None
+        self._base_verdict = None
         self._current_decisions = []
         return w
 
@@ -422,6 +441,7 @@ class GoalsPage(Page):
         """Model veya veri değişti: maç analizi paneli eski tahmin/uygunlukla kalmaz (kayıt kapalı)."""
         self._current = None
         self._current_verdict = None
+        self._base_verdict = None
         self._verdict_key = None
         self._current_decisions = []
         self.btn_record.setEnabled(False)
@@ -509,13 +529,16 @@ class GoalsPage(Page):
                 + ("" if e.canonical_id else " (aday kimlik, kanonik değil)"))
 
     def _show(self, v) -> None:
+        now = self.ctl.now()
+        self._base_verdict = v
+        # ORAN-04: kaydedilmiş 2,5 Üst/Alt oranı varsa aynı maçın piyasa düzeyli tahmini (uygunluk aynen kalır)
+        v = market_verdict(v, self._engine_for(v.prediction), self.ctl.ledger_if_exists(), now)
         self._current_verdict = v
         self._verdict_key = self._policy_key()
         p = v.prediction
         self._current = p
         eng = self._engine_for(p) if p is not None else self.ctl.goal_engine
         cup = is_cup_prediction(p)
-        now = self.ctl.now()
         self.btn_record.setEnabled(True)
         if p is None or eng is None or not v.any_usable(now):
             self._show_blocked(v)
@@ -580,10 +603,7 @@ class GoalsPage(Page):
             f"<b>Eğitim:</b> {eng.trained_at} · veri kesimi {eng.data_cutoff} · {man.get('n_matches', 0):,} maç "
             f"({man.get('first_date')} – {man.get('last_date')}) · kaynak: {', '.join(man.get('sources', []))}<br>"
             f"<b>Zaman sıralı iç doğrulama sezonları:</b> {val}<br>"
-            f"<b>Girdiler:</b> ilk yarı / ikinci yarı / maç sonu Poisson takım güçleri (yalnızca maçtan önceki günlerin sonuçları), "
-            "lig ilk yarı gol payı, yakın dönem yarı bazlı gol sıklıkları, lig taban oranları. Bahis oranları, kadro, "
-            "sakatlık, xG ve hava durumu verisi KULLANILMIYOR. (Kapalı testte 3,5 Üst için piyasa oranlarını kullanan "
-            "maç sonucu motoru bu modelden daha iyiydi; ayrıntı: docs/GOL_PAZARLARI_MODEL_KARTI.md.)<br>"
+            f"<b>Girdiler:</b> {league_inputs_text(p.info)}<br>"
             f"<b>Belirsizlik yöntemi:</b> {p.intervals.get('meta', {}).get('method', '-')}; "
             f"{p.intervals.get('meta', {}).get('draws', '-')} çekiliş, tohum {p.intervals.get('meta', {}).get('seed', '-')}. "
             "Bu aralık gerçek olasılığın kesin sınırı değildir.<br>"
@@ -633,7 +653,11 @@ class GoalsPage(Page):
                                         self.ed_book.text().strip() or "belirtilmedi", float(sp.value()), now, now))
         if quotes:
             self.ctl.ledger.add_odds(quotes)
-        self._refresh_decisions()
+        if any(q.market_key in ("FT_OVER_2_5", "FT_UNDER_2_5") for q in quotes) and self._base_verdict is not None:
+            self._show(self._base_verdict)  # ORAN-04: yeni 2,5 Üst/Alt oranıyla piyasa düzeyli tahmin
+            self.refresh_scan()  # tarama tablosu da aynı maçın piyasa düzeyli tahminini göstersin
+        else:
+            self._refresh_decisions()
         self.refresh_ledger()
 
     def _record(self) -> None:
@@ -835,20 +859,7 @@ class GoalsPage(Page):
             f"Referans: ligin geçmiş taban oranı. Kural: {eng.validation.get('rule', '') or ''}"
             "Doğrulama yalnızca olasılık kalitesini ölçer; gerçek oranlı getiri doğrulaması yapılamaz (oran verisi yok). "
             "Ayrıntılı geliştirme/test raporu: reports/ klasörü.")
-        rows = []
-        for key in PRIMARY_YES:
-            r = eng.validation.get(key, {})
-            m = r.get("modeller", {}).get(eng.variant, {})
-            b = r.get("modeller", {}).get("M0_taban", {})
-            if not m:
-                continue
-            base_ll = m["log_loss"] - m["ll_fark_ref"]
-            rows.append({
-                "Pazar": MARKETS[key].name_tr, "Maç": r["n"], "Pozitif": r["pozitif"], "Taban oran": r["taban_oran"],
-                "LL model": m["log_loss"], "LL taban": base_ll, "Δ LL": m["ll_fark_ref"], "Δ alt": m["ll_fark_alt"],
-                "Δ üst": m["ll_fark_ust"], "Brier becerisi": m["brier_skill"], "AP model": m["ap"], "AP taban": b.get("ap", np.nan),
-                "Kal. eğim": m["kal_egim"], "ECE": m["ece"], "Statü": eng.status_text(key),
-            })
+        rows = league_validation_rows(eng)  # ORAN-04: piyasa düzeyli tahminlerin ölçümü de
         self.val_model.set_frame(pd.DataFrame(rows))
         self._plot_cal()
 
@@ -1036,7 +1047,8 @@ class GoalsPage(Page):
             st = " · ".join(f"{s}: {'doğrulandı (sanal takip)' if eng.validated.get(KEY_OF[s]) else 'DOĞRULANMADI'}"
                             for s in ("A", "B", "C"))
             self.status_banner.setText(
-                f"Lig maçları — {st}." + (f" {cup}" if cup else "") + " Bu pazarlar için geçmiş gerçek oran verisi "
+                f"Lig maçları — {st}. {market_status_text(eng)}" + (f" {cup}" if cup else "")
+                + " Bu pazarlar için geçmiş gerçek oran verisi "
                 "olmadığından kârlılık doğrulanamaz; 'avantaj adayı' yalnızca girdiğiniz güncel gerçek oranla ve tüm "
                 "kontroller geçilirse oluşur.")
         self.btn_train.setEnabled(self.ctl.store.has_data and not self.ctl.busy)

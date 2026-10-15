@@ -173,6 +173,45 @@ def goal_setup():
     return m, eng
 
 
+def test_goals_page_market_level(app, window, goal_setup):
+    """ORAN-04: maç analizinde 2,5 Üst/Alt oranı girilince tahmin piyasa düzeyine ölçeklenir; kayıt bunu taşır."""
+    from bahis_tahmin.goals.piyasa import market_prob
+    from bahis_tahmin.goals.service import gated_goal_predictions
+    from bahis_tahmin.ui.pages.goals import GoalsPage
+    from uygunluk_yardim import AS_OF, FIXTURE_DAY, full_context
+
+    m, eng = goal_setup
+    ctl = window.ctl
+    ctl.store.matches = m
+    teams = sorted(set(m["home"]))
+    fx = pd.DataFrame([{"league": "T1", "date": pd.Timestamp(FIXTURE_DAY), "time": "", "home": teams[0],
+                        "away": teams[1], "source": "SENTETIK"}])
+    ctx = full_context(m, eng, AS_OF, FIXTURE_DAY)
+    ctl.clock = lambda: AS_OF
+    ctl.eligibility_context = lambda engine: ctx
+    ctl.goal_engine = eng
+    ctl.goal_verdicts = gated_goal_predictions(eng, ctx, fx, AS_OF)
+    ctl.goalModelChanged.emit()
+    page = window.page(GoalsPage)
+    page.cb_fixture.setCurrentIndex(1)
+    base = page._current.probs
+    assert "piyasa" not in page._current.info and "Maçın 2,5 Üst/Alt oranını" in page.used.toHtml()
+    page.odds_spin["FT_OVER_2_5"].setValue(1.70)
+    page.odds_spin["FT_UNDER_2_5"].setValue(2.20)
+    page.ed_book.setText("Test")
+    page._save_odds()
+    p = page._current
+    assert p.info["piyasa"]["kaynak"] == "girilen oran" and p.probs["FT_O25"] == pytest.approx(market_prob(1.7, 2.2),
+                                                                                                abs=1e-7)
+    assert p.probs["B"] != pytest.approx(base["B"], abs=1e-6) and "piyasa gol düzeyi" in page.used.toHtml()
+    assert page.scan_model.frame["piyasa"].iloc[0].endswith("girilen oran")
+    assert page.dec_model.rowCount() == 6  # 2,5 için karar üretilmez
+    page._record()
+    recs = ctl.ledger.predictions()
+    assert len(recs) == 6 and all(r["piyasa_duzeyi"]["ust"] == 1.7 for r in recs)
+    assert all(r["model_version"].endswith("+piyasa-duzey-v1") for r in recs)
+
+
 def test_goals_page(app, window, goal_setup):
     """Açıkça SENTETİK tam bağlamla (takvim + haklar) ana ekran akışı: uygunluk geçer, kararlar ve kayıt çalışır."""
     from bahis_tahmin.goals.service import gated_goal_predictions

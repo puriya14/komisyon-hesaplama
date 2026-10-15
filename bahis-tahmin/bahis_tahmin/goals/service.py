@@ -56,12 +56,45 @@ def gated_goal_predictions(engine: GoalEngine | None, ctx, fixtures: pd.DataFram
 
 
 def gated_goal_match(engine: GoalEngine | None, ctx, league: str, home: str, away: str, date, as_of: dt.datetime,
-                     time_str: str = "", source: str = "manuel") -> FixtureVerdict:
-    """Tek maç / elle takım seçimi: aynı uygunluk kontrolü."""
+                     time_str: str = "", source: str = "manuel", market=None) -> FixtureVerdict:
+    """Tek maç / elle takım seçimi: aynı uygunluk kontrolü. ``market``: 2,5 Üst/Alt piyasa düzeyi (ORAN-04)."""
     pred = None
     if engine is not None and engine.trained and league in engine.states:
-        pred = engine.predict_match(league, home, away, date, time_str, source=source)
+        pred = engine.predict_match(league, home, away, date, time_str, source=source, market=market)
     return _verdict(ctx, league, pd.Timestamp(date).normalize(), time_str, home, away, as_of, pred, source=source)
+
+
+def market_short(pred) -> str:
+    """Tablo hücresi: piyasa gol düzeyi (ör. "×1,042 · girilen oran") ya da "-"."""
+    m = (getattr(pred, "info", None) or {}).get("piyasa")
+    if not m:
+        return "-"
+    return f"×{m['olcek']:.3f}".replace(".", ",") + f" · {m['kaynak']}"
+
+
+def market_verdict(v: FixtureVerdict | None, engine, ledger: Ledger | None, as_of: dt.datetime) -> FixtureVerdict | None:
+    """Kullanıcının karar anından önce kaydettiği 2,5 Üst/Alt oranı varsa aynı maçın piyasa düzeyli tahmini (ORAN-04).
+
+    Uygunluk sonucu aynen kalır; yeni tahminin veri kodları öncekiyle aynı değilse (uygunluk başka girdiyle
+    değerlendirilmiş olurdu) tahmin değiştirilmez. Oran yoksa, motor desteklemiyorsa ya da hata olursa ``v`` aynen
+    döner. Girilen oran fikstür dosyasındaki ortalama orandan önceliklidir."""
+    import dataclasses
+
+    from .piyasa import from_ledger
+
+    p = getattr(v, "prediction", None)
+    if p is None or engine is None or not hasattr(engine, "market_prediction"):
+        return v
+    ml = from_ledger(ledger, p.event_id, as_of)
+    if ml is None:
+        return v
+    try:
+        new = engine.market_prediction(p, ml)
+    except (KeyError, ValueError):
+        return v
+    if new is None or prediction_codes(new) != prediction_codes(p):
+        return v
+    return dataclasses.replace(v, prediction=new)
 
 
 def _verdict(ctx, league, date, time_str, home, away, as_of, pred, source="", mapped=True) -> FixtureVerdict:
@@ -171,6 +204,8 @@ def record_decisions(ledger: Ledger, pred: GoalPrediction, decisions: list[Decis
             "stake_units": stake_units if bet else 0.0,
             "strategy_version": STRATEGY_VERSION, "policy_version": d.policy_version,
             "veri_uygunlugu": elig or None,
+            # ORAN-04: tahmin piyasa düzeyliyse kullanılan 2,5 Üst/Alt oranı ve ölçek (yoksa alan yazılmaz)
+            **({"piyasa_duzeyi": info["piyasa"]} if info.get("piyasa") else {}),
         }))
     return ids
 

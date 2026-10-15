@@ -223,12 +223,17 @@ def goal_model_card(p, engine) -> dict:
     rep = getattr(engine, "report", None)
     g = goal_part(engine)
     meta = (p.intervals or {}).get("meta", {}) if p.intervals else {}
+    from ..goals.piyasa import card_text
+
     vg = info.get("validation_group", "")
     res = (g.results.get(vg, {}) if g is not None else {})
     n = max((m.get("n", 0) for m in res.values()), default=0)
+    market = card_text(info)
     return {
         "version": (f"{info.get('model_version', '-')} · ilk yarı payı {fmt_pct(info.get('share'))} · gol düzeyi "
-                    f"×{info.get('gol_duzeyi', 1.0):.3f}".replace(".", ",") + f" · kural: {GOAL_RULE}"),
+                    f"×{info.get('gol_duzeyi', 1.0):.3f}".replace(".", ",") + f" · kural: {GOAL_RULE}"
+                    + (f" · {market} — kupa maçlarında geçmiş oranla SINANMADI (lig maçlarında sınandı, ORAN-04); "
+                       "doğrulama statüsü grubun piyasasız ölçümünden" if market else "")),
         "training": (f"{rep.trained_at} · veri kesimi {info.get('data_cutoff', '-')} · {rep.n_domestic:,} lig + "
                      f"{rep.n_cup_matches:,} kupa maçı").replace(",", ".") if rep is not None else "-",
         "validation": (f"{VALIDATION_NAMES.get(vg, vg)}: {n} örneklem dışı kupa maçı (her sezon yalnızca önceki "
@@ -237,7 +242,10 @@ def goal_model_card(p, engine) -> dict:
         "inputs": ("bütün lig ve kupa maçlarından ligler arası ortak Poisson modeli (takım + lig gücü, iç saha, tarafsız "
                    "saha), maç sonu gol beklentisinin önceki sezonlarla kalibrasyonu, doğrulama grubunun son 180 "
                    "gündeki gerçekleşen / tahmin edilen gol oranıyla dinamik gol düzeyi ve kupa maçlarında ilk yarı "
-                   "gol payı. Bahis oranları, kadro, sakatlık, xG ve hava durumu verisi KULLANILMIYOR."),
+                   "gol payı. "
+                   + ("Girilen 2,5 Üst/Alt oranı yalnızca maçın toplam gol düzeyi için kullanılıyor; kadro, sakatlık, "
+                      "xG ve hava durumu verisi KULLANILMIYOR." if market else
+                      "Bahis oranları, kadro, sakatlık, xG ve hava durumu verisi KULLANILMIYOR.")),
     }
 
 

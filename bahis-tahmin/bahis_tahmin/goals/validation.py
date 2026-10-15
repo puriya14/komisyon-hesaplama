@@ -31,8 +31,14 @@ def season_year(dates) -> np.ndarray:
     return np.where(d.dt.month >= 7, d.dt.year, d.dt.year - 1)
 
 
-def walk_forward(feat: pd.DataFrame, years, variants, challengers: dict | None = None, progress=None):
-    """Her sezon için yalnızca geçmişle eğitip tahmin üretir. Dönen tablo: satır başına tahminler."""
+def walk_forward(feat: pd.DataFrame, years, variants, challengers: dict | None = None, progress=None,
+                 market: bool = False):
+    """Her sezon için yalnızca geçmişle eğitip tahmin üretir. Dönen tablo: satır başına tahminler.
+
+    ``market``: ``o_o25``/``o_u25`` sütunları varsa her model (M0 hariç) için piyasa düzeyli tahminler de
+    ``<varyant>+piyasa-duzey-v1:<A|B|C>`` sütunlarına yazılır (ORAN-04; aynı eğitilmiş modelle)."""
+    from .piyasa import MARKET_SUFFIX, market_prob, market_scale, scaled
+
     feat = feat.copy()
     feat["fold"] = season_year(feat["date"])
     parts, params = [], []
@@ -54,6 +60,19 @@ def walk_forward(feat: pd.DataFrame, years, variants, challengers: dict | None =
             if v != "M0_taban":
                 for k in ("h1_home", "h1_away", "h2_home", "h2_away", "BC", "tail"):
                     out[f"{v}:{k}"] = p[k]
+            if market and v != "M0_taban" and {"o_o25", "o_u25"} <= set(test.columns):
+                pm = market_prob(test["o_o25"], test["o_u25"])
+                idx = np.where(np.isfinite(pm) & (test["o_o25"].to_numpy(dtype=float) > 1)
+                               & (test["o_u25"].to_numpy(dtype=float) > 1) & usable_rows(test))[0]
+                for s in ("A", "B", "C"):
+                    out[f"{v}{MARKET_SUFFIX}:{s}"] = np.nan
+                if len(idx):
+                    sub = test.iloc[idx]
+                    pq = m.predict(scaled(sub, market_scale(m, sub, pm[idx])))
+                    for s in ("A", "B", "C"):
+                        col = out[f"{v}{MARKET_SUFFIX}:{s}"].to_numpy(dtype=float, copy=True)
+                        col[idx] = pq[s]
+                        out[f"{v}{MARKET_SUFFIX}:{s}"] = col
             params.append({"fold": int(Y), "variant": v, "k1": m.k1, "k2": m.k2, "phi": m.phi,
                            "mult_h": np.round(m.mult_h, 4).tolist(), "mult_a": np.round(m.mult_a, 4).tolist(),
                            "n_train": m.n_train})

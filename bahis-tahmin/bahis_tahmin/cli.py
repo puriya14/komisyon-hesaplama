@@ -498,6 +498,20 @@ def cmd_goal_train(a) -> int:
         print(f"  {MARKETS[key].name_tr}: n={r['n']} taban=%{100 * r['taban_oran']:.1f} "
               f"ΔLL={mm['ll_fark_ref']:+.5f} [{mm['ll_fark_alt']:+.5f}, {mm['ll_fark_ust']:+.5f}] "
               f"eğim={mm['kal_egim']:.2f} ECE={mm['ece']:.4f} → {eng.status_text(key)}")
+    from .goals.piyasa import MARKET_SUFFIX
+
+    print("Piyasa düzeyli tahminler (2,5 Üst/Alt oranı olan maçlar; ORAN-04), aynı kural:")
+    mv = f"{eng.variant}{MARKET_SUFFIX}"
+    for key in PRIMARY_YES:
+        r = eng.validation_market.get(key, {})
+        mm = r.get("modeller", {}).get(mv)
+        st_ = "VALIDATED_FOR_PAPER_TRADING" if eng.validated_market.get(key) else "MODEL_NOT_VALIDATED"
+        if not mm:
+            print(f"  {MARKETS[key].name_tr}: ölçüm yok (oranlı maç yok) → {st_}")
+            continue
+        print(f"  {MARKETS[key].name_tr}: n={r['n']} LL={mm['log_loss']:.5f} "
+              f"ΔLL={mm['ll_fark_ref']:+.5f} [{mm['ll_fark_alt']:+.5f}, {mm['ll_fark_ust']:+.5f}] "
+              f"eğim={mm['kal_egim']:.2f} ECE={mm['ece']:.4f} → {st_}")
     return 0
 
 
@@ -526,8 +540,12 @@ def cmd_goal_predict(a) -> int:
         print("Yaklaşan maç bulunamadı.")
         return 0
     st = {k: ("doğrulandı" if v else "DOĞRULANMADI") for k, v in eng.validated.items()}
+    sm = {k: ("doğrulandı" if v else "DOĞRULANMADI") for k, v in (getattr(eng, "validated_market", None) or {}).items()}
     print(f"Model durumu: A {st.get('BTTS_BOTH_HALVES_YES')} · B {st.get('FT_OVER_3_5')} · C {st.get('FH_OVER_1_5')}. "
           "Gerçek oran olmadan öneri üretilmez. Olasılık yalnızca veri uygunluğu doğrulanan pazarlarda gösterilir.")
+    print("Piyasa düzeyli tahminler (fikstürde 2,5 Üst/Alt oranı olan maçlar, ORAN-04): "
+          + (f"A {sm.get('BTTS_BOTH_HALVES_YES')} · B {sm.get('FT_OVER_3_5')} · C {sm.get('FH_OVER_1_5')}." if sm else
+             "doğrulama ölçümü yok (modeli yeniden eğitin)."))
     _print_goal_verdicts(verdicts, now)
     return 0
 
@@ -551,6 +569,9 @@ def _print_goal_verdicts(verdicts, now) -> None:
                          else f"{s_}:%{100 * p.probs[s_]:4.1f}")
         e0 = v.first()
         note = "" if (e0 is not None and e0.bet_ok) else f"  (bahis adayı değil: {e0.lead_code if e0 else 'BAGLAM_YOK'})"
+        m = (p.info or {}).get("piyasa")  # ORAN-04: piyasa düzeyli tahmin
+        if m:
+            note += f"  [piyasa gol düzeyi ×{m['olcek']:.3f}; 2,5 Üst %{100 * m['p']:.1f}]".replace(".", ",")
         print(head + " ".join(parts) + note)
 
 

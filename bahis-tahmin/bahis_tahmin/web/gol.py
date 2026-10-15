@@ -40,6 +40,8 @@ from ..goals.service import (
     decisions_for,
     gated_goal_match,
     is_cup_prediction,
+    market_short,
+    market_verdict,
     model_validated,
     ledger_csv,
     ledger_rows,
@@ -47,7 +49,10 @@ from ..goals.service import (
     settle_pending,
     settlement_matches,
 )
+from ..goals.piyasa import OVER as _O25, UNDER as _U25, league_inputs_text, league_validation_rows
 from ..goals.value import OddsQuote
+
+MARKET_KEYS = (_O25, _U25)  # ORAN-04: maçın 2,5 Üst/Alt oranı (gol düzeyi için)
 from ..plots import SvgCanvas, plot_goal_calibration
 from . import get_state, svg_img
 from .views import _started
@@ -69,7 +74,10 @@ def _status_text(core) -> str:
                 + " Veriler indirildikten sonra 'Gol modelini eğit' düğmesini kullanın." + (f" {cup}" if cup else ""))
     st = " · ".join(f"{s}: {'doğrulandı (sanal takip)' if eng.validated.get(KEY_OF[s]) else 'DOĞRULANMADI'}"
                     for s in ("A", "B", "C"))
-    return (f"Lig maçları — {st}." + (f" {cup}" if cup else "") + " Bu pazarlar için geçmiş gerçek oran verisi "
+    from ..goals.piyasa import market_status_text
+
+    return (f"Lig maçları — {st}. {market_status_text(eng)}" + (f" {cup}" if cup else "")
+            + " Bu pazarlar için geçmiş gerçek oran verisi "
             "olmadığından kârlılık doğrulanamaz; 'avantaj adayı' yalnızca girdiğiniz güncel gerçek oranla ve tüm "
             "kontroller geçilirse oluşur.")
 
@@ -142,10 +150,12 @@ def _eligibility_info(v) -> dict | None:
 
 def _analysis(core, v, led) -> dict:
     """Maç analizi paneli (masaüstündeki ``GoalsPage._show`` ile aynı kurallar)."""
+    now = core.now()
+    eng0 = _cup_engine(core) if is_cup_prediction(v.prediction) else core.goal_engine
+    v = market_verdict(v, eng0, led, now)  # ORAN-04: kaydedilmiş 2,5 Üst/Alt oranıyla piyasa düzeyli tahmin
     p = v.prediction
     cup = is_cup_prediction(p)
     eng = _cup_engine(core) if cup else core.goal_engine
-    now = core.now()
     out = {"v": v, "title": f"{v.home} - {v.away}", "league": league_name(v.league), "cards": [], "rel": None,
            "conds": [], "decisions": [], "secondary": [], "can_record": False, "model": None,
            "elig": _eligibility_info(v), "event_id": getattr(p, "event_id", None), "kupa": cup}
@@ -218,6 +228,7 @@ def _analysis(core, v, led) -> dict:
                     f"({man.get('first_date')} – {man.get('last_date')}) · kaynak: {', '.join(man.get('sources', []))}",
         "validation": ", ".join(f"{y}/{(y + 1) % 100:02d}" for y in eng.validation_years) or "-",
         "uncertainty": f"{meta.get('method', '-')}; {meta.get('draws', '-')} çekiliş, tohum {meta.get('seed', '-')}",
+        "inputs": league_inputs_text(p.info),
     }
     out["secondary"] = [(n, p.probs.get(k, np.nan)) for n, k in
                         (("Maç sonu KG Var", "FT_BTTS"), ("İlk yarı KG Var", "FH_BTTS"), ("İkinci yarı 1,5 Üst", "SH_O15"),
@@ -245,6 +256,8 @@ def gol():
         rows, n_blocked, n_val = [], 0, 0
         with core.ledger(create=False) as led:
             for v in verdicts:
+                # ORAN-04: kaydedilmiş 2,5 Üst/Alt oranı varsa piyasa düzeyli tahmin
+                v = market_verdict(v, _cup_engine(core) if is_cup_prediction(v.prediction) else eng, led, now)
                 p = v.prediction
                 decs = (decisions_for(p, _cup_engine(core) if is_cup_prediction(p) else eng, led, now, eligibility=v)
                         if (p is not None and (eng is not None or is_cup_prediction(p))) else [])
@@ -266,7 +279,8 @@ def gol():
                     "when": p.kickoff_text if p is not None else f"{v.date:%d.%m.%Y}", "league": v.league,
                     "match": f"{v.home} - {v.away}" + ("" if v.canonical_id else " (takım eşleşmedi)"),
                     "A": probs["A"], "A_iv": ivs["A"], "B": probs["B"], "B_iv": ivs["B"], "C": probs["C"],
-                    "C_iv": ivs["C"], "data": data_label(v, now), "neden": data_text(v, now),
+                    "C_iv": ivs["C"], "piyasa": market_short(p), "data": data_label(v, now),
+                    "neden": data_text(v, now),
                     # üç pazarın kararı aynıysa bir kez yazılır (satırlar gereksiz uzamaz)
                     "decision": ((kinds[0] if len(set(kinds)) == 1 else " / ".join(kinds))
                                  if kinds else "TAHMİN YOK")})
@@ -276,7 +290,8 @@ def gol():
                 + f"{len(verdicts)} maç · tahmini gösterilemeyen {n_blocked} maçta olasılık yok (nedeni veri sütununda)"
                 f" · {n_val} avantaj adayı · karar politikası: {DecisionPolicy().version}. 'En olası' görünümü avantaj "
                 "göstermez; yüksek olasılık düşük oranla birlikte gelir. Bu pazarlar için veri setinde gerçek oran "
-                "yoktur: oranları Maç analizi sekmesinde siz girersiniz.")
+                "yoktur: oranları Maç analizi sekmesinde siz girersiniz. Maçın 2,5 Üst/Alt oranı (girdiğiniz ya da "
+                "fikstür dosyasındaki) varsa tahmin piyasanın gol düzeyine ölçeklenir (ORAN-04).")
         if eng is None and not verdicts:
             note = "Gol modeli henüz eğitilmedi."
         elif not verdicts:
@@ -299,6 +314,7 @@ def gol():
 
         ctx.update(choices=choices, sel=sel, leagues=leagues, lig=lig, teams=teams, panel=panel,
                    selections=[(k, MARKETS[k].name_tr) for k in SELECTIONS],
+                   market_selections=[(k, MARKETS[k].name_tr + " (gol düzeyi)") for k in MARKET_KEYS],
                    ev=request.args.get("ev", ""), dep=request.args.get("dep", ""),
                    cup_groups=teams_for_analysis(_cup_engine(core)), comps=list(COMPETITIONS),
                    comp=request.args.get("turnuva") or "UCL", ev_k=request.args.get("ev_k", ""),
@@ -322,18 +338,7 @@ def gol():
         rows, chart = [], None
         pazar = request.args.get("pazar") if request.args.get("pazar") in NAMES else "A"
         if eng is not None and eng.validation:
-            for key in PRIMARY_YES:
-                r = eng.validation.get(key, {})
-                m = r.get("modeller", {}).get(eng.variant, {})
-                b = r.get("modeller", {}).get("M0_taban", {})
-                if not m:
-                    continue
-                rows.append({"Pazar": MARKETS[key].name_tr, "Maç": r["n"], "Pozitif": r["pozitif"],
-                             "Taban oran": r["taban_oran"], "LL model": m["log_loss"],
-                             "LL taban": m["log_loss"] - m["ll_fark_ref"], "Δ LL": m["ll_fark_ref"],
-                             "Δ alt": m["ll_fark_alt"], "Δ üst": m["ll_fark_ust"], "Brier becerisi": m["brier_skill"],
-                             "AP model": m["ap"], "AP taban": b.get("ap", np.nan), "Kal. eğim": m["kal_egim"],
-                             "ECE": m["ece"], "Statü": eng.status_text(key)})
+            rows = league_validation_rows(eng)  # ORAN-04: piyasa düzeyli tahminlerin ölçümü de
             bins = eng.validation.get(KEY_OF[pazar], {}).get("modeller", {}).get(eng.variant, {}) \
                 .get("kalibrasyon", [])
             c = SvgCanvas(7, 4)
@@ -413,7 +418,7 @@ def oran():
     now = core.now()
     book = (request.form.get("sirket") or "").strip()[:60] or "belirtilmedi"
     quotes = []
-    for key in SELECTIONS:
+    for key in (*SELECTIONS, *MARKET_KEYS):  # ORAN-04: 2,5 Üst/Alt yalnızca gol düzeyi için
         raw = (request.form.get(f"o_{key}") or "").replace(",", ".")
         try:
             val = float(raw) if raw else 0.0
@@ -445,6 +450,7 @@ def kaydet():
         return redirect(_back(sel))
     # Kararlar kayıt anında aynı uygunluk sonucuyla YENİDEN üretilir (önceden hesaplanmış karar yazılmaz)
     with core.ledger() as led:
+        v = market_verdict(v, eng, led, now)  # ORAN-04: panelde gösterilen piyasa düzeyli tahminle aynı
         decs = decisions_for(v.prediction, eng, led, now, eligibility=v)
         record_decisions(led, v.prediction, decs, eng, record_time=now)
     flash("Kararlar sanal takibe kaydedildi (değiştirilemez).", "info")

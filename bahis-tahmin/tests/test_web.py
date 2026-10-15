@@ -381,6 +381,24 @@ def test_goal_markets_scan_decide_record_and_ledger(app, full):
         assert led.closing_count() == 1
     assert "kapanış 3.10" in c.get("/gol/?sekme=takip").get_data(as_text=True)
     assert c.post("/gol/kapanis", data={"kayit": key, "oran": "3,10"}).status_code in (400, 403)  # CSRF zorunlu
+    # ORAN-04: 2,5 Üst/Alt oranı girilince maç analizi piyasa düzeyli tahmin gösterir; kayıt bunu taşır
+    mac0 = c.get("/gol/", query_string={"sekme": "mac", "aday": aday}).get_data(as_text=True)
+    assert "2,5 Üst (gol düzeyi)" in mac0 and "piyasa gol düzeyi" not in mac0
+    r = c.post("/gol/oran", data={"csrf": tok, "aday": aday, "o_FT_OVER_2_5": "1.70", "o_FT_UNDER_2_5": "2,20",
+                                  "sirket": "Test"})
+    assert r.status_code == 302
+    mac1 = c.get("/gol/", query_string={"sekme": "mac", "aday": aday}).get_data(as_text=True)
+    assert "piyasa gol düzeyi ×" in mac1 and "girilen oran" in mac1
+    assert "girilen oran" in c.get("/gol/").get_data(as_text=True)  # tarama tablosu
+    n0 = 0
+    with core.ledger(create=False) as led:
+        n0 = len(led.predictions())
+    c.post("/gol/kaydet", data={"csrf": tok, "aday": aday})
+    with core.ledger(create=False) as led:
+        new = led.predictions()[n0:]
+    assert new and all(r["model_version"].endswith("+piyasa-duzey-v1") for r in new)
+    dog = c.get("/gol/?sekme=dogrulama").get_data(as_text=True)
+    assert "Piyasa düzeyli" in dog or "doğrulama ölçümü yok" in dog
     # Elle seçilen maç da aynı uygunluk kontrolünden geçer
     manual = c.get("/gol/", query_string={"sekme": "mac", "lig": "T1", "ev": teams[0], "dep": teams[1]})
     assert "Karar tablosu" in manual.get_data(as_text=True)

@@ -436,7 +436,9 @@ def build_forecast_records(engine, fixtures: pd.DataFrame, matches: pd.DataFrame
         if code is not None:
             out.extend(_no_forecast(base, k, code, detail) for k in PRIMARY_YES)
             continue
-        verdict = gated_goal_predictions(engine, ctx, pd.DataFrame([r._asdict()]), now)[0]
+        # Protokol temel modelin tahminlerini ölçer: fikstürdeki 2,5 Üst/Alt oranları (ORAN-04 piyasa düzeyi) girmez
+        row = {k: v for k, v in r._asdict().items() if k not in ("o_o25", "o_u25")}
+        verdict = gated_goal_predictions(engine, ctx, pd.DataFrame([row]), now)[0]
         pr = verdict.prediction
         ref = league_reference(matches, r.league, pd.Timestamp(r.date)) if pr is not None else None
         for k in PRIMARY_YES:

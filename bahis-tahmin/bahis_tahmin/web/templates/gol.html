@@ -25,12 +25,12 @@
 {% if rows %}
 <div class="table-wrap"><table class="data small">
   <thead><tr><th>Tarih (İstanbul)</th><th>Lig</th><th>Maç</th><th class="num">A: İki yarı KG</th><th>A aralık</th>
-    <th class="num">B: 3,5 Üst</th><th>B aralık</th><th class="num">C: İY 1,5 Üst</th><th>C aralık</th><th>Veri durumu</th><th>Karar (A/B/C)</th></tr></thead>
+    <th class="num">B: 3,5 Üst</th><th>B aralık</th><th class="num">C: İY 1,5 Üst</th><th>C aralık</th><th>Piyasa gol düzeyi</th><th>Veri durumu</th><th>Karar (A/B/C)</th></tr></thead>
   <tbody>{% for r in rows %}<tr>
     <td>{{ r.when }}</td><td title="{{ r.league|lig_tam }}">{{ r.league|lig }}</td>
     <td><a href="{{ url_for('gol.gol', sekme='mac', aday=r.aday) }}">{{ r.match }}</a></td>
     {% for s in ['A', 'B', 'C'] %}<td class="num" style="{{ r[s]|prob_bg }}">{{ r[s]|pct }}</td><td>{{ r[s ~ '_iv'] }}</td>{% endfor %}
-    <td><details class="why"><summary>{{ r.data }}</summary><span>{{ r.neden }}</span></details></td><td>{{ r.decision }}</td>
+    <td class="small">{{ r.piyasa }}</td><td><details class="why"><summary>{{ r.data }}</summary><span>{{ r.neden }}</span></details></td><td>{{ r.decision }}</td>
   </tr>{% endfor %}</tbody>
 </table></div>
 {% endif %}
@@ -79,6 +79,8 @@
   {% for k, val in sel.items() %}<input type="hidden" name="{{ k }}" value="{{ val }}">{% endfor %}
   <fieldset><legend>Gerçek oranlar (karar anında bahis şirketinizde görünen; boş = yok)</legend>
     <div class="odds-grid">{% for key, name in selections %}<label>{{ name }} <input type="number" name="o_{{ key }}" min="1.01" max="1000" step="0.01" inputmode="decimal"></label>{% endfor %}</div>
+    <div class="odds-grid">{% for key, name in market_selections %}<label>{{ name }} <input type="number" name="o_{{ key }}" min="1.01" max="1000" step="0.01" inputmode="decimal"></label>{% endfor %}</div>
+    <p class="muted small">2,5 Üst ve 2,5 Alt oranlarını birlikte girerseniz tahmin piyasanın gol düzeyine ölçeklenir (bu pazara karar üretilmez).</p>
     <label>Bahis şirketi <input type="text" name="sirket" maxlength="60" placeholder="Bahis şirketi adı"></label>
   </fieldset>
   <button class="btn" type="submit">Oranları şimdi geçerli olarak kaydet</button>
@@ -104,10 +106,7 @@
   {% if panel.model %}
   <p><b>Model:</b> {{ panel.model.version }}<br><b>Eğitim:</b> {{ panel.model.training }}<br>
     <b>{{ 'Örneklem dışı (ileriye dönük) doğrulama' if panel.kupa else 'Zaman sıralı iç doğrulama sezonları' }}:</b> {{ panel.model.validation }}<br>
-    {% if panel.kupa %}<b>Girdiler:</b> {{ panel.model.inputs }}{% else %}
-    <b>Girdiler:</b> ilk yarı / ikinci yarı / maç sonu Poisson takım güçleri (yalnızca maçtan önceki günlerin sonuçları), lig
-    ilk yarı gol payı, yakın dönem yarı bazlı gol sıklıkları, lig taban oranları. Bahis oranları, kadro, sakatlık, xG ve
-    hava durumu verisi KULLANILMIYOR.{% endif %}<br><b>Belirsizlik yöntemi:</b> {{ panel.model.uncertainty }}. Bu aralık gerçek
+    <b>Girdiler:</b> {{ panel.model.inputs }}<br><b>Belirsizlik yöntemi:</b> {{ panel.model.uncertainty }}. Bu aralık gerçek
     olasılığın kesin sınırı değildir.<br><b>Zaman doğrulaması:</b> geçmiş özellikler yeniden oluşturulmuştur (yalnızca maç
     tarihi bilinir; o anda yayımlanmış olduğu doğrulanamaz).</p>
   {% endif %}

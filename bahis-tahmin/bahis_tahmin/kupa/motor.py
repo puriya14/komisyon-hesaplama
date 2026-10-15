@@ -501,11 +501,29 @@ class CupEngine:
             o25_final=float(o25[0]), btts_final=float(btts[0]), matrix=m, markets=markets_from_matrix(m), odds=odds,
             info=info, source=source, state_digest=self.digest)
 
+    def market_prediction(self, pred, market):
+        """Aynı kupa maçının piyasa düzeyli gol pazarları tahmini (ORAN-04; kupada geçmişte sınanmadı). Maç saati ve
+        kimlik bilgileri önceki tahminden aynen alınır."""
+        import dataclasses
+
+        i = pred.info or {}
+        new = self.predict_goals(i["comp"], i["home_key"], i["away_key"], pred.home, pred.away, i["home_country"],
+                                 i["away_country"], pred.date, pred.time, bool(i.get("neutral")), "", market=market)
+        if new is None:
+            return None
+        return dataclasses.replace(pred, probs=new.probs, intervals=new.intervals, info=new.info,
+                                   data_notes=new.data_notes, data_codes=new.data_codes,
+                                   state_digest=new.state_digest, validated=new.validated)
+
     def predict_goals(self, comp: str, home_key: str, away_key: str, home: str, away: str, home_country: str,
                       away_country: str, date, time_str: str = "", neutral: bool = False, source: str = "",
-                      with_interval: bool = True):
+                      with_interval: bool = True, market=None):
         """Gol pazarları tahmini (``goals.engine.GoalPrediction``; ``league`` alanı turnuva kodudur). Gol bölümü veya
-        takım modelde yoksa None. Doğrulama statüsü tahminde taşınır (``validated``: turnuvanın doğrulama grubu)."""
+        takım modelde yoksa None. Doğrulama statüsü tahminde taşınır (``validated``: turnuvanın doğrulama grubu).
+
+        ``market`` (ORAN-04): 2,5 Üst/Alt piyasa düzeyi. Verilirse λ', ν' aynı k ile çarpılır; k, toplam golün Poisson
+        dağılımında P(≥ 3) = piyasa olasılığı olacak biçimde bulunur. Kupa maçlarında geçmiş oran olmadığından bu
+        uyarlama sınanmadı; doğrulama statüsü grubun düzeysiz ölçümünden gelir ve model kartında belirtilir."""
         from ..goals.engine import MIN_TEAM_MATCHES, GoalPrediction
         from ..goals.ledger import event_id
         from ..timeutil import fmt_istanbul, kickoff_utc
@@ -519,9 +537,14 @@ class CupEngine:
             return None
         vg = VALIDATION_GROUPS.get(r["group"], "YURTICI")
         share = getattr(goal, "share_by_group", {}).get(vg, goal.share)  # doğrulama grubunun ilk yarı payı
-        pr = market_probs([r["lam"]], [r["nu"]], share)
+        k_m = 1.0
+        if market is not None:  # ORAN-04: piyasanın 2,5 Üst olasılığına eşitleyen ortak çarpan
+            from ..goals.piyasa import poisson_scale
+
+            k_m = poisson_scale(r["lam"] + r["nu"], market.p)
+        pr = market_probs([r["lam"] * k_m], [r["nu"] * k_m], share)
         probs = {k: float(v[0]) for k, v in pr.items()}
-        calib, lvl = self.calib, r["gol_duzeyi"]
+        calib, lvl = self.calib, r["gol_duzeyi"] * k_m
 
         def draw(lam, nu):
             lc, nc = calibrate_rates(lam, nu, calib, np.full(len(lam), bool(neutral)))
@@ -550,6 +573,11 @@ class CupEngine:
                 "model_version": f"{MODEL_VERSION}/{GOAL_MODEL_VERSION}",
                 "data_cutoff": str((EPOCH + pd.Timedelta(days=int(self.last_day))).date())
                 if self.last_day is not None else ""}
+        if market is not None:
+            from ..goals.piyasa import MARKET_SUFFIX
+
+            info["piyasa"] = {**market.to_dict(), "olcek": float(k_m), "kupa_sinanmadi": True}
+            info["model_version"] += MARKET_SUFFIX
         return GoalPrediction(
             event_id=event_id(comp, pd.Timestamp(date).date(), home, away), league=comp, home=home, away=away,
             date=pd.Timestamp(date).normalize(), time=time_str or "", kickoff_utc=ko, kickoff_text=fmt_istanbul(ko, date),

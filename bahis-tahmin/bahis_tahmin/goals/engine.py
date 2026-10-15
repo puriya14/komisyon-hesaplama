@@ -27,6 +27,7 @@ from .features import GOAL_FEATURES, build_goal_features
 from .ledger import event_id
 from .markets import PRIMARY_YES, SHORT
 from .model import FEATURE_VERSION, MODEL_VERSION, GoalModel, ht_rows, usable_rows
+from .piyasa import MARKET_SUFFIX, MarketLevel, from_fixture, market_scale, scaled
 from .validation import BURN_IN_LAST, data_manifest, evaluate, season_year, walk_forward
 
 log = logging.getLogger(__name__)
@@ -41,6 +42,32 @@ MIN_TRAIN_ROWS = 500  # ilk yarı skoru geçerli ve takım güçleri kurulmuş e
 
 class GoalDataError(ValueError):
     """Gol pazarları modeli için yeterli (ilk yarı skorlu) veri yok."""
+
+
+def validated_by_rule(validation: dict, model: str) -> dict[str, bool]:
+    """Doğrulama kuralı (``VALIDATION_RULE``) pazar başına."""
+    out = {}
+    for key in PRIMARY_YES:
+        r = validation.get(key, {}).get("modeller", {}).get(model)
+        pos = validation.get(key, {}).get("pozitif", 0)
+        out[key] = bool(r and r["ll_fark_ust"] < 0 and 0.8 <= r["kal_egim"] <= 1.25 and r["ece"] <= 0.02 and pos >= 200)
+    return out
+
+
+def with_market_odds(feat: pd.DataFrame, matches: pd.DataFrame) -> pd.DataFrame:
+    """Özellik tablosuna maçların ortalama 2,5 Üst/Alt oranları (yoksa NaN) eklenir (ORAN-04 doğrulaması)."""
+    key = ["league", "date", "home", "away"]
+    if not {"o_o25", "o_u25"} <= set(matches.columns):
+        return feat.assign(o_o25=np.nan, o_u25=np.nan)
+    odds = matches[key + ["o_o25", "o_u25"]].copy()
+    odds["date"] = pd.to_datetime(odds["date"]).dt.normalize()
+    odds = odds.drop_duplicates(key, keep="last")
+    f = feat.drop(columns=[c for c in ("o_o25", "o_u25") if c in feat.columns]).copy()
+    f["_d"] = pd.to_datetime(f["date"]).dt.normalize()
+    out = f.merge(odds.rename(columns={"date": "_d"}), on=["league", "_d", "home", "away"], how="left",
+                  validate="many_to_one")
+    out.index = feat.index
+    return out.drop(columns="_d")
 
 
 @dataclass
@@ -102,6 +129,10 @@ class GoalEngine:
         self.manifest: dict = {}
         self.league_ht_share: dict[str, float] = {}
         self.state_available_since: dt.datetime | None = None  # eğitim/yükleme anı; köken bilgisi yoksa None
+        # ORAN-04: piyasa düzeyli tahminlerin (2,5 Üst/Alt oranı varken) aynı kuralla ayrı doğrulaması. Bu alanlar
+        # olmadan kaydedilmiş eski motorlarda piyasa düzeyli tahminler doğrulanmamış sayılır (yeniden eğitim gerekir).
+        self.validation_market: dict = {}
+        self.validated_market: dict[str, bool] = {}
 
     @property
     def trained(self) -> bool:
@@ -128,15 +159,14 @@ class GoalEngine:
         last = int(years.max())
         val_years = [y for y in range(last - HOLDOUT_SEASONS, last + 1) if (years == y).any()]
         progress(60, "Gol pazarları: zaman sıralı doğrulama...")
-        pred, _ = walk_forward(feat, val_years, ["M0_taban", self.variant])
+        feat_odds = with_market_odds(feat, matches)
+        pred, _ = walk_forward(feat_odds, val_years, ["M0_taban", self.variant], market=True)
         self.validation = evaluate(pred, [self.variant]) if not pred.empty else {}
-        self.validated = {}
-        for key in PRIMARY_YES:
-            r = self.validation.get(key, {}).get("modeller", {}).get(self.variant)
-            pos = self.validation.get(key, {}).get("pozitif", 0)
-            self.validated[key] = bool(
-                r and r["ll_fark_ust"] < 0 and 0.8 <= r["kal_egim"] <= 1.25 and r["ece"] <= 0.02 and pos >= 200
-            )
+        # ORAN-04: aynı modellerin piyasa düzeyli tahminleri (oranı olan maçlar), aynı kuralla
+        mv = f"{self.variant}{MARKET_SUFFIX}"
+        has_market = not pred.empty and f"{mv}:B" in pred.columns and np.isfinite(pred[f"{mv}:B"]).sum() > 0
+        self.validation_market = evaluate(pred, [mv]) if has_market else {}
+        self.apply_validation_rule()
         progress(85, "Gol pazarları: nihai model tüm verilerle eğitiliyor...")
         train_rows = feat[years > BURN_IN_LAST] if (years > BURN_IN_LAST).sum() > 2000 else feat
         self.model = GoalModel(self.variant).fit(train_rows)
@@ -158,6 +188,11 @@ class GoalEngine:
         self.league_ht_share = feat.assign(ok=ok).groupby("league")["ok"].mean().to_dict()
         progress(100, "Gol pazarları modeli hazır.")
         return self.validation
+
+    def apply_validation_rule(self) -> None:
+        """Doğrulama kuralı: modelin kendi ölçümünden ``validated``, piyasa düzeyli ölçümden ``validated_market``."""
+        self.validated = validated_by_rule(self.validation, self.variant)
+        self.validated_market = validated_by_rule(self.validation_market, f"{self.variant}{MARKET_SUFFIX}")
 
     def save(self, path) -> None:
         from ..models.artifacts import save_artifact
@@ -187,7 +222,7 @@ class GoalEngine:
     def predict_fixtures(self, fixtures: pd.DataFrame, with_interval: bool = True) -> list[GoalPrediction]:
         if not self.trained or fixtures is None or fixtures.empty:
             return []
-        rows, metas = [], []
+        rows, metas, market = [], [], []
         for r in fixtures.itertuples(index=False):
             st = self.states.get(r.league)
             if st is None:
@@ -197,9 +232,12 @@ class GoalEngine:
             day = int((date - pd.Timestamp("2000-01-01")).days)
             rows.append(snap.features(r.home, r.away, day))
             metas.append((r, snap))
-        return self._predict_rows(rows, metas, with_interval)
+            market.append(from_fixture(r))  # football-data fikstür dosyasında 2,5 Üst/Alt oranı varsa (ORAN-04)
+        return self._predict_rows(rows, metas, with_interval, market)
 
-    def predict_match(self, league: str, home: str, away: str, date, time_str: str = "", source: str = "manuel"):
+    def predict_match(self, league: str, home: str, away: str, date, time_str: str = "", source: str = "manuel",
+                      market: MarketLevel | None = None):
+        """``market``: maçın 2,5 Üst/Alt piyasa düzeyi (ORAN-04); verilirse tahmin piyasa düzeyine ölçeklenir."""
         st = self.states.get(league)
         if st is None or not self.trained:
             raise KeyError(f"{league} için gol modeli yok")
@@ -207,18 +245,36 @@ class GoalEngine:
         snap = st.snapshot_for(date)
         day = int((date - pd.Timestamp("2000-01-01")).days)
         row = type("R", (), {"league": league, "home": home, "away": away, "date": date, "time": time_str, "source": source})
-        return self._predict_rows([snap.features(home, away, day)], [(row, snap)], True)[0]
+        return self._predict_rows([snap.features(home, away, day)], [(row, snap)], True, [market])[0]
 
-    def _predict_rows(self, rows, metas, with_interval) -> list[GoalPrediction]:
+    def market_prediction(self, pred: GoalPrediction, market: MarketLevel) -> GoalPrediction:
+        """Aynı maçın piyasa düzeyli tahmini (ORAN-04): aynı lig durumundan yeniden hesaplanır; maç saati ve kimlik
+        bilgileri önceki tahminden aynen alınır."""
+        import dataclasses
+
+        new = self.predict_match(pred.league, pred.home, pred.away, pred.date, pred.time, market=market)
+        return dataclasses.replace(pred, probs=new.probs, intervals=new.intervals, info=new.info,
+                                   data_notes=new.data_notes, data_codes=new.data_codes,
+                                   state_digest=new.state_digest, validated=new.validated)
+
+    def _predict_rows(self, rows, metas, with_interval, market=None) -> list[GoalPrediction]:
         if not rows:
             return []
         X = pd.DataFrame(rows, columns=GOAL_FEATURES)
         X["issues"] = ""
         X["hthg"] = 0.0
         X["htag"] = 0.0
-        probs = self.model.predict(X)
-        ivals = self.model.interval(X) if with_interval else None
         usable = usable_rows(X)
+        # ORAN-04: 2,5 Üst/Alt piyasa olasılığı olan satırlarda takım gücü girdileri tek bir s ile ölçeklenir
+        market = list(market or [None] * len(rows))
+        scale = np.full(len(X), np.nan)
+        idx = np.array([i for i, m in enumerate(market) if m is not None and usable[i]], dtype=int)
+        Xm = X
+        if len(idx):
+            scale[idx] = market_scale(self.model, X.iloc[idx], [market[i].p for i in idx])
+            Xm = scaled(X, np.where(np.isfinite(scale), scale, 1.0))
+        probs = self.model.predict(Xm)
+        ivals = self.model.interval(Xm) if with_interval else None
         from ..eligibility import league_state_digest
 
         out = []
@@ -245,13 +301,21 @@ class GoalEngine:
                     lo, hi = ivals[key]
                     iv[key] = (float(lo[i]), float(hi[i])) if np.isfinite(lo[i]) else (None, None)
                 iv["meta"] = ivals["meta"]
+            info = {k: float(X.loc[i, k]) for k in ("h_n365", "a_n365", "l1h", "l1a", "l2h", "l2a", "lh", "la")}
+            validated = None
+            if np.isfinite(scale[i]):  # piyasa düzeyli tahmin: kendi sürümü ve kendi doğrulama statüsü
+                info["piyasa"] = {**market[i].to_dict(), "olcek": float(scale[i])}
+                info["model_version"] = f"{MODEL_VERSION}/{self.variant}{MARKET_SUFFIX}"
+                validated = {k: bool(v) for k, v in (getattr(self, "validated_market", None) or {}).items()}
+                validated = {k: validated.get(k, False) for k in PRIMARY_YES}
             out.append(GoalPrediction(
                 event_id=event_id(r.league, r.date, r.home, r.away), league=r.league, home=r.home, away=r.away,
                 date=pd.Timestamp(r.date), time=getattr(r, "time", "") or "", kickoff_utc=ko,
                 kickoff_text=fmt_istanbul(ko, r.date), probs=p, intervals=iv,
                 base_rates={"A": float(X.loc[i, "bA"]), "B": float(X.loc[i, "bB"]), "C": float(X.loc[i, "bC"])},
-                data_notes=notes, info={k: float(X.loc[i, k]) for k in ("h_n365", "a_n365", "l1h", "l1a", "l2h", "l2a", "lh", "la")},
+                data_notes=notes, info=info,
                 data_codes=tuple(sorted(set(codes))), state_digest=league_state_digest(self.states.get(r.league)),
+                validated=validated,
             ))
         return out
 

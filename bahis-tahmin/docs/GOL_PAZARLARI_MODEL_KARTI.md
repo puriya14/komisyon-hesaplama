@@ -7,6 +7,7 @@
 | Pazarlar | A: iki yarıda da karşılıklı gol – Evet · B: maç sonu 3,5 Üst · C: ilk yarı 1,5 Üst (ve tümleyenleri) |
 | Amaç | Maç öncesi olasılık tahmini ve sanal (paper) takip. **Gerçek bahis önerisi veya kâr iddiası değildir.** |
 | Olasılık üreticisi | Yalnızca istatistiksel model; dil modeli (LLM) kullanılmaz |
+| Piyasa gol düzeyi (ORAN-04) | Maçın 2,5 Üst/Alt oranı varsa (girilen ya da fikstür dosyasındaki) takım gücü girdileri piyasanın 2,5 Üst olasılığına ölçeklenir; sürüm `…+piyasa-duzey-v1`, doğrulaması ayrı ölçülür. Ayrıntı: [`ORAN_04.md`](ORAN_04.md) |
 | Kod | `bahis_tahmin/goals/` (joint, features, model, validation, engine, decision, value, ledger, service) |
 
 ## 1. Yapı
