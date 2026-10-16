@@ -784,9 +784,15 @@ def ayarlar():
         except ValueError:
             pass
         new.veri_denetimi = f.get("denetim", s.veri_denetimi)
+        new.sanal_stake_yontemi = f.get("sanal_stake", s.sanal_stake_yontemi)
         flash(st.save_settings(new), "info")
         return redirect(url_for("views.ayarlar"))
-    return render_template("ayarlar.html", s=s, odds_labels=ODDS_TYPE_LABELS)
+    from ..goals.disiplin import STAKE_METHODS, readiness, readiness_text
+
+    with st.core.ledger(create=False) as led:
+        ready_line = readiness_text(readiness(led))  # DISIPLIN-07
+    return render_template("ayarlar.html", s=s, odds_labels=ODDS_TYPE_LABELS, stake_methods=STAKE_METHODS,
+                           ready_line=ready_line)
 
 
 # ================================================================== Hakkında

@@ -23,6 +23,7 @@ from ..data.source_registry import SOURCES
 from ..eligibility import display_label
 from ..fmt import fmt_num, fmt_pct
 from ..goals.coverage import coverage_matrix, coverage_summary, quarantine
+from ..goals.disiplin import Staking, discipline_line, readiness, readiness_text
 from ..goals.decision import STATUS_TR, DecisionPolicy
 from ..goals.display import (
     KEY_OF,
@@ -367,7 +368,9 @@ def gol():
             summ = led.summary() if (led is not None and rows) else None
             clv_line = summary_line(clv_summary(led)) if summ else ""
             cands = closing_candidates(led) if led is not None else []
-        ctx.update(ledger=pd.DataFrame(rows), summ=summ, clv_line=clv_line,
+            ready_line = readiness_text(readiness(led))  # DISIPLIN-07
+        ctx.update(ledger=pd.DataFrame(rows), summ=summ, clv_line=clv_line, ready_line=ready_line,
+                   discipline=discipline_line(Staking.from_settings(core.settings)),
                    close_opts=[(f"{eid}§{mk}", label) for eid, mk, label in cands])
     return render_template("gol.html", **ctx)
 
@@ -452,7 +455,8 @@ def kaydet():
     with core.ledger() as led:
         v = market_verdict(v, eng, led, now)  # ORAN-04: panelde gösterilen piyasa düzeyli tahminle aynı
         decs = decisions_for(v.prediction, eng, led, now, eligibility=v)
-        record_decisions(led, v.prediction, decs, eng, record_time=now)
+        record_decisions(led, v.prediction, decs, eng, record_time=now,
+                         staking=Staking.from_settings(core.settings))  # DISIPLIN-07
     flash("Kararlar sanal takibe kaydedildi (değiştirilemez).", "info")
     return redirect(url_for("gol.gol", sekme="takip"))
 

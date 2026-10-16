@@ -67,6 +67,9 @@ class Settings:
     source_consent: dict = field(default_factory=dict)
     # Gerçek para miktarı önerisi yalnızca kullanıcı risk sınırlarını kendisi belirleyip açarsa gösterilir
     stake_suggestions: bool = False
+    # DISIPLIN-07: sanal takipte stake yöntemi: "sabit" (1 birim = 100 birimlik sanal kasanın %1'i) veya "kelly"
+    # (kesirli Kelly; kelly_fraction ve max_stake_pct ile). Bkz. goals.disiplin
+    sanal_stake_yontemi: str = "sabit"
     # Veri profili (S5-GITHUB-01): "varsayilan" veya "github" (bütün güncelleme yolları yalnızca seçili GitHub depoları)
     data_profile: str = "varsayilan"
     # VERI-01: kaynak anahtarı -> kullanıcının kişisel (ticari olmayan) kullanım beyanı verdiği zaman (ISO). Beyan
@@ -120,6 +123,8 @@ class Settings:
             self.onay_surumu = 0
         if self.veri_denetimi not in VERI_DENETIMI:
             self.veri_denetimi = "standart"
+        if self.sanal_stake_yontemi not in ("sabit", "kelly"):
+            self.sanal_stake_yontemi = "sabit"
         from .kupa.turnuvalar import COMPETITIONS, default_for_leagues
 
         if not isinstance(self.kupalar, list):

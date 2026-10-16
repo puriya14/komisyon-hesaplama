@@ -196,6 +196,8 @@
   {{ summ.bekleyen_veya_iade }} bekleyen/iade (paydaya girmez) · net {{ '%+.2f'|format(summ.net) }} birim · yield
   {{ ('%+.1f'|format(100 * summ['yield']) ~ '%') if summ['yield'] is not none else 'hesaplanamıyor' }}</p>
 {% else %}<p class="muted">Henüz sanal kayıt yok. Maç analizi sekmesinden kararları kaydedebilirsiniz.</p>{% endif %}
+{% if ready_line %}<p class="hazirlik"><b>{{ ready_line }}</b></p>{% endif %}
+{% if discipline %}<p class="muted">{{ discipline }}</p>{% endif %}
 <div class="actions">
   <form method="post" action="{{ url_for('gol.sonuclandir') }}">{{ csrf_field() }}<button class="btn" type="submit">Sonuçları veriden güncelle</button></form>
   <form method="post" action="{{ url_for('gol.zincir') }}">{{ csrf_field() }}<button class="btn" type="submit">Kayıt zincirini doğrula</button></form>

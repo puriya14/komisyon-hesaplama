@@ -417,3 +417,17 @@ def test_goal_record_refused_when_data_not_eligible(app, full, synthetic, traine
     with core.ledger(create=False) as led:
         assert led is None  # günlük oluşturulmadı
     assert isinstance(goal, GoalEngine)
+
+
+def test_discipline_settings_and_readiness_on_pages(app):
+    """DISIPLIN-07: sanal stake yöntemi ayarı ve önceden yazılmış gerçek para hazırlık ölçütü."""
+    c = _client(app)
+    tok = _csrf(c)
+    c.post("/ayarlar", data={"csrf": tok, "sanal_stake": "kelly", "kelly": "0.25", "tavan": "0.02"})
+    assert Settings.load().sanal_stake_yontemi == "kelly"
+    html = c.get("/ayarlar").get_data(as_text=True)
+    assert "Gerçek para hazırlık ölçütü (hazirlik-v1): karşılanmadı" in html and 'value="kelly" selected' in html
+    takip = c.get("/gol/?sekme=takip").get_data(as_text=True)
+    assert "Gerçek para hazırlık ölçütü (hazirlik-v1)" in takip and "kesirli Kelly" in takip
+    c.post("/ayarlar", data={"csrf": tok, "sanal_stake": "bilinmeyen"})
+    assert Settings.load().sanal_stake_yontemi == "sabit"

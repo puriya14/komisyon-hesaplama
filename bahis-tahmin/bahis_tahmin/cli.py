@@ -676,9 +676,14 @@ def cmd_goal_coverage(a) -> int:
 def cmd_goal_ledger(a) -> int:
     from .goals.ledger import Ledger
 
+    from .goals.disiplin import Staking, discipline_line, readiness, readiness_text
+
     path = app_home() / LEDGER_FILE
+    disc = discipline_line(Staking.from_settings(Settings.load()))
     if not path.exists():
         print("Henüz sanal takip kaydı yok.")
+        print(readiness_text(readiness(None)))
+        print(disc)
         return 0
     from .goals.clv import clv_summary, summary_line
 
@@ -686,11 +691,14 @@ def cmd_goal_ledger(a) -> int:
     ok, msg = led.verify_chain()
     s = led.summary()
     clv = summary_line(clv_summary(led))
+    ready = readiness_text(readiness(led))  # DISIPLIN-07: önceden yazılmış gerçek para hazırlık ölçütü
     led.close()
     y = f"{100 * s['yield']:+.1f}%" if s["yield"] is not None else "hesaplanamıyor"
     print(f"{msg}. {s['kayit']} kayıt · {s['sanal_bahis']} sanal bahis · {s['sonuclanan']} sonuçlandı · "
           f"net {s['net']:+.2f} birim · yield {y}")
     print(clv)
+    print(ready)
+    print(disc)
     return 0 if ok else 1
 
 

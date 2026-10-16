@@ -454,3 +454,19 @@ def test_sequences_page_renders_frozen_research_results(app, window):
     html = page.pat_card.toPlainText()
     assert "Deney aileleri" in html and "F7" in html and "Plasebo" in html
     assert "şike olasılığı" not in html.lower()
+
+
+def test_discipline_settings_and_ledger_readiness(app, window):
+    """DISIPLIN-07: Ayarlar'da sanal stake yöntemi; Sanal takip ve Ayarlar hazırlık ölçütünü gösterir."""
+    from bahis_tahmin.ui.pages.goals import GoalsPage
+    from bahis_tahmin.ui.pages.settings import SettingsPage
+
+    sp = window.page(SettingsPage)
+    assert "hazirlik-v1" in sp.lbl_ready.text() and sp.cb_vstake.currentData() == "sabit"
+    sp.cb_vstake.setCurrentIndex(sp.cb_vstake.findData("kelly"))
+    sp._save()
+    assert window.ctl.settings.sanal_stake_yontemi == "kelly"
+    gp = window.page(GoalsPage)
+    gp.refresh_ledger()
+    assert "hazirlik-v1" in gp.lbl_ready.text() and "karşılanmadı" in gp.lbl_ready.text()
+    assert "kesirli Kelly" in gp.lbl_disc.text() and "aynı maçta tek sanal bahis" in gp.lbl_disc.text()

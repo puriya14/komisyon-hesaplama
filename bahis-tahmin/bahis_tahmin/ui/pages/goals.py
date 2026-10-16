@@ -26,6 +26,7 @@ from ...data.leagues import LEAGUES, league_name, short_name
 from ...eligibility import display_label
 from ...data.source_registry import SOURCES
 from ...goals.coverage import coverage_matrix, coverage_summary, quarantine
+from ...goals.disiplin import Staking, discipline_line, readiness, readiness_text
 from ...goals.decision import STATUS_TR, DecisionPolicy
 from ...goals.markets import MARKETS, PRIMARY_YES, RULE_VERSION
 from ...goals.model import FEATURE_VERSION, MODEL_VERSION
@@ -671,7 +672,8 @@ class GoalsPage(Page):
         now = self.ctl.now()
         eng = self._engine_for(p)
         decs = decisions_for(p, eng, self.ctl.ledger, now, eligibility=getattr(self, "_current_verdict", None))
-        record_decisions(self.ctl.ledger, p, decs, eng, record_time=now)
+        record_decisions(self.ctl.ledger, p, decs, eng, record_time=now,
+                         staking=Staking.from_settings(self.ctl.settings))  # DISIPLIN-07
         self.refresh_ledger()
         self.tabs.setCurrentIndex(4)
 
@@ -908,6 +910,14 @@ class GoalsPage(Page):
         self.led_sum = QLabel("")
         self.led_sum.setWordWrap(True)
         lay.addWidget(self.led_sum)
+        # DISIPLIN-07: önceden yazılmış gerçek para hazırlık ölçütü ve uygulanan bahis disiplini
+        self.lbl_ready = QLabel("")
+        self.lbl_ready.setWordWrap(True)
+        self.lbl_ready.setObjectName("hazirlik")
+        lay.addWidget(self.lbl_ready)
+        self.lbl_disc = QLabel("")
+        self.lbl_disc.setWordWrap(True)
+        lay.addWidget(self.lbl_disc)
         row = QHBoxLayout()
         b1 = QPushButton("Sonuçları veriden güncelle")
         b1.clicked.connect(self._settle)
@@ -995,6 +1005,8 @@ class GoalsPage(Page):
             i = self.cb_close.findData(keep)
             if i >= 0:
                 self.cb_close.setCurrentIndex(i)
+        self.lbl_disc.setText(discipline_line(Staking.from_settings(self.ctl.settings)))
+        self.lbl_ready.setText(readiness_text(readiness(led)))
         if df.empty:
             self.led_sum.setText("Henüz sanal kayıt yok. Maç analizi sekmesinden kararları kaydedebilirsiniz.")
             self.lbl_clv.setText("")

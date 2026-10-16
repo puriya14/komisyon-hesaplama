@@ -19,7 +19,7 @@ from .markets import MARKETS, MatchStatus, PeriodScore, label, settle
 from .model import FEATURE_VERSION, MODEL_VERSION
 
 SELECTIONS = ("BTTS_BOTH_HALVES_YES", "BTTS_BOTH_HALVES_NO", "FT_OVER_3_5", "FT_UNDER_3_5", "FH_OVER_1_5", "FH_UNDER_1_5")
-STRATEGY_VERSION = "sanal-sabit-birim-v1"
+STRATEGY_VERSION = "sanal-sabit-birim-v1"  # sabit stake (DISIPLIN-07: disiplin.Staking.version)
 
 
 def prediction_codes(pred: GoalPrediction) -> tuple[str, ...]:
@@ -170,22 +170,42 @@ def _bet_still_valid(d: Decision, pred: GoalPrediction, record_time: dt.datetime
 
 
 def record_decisions(ledger: Ledger, pred: GoalPrediction, decisions: list[Decision], engine: GoalEngine,
-                     stake_units: float = 1.0, record_time: dt.datetime | None = None) -> list[str]:
+                     stake_units: float = 1.0, record_time: dt.datetime | None = None, staking=None,
+                     policy: DecisionPolicy = DecisionPolicy()) -> list[str]:
     """Kararları değişmez sanal kayıt olarak ekler. Yalnızca VALUE_CANDIDATE için (veri uygunluğu da geçilmişse ve
     karar kayıt anında hâlâ geçerliyse) sanal birim stake konur; aksi halde karar kaydı (stake 0) yazılır. Veri uygun
-    değilse olasılık yazılmaz (NaN/sonsuz/sahte sıfır yerine boş). ``record_time``: kayıt anı (varsayılan: şimdi)."""
+    değilse olasılık yazılmaz (NaN/sonsuz/sahte sıfır yerine boş). ``record_time``: kayıt anı (varsayılan: şimdi).
+
+    Bahis disiplini (DISIPLIN-07, ``goals.disiplin``): defterde bu maçta zaten sanal bahis varsa ya da maç günü / lig-gün
+    sınırı önceki kayıtlarla doluysa stake konmaz (gerekçeli karar kaydı). ``staking``: stake yöntemi
+    (``disiplin.Staking``; verilmezse sabit ``stake_units`` birim)."""
+    from .disiplin import DISIPLIN_VERSION, Staking, is_bet, portfolio_block, virtual_bankroll
     from .forecast_log import RECORD_BET, RECORD_DECISION
 
     record_time = record_time or dt.datetime.now(dt.timezone.utc)
+    staking = staking or Staking(units=stake_units)
     info = getattr(pred, "info", None) or {}
     # Kupa maçları (KUPA-GOL-02) kendi model sürümünü ve veri kesimini taşır
     model_version = info.get("model_version") or f"{MODEL_VERSION}/{engine.variant}"
     data_cutoff = info.get("data_cutoff") or engine.data_cutoff
+    existing = ledger.predictions()
+    bets = [r for r in existing if is_bet(r)]
+    kasa = virtual_bankroll(existing)
+    day = str(pd.Timestamp(pred.date).date())
     ids = []
     for d in decisions:
         elig = d.data_eligibility or {}
         bet = (d.status == "VALUE_CANDIDATE" and bool(elig.get("bahis_veri_uygun")) and not elig.get("karar_engeli")
                and _bet_still_valid(d, pred, record_time))
+        extra, stake = [], 0.0
+        if bet:
+            why = portfolio_block(bets, d.event_id, pred.league, day, policy)
+            stake = 0.0 if why else staking.stake(d, kasa)
+            if why is None and not stake > 0:
+                why = "Sanal kasa tükendi veya Kelly payı sıfır; sanal stake yok."
+            if why:
+                bet, stake = False, 0.0
+                extra.append(why)
         # decide() veri uygun değilse olasılığı taşımaz (NaN); burada yalnızca geçerli olasılık yazılır
         p = finite_or_none(d.p) if (elig.get("tahmin_uygun") and valid_probability(d.p)) else None
         ids.append(ledger.record_prediction({
@@ -197,16 +217,23 @@ def record_decisions(ledger: Ledger, pred: GoalPrediction, decisions: list[Decis
             "model_version": model_version, "feature_version": FEATURE_VERSION,
             "data_cutoff": data_cutoff, "p": p, "p_low": finite_or_none(d.p_safe) if p is not None else None,
             "odds": finite_or_none(d.odds), "decision_status": d.status,
-            "reasons": d.reasons + (["Kayıt anında aday kararı geçerliliğini yitirdi (gün değişti veya maç başladı); "
-                                     "sanal stake yok."] if d.status == "VALUE_CANDIDATE" and not bet else []),
+            "reasons": d.reasons + (extra or (["Kayıt anında aday kararı geçerliliğini yitirdi (gün değişti veya maç "
+                                               "başladı); sanal stake yok."]
+                                              if d.status == "VALUE_CANDIDATE" and not bet else [])),
             "ev": finite_or_none(d.ev) if p is not None else None,
             "ev_safe": finite_or_none(d.ev_safe) if p is not None else None,
-            "stake_units": stake_units if bet else 0.0,
-            "strategy_version": STRATEGY_VERSION, "policy_version": d.policy_version,
+            "stake_units": stake,
+            "strategy_version": staking.version, "policy_version": d.policy_version,
             "veri_uygunlugu": elig or None,
+            # DISIPLIN-07: maç günü (portföy sınırları), disiplin sürümü; bahiste stake yöntemi ve kayıt anındaki sanal kasa
+            "mac_gunu": day, "disiplin_version": DISIPLIN_VERSION,
+            **({"stake_yontemi": staking.method, "sanal_kasa": round(kasa, 4)} if bet else {}),
             # ORAN-04: tahmin piyasa düzeyliyse kullanılan 2,5 Üst/Alt oranı ve ölçek (yoksa alan yazılmaz)
             **({"piyasa_duzeyi": info["piyasa"]} if info.get("piyasa") else {}),
         }))
+        if bet:
+            bets.append({"event_id": d.event_id, "league": pred.league, "mac_gunu": day, "stake_units": stake,
+                         "odds": d.odds})
     return ids
 
 

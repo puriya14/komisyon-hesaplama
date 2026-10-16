@@ -21,6 +21,14 @@
   </div>
     <label class="check"><input type="checkbox" name="miktar_oner" value="1" {% if s.stake_suggestions %}checked{% endif %}> Gerçek para miktarı önerilerini göster (risk sınırlarımı yukarıda kendim belirledim)</label>
   </fieldset>
+  <fieldset><legend>Bahis disiplini (sanal takip)</legend><div class="form-grid">
+    <label>Sanal stake yöntemi <select name="sanal_stake">{% for k, v in stake_methods.items() %}<option value="{{ k }}" {% if k == s.sanal_stake_yontemi %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></label>
+  </div>
+    <p class="muted">Gol pazarlarında sanal takibe kaydedilen avantaj adaylarının stake'i. Kelly yöntemi yukarıdaki Kelly
+      kesrini ve tek bahis tavanını kullanır; olasılık olarak belirsizlik aralığının güvenli ucu alınır. Aynı maçta tek
+      sanal bahis; maç gününde ve aynı lig-günde üst sınır (önceki kayıtlar dahil).</p>
+    {% if ready_line %}<p class="hazirlik"><b>{{ ready_line }}</b></p>{% endif %}
+  </fieldset>
   <fieldset><legend>Uygulama</legend>
     <label class="check"><input type="checkbox" name="oto" value="1" {% if s.auto_update_on_start %}checked{% endif %}> Açılışta verileri otomatik güncelle ve gerekirse modeli eğit (6 saatten eskiyse; masaüstü)</label>
     <label class="check"><input type="checkbox" name="yedek" value="1" {% if s.use_mirror_fallback %}checked{% endif %}> football-data.co.uk erişilemezse GitHub yedek veri setini kullan</label>

@@ -4,8 +4,19 @@ from __future__ import annotations
 
 import copy
 
-from PySide6.QtWidgets import QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QGroupBox, QLineEdit, QPushButton, QSpinBox
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QDoubleSpinBox,
+    QFormLayout,
+    QGroupBox,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QSpinBox,
+)
 
+from ...goals.disiplin import STAKE_METHODS, readiness, readiness_text
 from ...models.engine import ODDS_TYPE_LABELS
 from ..widgets import banner
 from .base import Page
@@ -52,6 +63,21 @@ class SettingsPage(Page):
         self.chk_stake.setToolTip("Kapalıyken uygulama yalnızca olasılık, adil oran ve beklenen değer gösterir; para miktarı önermez.")
         f2.addRow(self.chk_stake)
         self.body.addWidget(g2)
+
+        # DISIPLIN-07: sanal takipte stake yöntemi ve gerçek para hazırlık ölçütü
+        g4 = QGroupBox("Bahis disiplini (sanal takip)")
+        f4 = QFormLayout(g4)
+        self.cb_vstake = QComboBox()
+        for k, v in STAKE_METHODS.items():
+            self.cb_vstake.addItem(v, k)
+        self.cb_vstake.setToolTip(
+            "Gol pazarlarında sanal takibe kaydedilen avantaj adaylarının stake'i. Kelly yöntemi yukarıdaki Kelly kesrini "
+            "ve tek bahis tavanını kullanır; olasılık olarak belirsizlik aralığının güvenli ucu alınır.")
+        f4.addRow("Sanal stake yöntemi", self.cb_vstake)
+        self.lbl_ready = QLabel("")
+        self.lbl_ready.setWordWrap(True)
+        f4.addRow(self.lbl_ready)
+        self.body.addWidget(g4)
 
         g3 = QGroupBox("Uygulama")
         f3 = QFormLayout(g3)
@@ -114,6 +140,9 @@ class SettingsPage(Page):
         self.chk_mirror.setChecked(s.use_mirror_fallback)
         self.sp_days.setValue(s.fixture_days)
         self.cb_check.setCurrentIndex(max(self.cb_check.findData(s.veri_denetimi), 0))
+        self.cb_vstake.setCurrentIndex(max(self.cb_vstake.findData(s.sanal_stake_yontemi), 0))
+        led = self.ctl.ledger_if_exists() if hasattr(self.ctl, "ledger_if_exists") else None
+        self.lbl_ready.setText(readiness_text(readiness(led)))
 
     def _save(self) -> None:
         s = copy.deepcopy(self.ctl.settings)
@@ -132,4 +161,5 @@ class SettingsPage(Page):
         s.use_mirror_fallback = self.chk_mirror.isChecked()
         s.fixture_days = self.sp_days.value()
         s.veri_denetimi = self.cb_check.currentData()
+        s.sanal_stake_yontemi = self.cb_vstake.currentData()
         self.ctl.save_settings(s)
