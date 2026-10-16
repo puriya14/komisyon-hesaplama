@@ -42,11 +42,13 @@ from .turnuvalar import COMPETITIONS, VALIDATION_GROUPS, VALIDATION_NAMES, compe
 
 log = logging.getLogger(__name__)
 
-CUP_ENGINE_VERSION = 6  # 2: tarafsız sahada kalibrasyonun iç saha terimi (δ) uygulanmaz; 3: gol pazarları (KUPA-GOL-02);
+CUP_ENGINE_VERSION = 7  # 2: tarafsız sahada kalibrasyonun iç saha terimi (δ) uygulanmaz; 3: gol pazarları (KUPA-GOL-02);
 # 4: taban oranları ve ilk yarı payı doğrulama grubunun kendi geçmişinden (KUPA-IY-03); 5: maç sonu 0-0 maçlar gol
 # pazarı ölçümünde İY 0-0 olarak (KUPA-GOL-04; kayıtlı statüler eski örneklemle ölçüldüğü için yeniden eğitim gerekir);
-# 6: dinamik gol düzeyi (KUPA-GOL-07)
-MODEL_VERSION = "kupa-model-v3"
+# 6: dinamik gol düzeyi (KUPA-GOL-07); 7: rövanş etkisi (KUPA-ROV-07)
+MODEL_VERSION = "kupa-model-v4"
+# v4 (KUPA-ROV-07): iki ayaklı eşleşmelerde rövanş etkisi (``kupa.rovans``). KUPA-ROV-06'da ön kayıtlı kuralı geçemedi
+# (geliştirme dönemi küçüktü); kullanıcı kararıyla uygulandı (docs/KUPA_ROV_07.md).
 # v3 (KUPA-GOL-07): dinamik gol düzeyi. KUPA-GOL-06'da ön kayıtlı kuralı geçemedi (yurt içi son dönemi az iyileştiriyor,
 # geliştirme dönemini bozuyor, anlamlı değil); kullanıcı kararıyla uygulandı (docs/KUPA_GOL_07.md).
 LEVEL_HALF_LIFE = 180.0  # gün
@@ -190,9 +192,13 @@ class CupReport:
 
 
 class CupEngine:
-    def __init__(self, cfg: ModelConfig | None = None, dynamic_level: bool = True):
+    def __init__(self, cfg: ModelConfig | None = None, dynamic_level: bool = True, rovans: bool = True):
         self.version = CUP_ENGINE_VERSION
         self.dynamic_level = dynamic_level  # KUPA-GOL-07; kapalıyken R = 1 (KUPA-GOL-06 öncesi model)
+        # KUPA-ROV-07: rövanş etkisi; kapalıyken çarpan 1. ``rovans``: tahminde kullanılan β, standart hata, rövanş sayısı
+        self.rovans_on = rovans
+        self.rovans: dict = {"beta": 0.0, "se": float("nan"), "n": 0}
+        self.cup_results: pd.DataFrame | None = None  # ilk maçı bulmak için kupa sonuçları (kupa.rovans.results_table)
         self.level_rows: dict = {}  # doğrulama grubu -> (hafta, gün, gerçekleşen gol, düzeysiz tahmin) dizileri
         self.app_version = __version__
         self.cfg = cfg or ModelConfig()
@@ -243,6 +249,9 @@ class CupEngine:
             raise ValueError("Kupa modeli için lig verisi yok.")
         cups = cups if cups is not None else pd.DataFrame()
         cups = cups.sort_values("date", kind="mergesort").reset_index(drop=True)
+        from .rovans import results_table
+
+        self.cup_results = results_table(cups)
         progress(2, "Kupa modeli: veriler hazırlanıyor...")
         data, tl = build_data(domestic, cups, key_of, group_of)
         self.timeline = tl
@@ -313,7 +322,8 @@ class CupEngine:
              hashlib.sha256(np.round(np.r_[self.params.attack, self.params.defense], 9).tobytes()).hexdigest(),
              self.calib, round(self.goal.share, 9) if self.goal is not None else None,
              sorted((k, round(v, 9)) for k, v in getattr(self.goal, "share_by_group", {}).items()),
-             sorted((g, round(self.level_at(g, self.last_day + 1), 9)) for g in self.level_rows)],
+             sorted((g, round(self.level_at(g, self.last_day + 1), 9)) for g in self.level_rows),
+             round(self.rovans.get("beta", 0.0), 9)],
             default=str).encode()).hexdigest()
         rep = self.report
         rep.trained_at = dt.datetime.now().isoformat(timespec="seconds")
@@ -359,7 +369,23 @@ class CupEngine:
         # çarpılır; R yalnızca önceki haftaların sonuçlarından
         ev["lam_c0"], ev["nu_c0"] = lam[used], nu[used]
         ev["duzey"] = level_series(ev) if (self.dynamic_level and len(ev)) else 1.0
-        ev["lam_c"], ev["nu_c"] = ev["lam_c0"] * ev["duzey"], ev["nu_c0"] * ev["duzey"]
+        # Rövanş etkisi (KUPA-ROV-07): ilk maç farkına bağlı çarpan; her rövanşın β'sı yalnızca önceki haftaların
+        # rövanşlarından (kupa.rovans.beta_series)
+        from .rovans import MIN_LEGS, ROVANS_VERSION, beta_series, factors, fit_beta, ties
+
+        ev["lam_b"], ev["nu_b"] = ev["lam_c0"] * ev["duzey"], ev["nu_c0"] * ev["duzey"]
+        if getattr(self, "rovans_on", False) and len(ev):
+            t = ties(cups)
+            ev["rovans_d"] = ev["i"].map(dict(zip(t["i2"], t["d"]))).astype(float)
+            ev["rovans_beta"] = beta_series(ev)
+        else:
+            ev["rovans_d"], ev["rovans_beta"] = np.nan, 0.0
+        fh, fa = factors(ev["rovans_d"], ev["rovans_beta"])
+        ev["lam_c"], ev["nu_c"] = ev["lam_b"] * fh, ev["nu_b"] * fa
+        legs = np.isfinite(ev["rovans_d"].to_numpy(dtype=float))
+        b, se = (fit_beta(ev.loc[legs, "lam_b"], ev.loc[legs, "nu_b"], ev.loc[legs, "hg"], ev.loc[legs, "ag"],
+                          ev.loc[legs, "rovans_d"]) if legs.sum() >= MIN_LEGS else (0.0, float("nan")))
+        self.rovans = {"beta": float(b), "se": float(se), "n": int(legs.sum()), "version": ROVANS_VERSION}
         self.level_rows = {}
         if self.dynamic_level:
             day = (pd.to_datetime(ev["date"]) - EPOCH).dt.days.to_numpy(dtype=float)
@@ -440,8 +466,11 @@ class CupEngine:
 
     # ------------------------------------------------------------------ tahmin
     def rates(self, home_key: str, away_key: str, home_country: str, away_country: str, date, comp: str,
-              neutral: bool) -> dict | None:
-        """Kalibre edilmiş gol beklentileri ve açıklama alanları; takımlardan biri modelde yoksa None."""
+              neutral: bool, stage=None, season: str | None = None) -> dict | None:
+        """Kalibre edilmiş gol beklentileri ve açıklama alanları; takımlardan biri modelde yoksa None.
+
+        Maç bir eşleşmenin rövanşıysa (KUPA-ROV-07) gol beklentileri ilk maç farkına göre çarpılır (``rovans``
+        alanı). ``stage``/``season``: fikstürün turu ve sezonu (bilinmiyorsa sezon tarihten bulunur)."""
         if not self.trained:
             return None
         day = int((pd.Timestamp(date).normalize() - EPOCH).days)
@@ -455,9 +484,29 @@ class CupEngine:
         lvl = self.level_at(VALIDATION_GROUPS.get(grp, "YURTICI"), day)
         hs = self.params.team_strength(home_key, hl)
         as_ = self.params.team_strength(away_key, al)
-        return {"lam": float(lam[0]) * lvl, "nu": float(nu[0]) * lvl, "lam_raw": raw[0], "nu_raw": raw[1],
+        rv = self.rovans_for(comp, home_key, away_key, date, stage, season)
+        fh, fa = (rv["ev_carpan"], rv["dep_carpan"]) if rv else (1.0, 1.0)
+        return {"lam": float(lam[0]) * lvl * fh, "nu": float(nu[0]) * lvl * fa, "lam_raw": raw[0], "nu_raw": raw[1],
                 "home_league": hl, "away_league": al, "group": grp, "neutral": bool(neutral), "home_strength": hs,
-                "away_strength": as_, "gol_duzeyi": lvl}
+                "away_strength": as_, "gol_duzeyi": lvl, "rovans": rv}
+
+    def rovans_for(self, comp: str, home_key: str, away_key: str, date, stage=None, season: str | None = None):
+        """Maç bir eşleşmenin rövanşıysa (KUPA-ROV-07): ilk maç, d, β ve çarpanlar; değilse ya da etki kapalıysa None."""
+        from .rovans import factors, first_leg
+        from .turnuvalar import season_label, season_start
+
+        beta = float((getattr(self, "rovans", None) or {}).get("beta", 0.0))
+        if not getattr(self, "rovans_on", False) or beta == 0.0:
+            return None
+        if season is None or season != season or str(season) == "":
+            c = COMPETITIONS.get(str(comp))
+            cal = bool(c.calendar_year) if c else False
+            season = season_label(season_start(pd.Timestamp(date).date(), cal), cal)
+        leg = first_leg(getattr(self, "cup_results", None), comp, str(season), stage, home_key, away_key, date)
+        if leg is None:
+            return None
+        fh, fa = factors([leg["d"]], beta)
+        return {**leg, "beta": beta, "ev_carpan": float(fh[0]), "dep_carpan": float(fa[0])}
 
     def level_at(self, vgroup: str, day: int) -> float:
         """Doğrulama grubunun ``day`` günündeki dinamik gol düzeyi (KUPA-GOL-07): ``level_series`` ile aynı formül; o
@@ -478,13 +527,13 @@ class CupEngine:
 
     def predict(self, comp: str, home_key: str, away_key: str, home: str, away: str, home_country: str,
                 away_country: str, date, time_str: str = "", neutral: bool = False, source: str = "",
-                offered_odds: dict | None = None):
+                offered_odds: dict | None = None, stage=None, season: str | None = None):
         """Tek maç tahmini (``models.engine.MatchPrediction``; ``league`` alanı turnuva kodudur). Takım modelde yoksa
         None."""
         from ..models.engine import MatchPrediction
         from ..models.markets import markets_from_matrix, score_matrix
 
-        r = self.rates(home_key, away_key, home_country, away_country, date, comp, neutral)
+        r = self.rates(home_key, away_key, home_country, away_country, date, comp, neutral, stage, season)
         if r is None:
             return None
         P, o25, btts = probs_from_rates([r["lam"]], [r["nu"]])
@@ -508,7 +557,8 @@ class CupEngine:
 
         i = pred.info or {}
         new = self.predict_goals(i["comp"], i["home_key"], i["away_key"], pred.home, pred.away, i["home_country"],
-                                 i["away_country"], pred.date, pred.time, bool(i.get("neutral")), "", market=market)
+                                 i["away_country"], pred.date, pred.time, bool(i.get("neutral")), "", market=market,
+                                 stage=i.get("stage"), season=i.get("season"))
         if new is None:
             return None
         return dataclasses.replace(pred, probs=new.probs, intervals=new.intervals, info=new.info,
@@ -517,7 +567,7 @@ class CupEngine:
 
     def predict_goals(self, comp: str, home_key: str, away_key: str, home: str, away: str, home_country: str,
                       away_country: str, date, time_str: str = "", neutral: bool = False, source: str = "",
-                      with_interval: bool = True, market=None):
+                      with_interval: bool = True, market=None, stage=None, season: str | None = None):
         """Gol pazarları tahmini (``goals.engine.GoalPrediction``; ``league`` alanı turnuva kodudur). Gol bölümü veya
         takım modelde yoksa None. Doğrulama statüsü tahminde taşınır (``validated``: turnuvanın doğrulama grubu).
 
@@ -532,7 +582,7 @@ class CupEngine:
         goal = getattr(self, "goal", None)
         if goal is None or not self.trained:
             return None
-        r = self.rates(home_key, away_key, home_country, away_country, date, comp, neutral)
+        r = self.rates(home_key, away_key, home_country, away_country, date, comp, neutral, stage, season)
         if r is None:
             return None
         vg = VALIDATION_GROUPS.get(r["group"], "YURTICI")
@@ -544,11 +594,14 @@ class CupEngine:
             k_m = poisson_scale(r["lam"] + r["nu"], market.p)
         pr = market_probs([r["lam"] * k_m], [r["nu"] * k_m], share)
         probs = {k: float(v[0]) for k, v in pr.items()}
-        calib, lvl = self.calib, r["gol_duzeyi"] * k_m
+        rv = r.get("rovans") or {}
+        calib = self.calib
+        lvl_h = r["gol_duzeyi"] * k_m * rv.get("ev_carpan", 1.0)  # rövanş çarpanı (KUPA-ROV-07) her çekilişe de
+        lvl_a = r["gol_duzeyi"] * k_m * rv.get("dep_carpan", 1.0)
 
         def draw(lam, nu):
             lc, nc = calibrate_rates(lam, nu, calib, np.full(len(lam), bool(neutral)))
-            return market_probs(lc * lvl, nc * lvl, share)
+            return market_probs(lc * lvl_h, nc * lvl_a, share)
 
         cov = (self.params.log_rate_cov(home_key, away_key, r["home_league"], r["away_league"], r["group"], neutral)
                if with_interval else None)
@@ -567,7 +620,7 @@ class CupEngine:
         ko = kickoff_utc(date, time_str or "", source, kickoff_country(comp, source))
         info = {"kupa": True, "comp": comp, "home_key": home_key, "away_key": away_key, "home_country": home_country,
                 "away_country": away_country, "lam": r["lam"], "nu": r["nu"], "share": share, "neutral": bool(neutral),
-                "gol_duzeyi": r["gol_duzeyi"],
+                "gol_duzeyi": r["gol_duzeyi"], "rovans": r.get("rovans"), "stage": stage, "season": season,
                 "home_league": r["home_league"], "away_league": r["away_league"], "validation_group": vg,
                 "h_n365": float(n_h), "a_n365": float(n_a),
                 "model_version": f"{MODEL_VERSION}/{GOAL_MODEL_VERSION}",
@@ -592,7 +645,8 @@ class CupEngine:
         for r in fixtures.itertuples(index=False):
             try:
                 p = self.predict(r.comp, r.home_key, r.away_key, r.home, r.away, r.home_country, r.away_country,
-                                 r.date, r.time or "", bool(r.neutral), r.source)
+                                 r.date, r.time or "", bool(r.neutral), r.source, stage=getattr(r, "stage", None),
+                                 season=getattr(r, "season", None))
             except Exception as e:  # tek maçın hatası listeyi durdurmaz
                 log.warning("Kupa tahmini hatası %s %s-%s: %s", r.comp, r.home, r.away, e)
                 p = None

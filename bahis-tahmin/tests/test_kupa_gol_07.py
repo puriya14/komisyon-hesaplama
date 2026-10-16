@@ -156,7 +156,7 @@ def test_roundtrip_versions_and_visibility(engines, tmp_path):
     from bahis_tahmin.kupa.motor import CUP_ENGINE_VERSION, MODEL_VERSION, CupEngine
 
     on, off = engines
-    assert CUP_ENGINE_VERSION == 6 and MODEL_VERSION == "kupa-model-v3"
+    assert CUP_ENGINE_VERSION >= 6 and MODEL_VERSION in ("kupa-model-v3", "kupa-model-v4")  # v4: KUPA-ROV-07
     path = tmp_path / "kupa.joblib"
     on.save(path)
     e2 = CupEngine.load(path)

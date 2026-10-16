@@ -261,10 +261,12 @@ def _print_cup_report(eng) -> None:
             print(f"{name[:52]:52s} {r['Maç']:6d} {r['Pozitif']:5d} {r['LL model']:7.4f} {r['LL taban']:7.4f} "
                   f"{r['Δ üst']:+8.4f} {r['Kal. eğim']:5.2f} {r['ECE']:6.3f} {r['ECE eşiği']:6.3f}  {r['Statü']}"
                   + (f" ({r['Neden']})" if r["Neden"] else ""))
-    from .kupa.gorunum import level_line
+    from .kupa.gorunum import level_line, rovans_line
 
     if level_line(eng):
         print("\n" + level_line(eng))
+    if rovans_line(eng):
+        print(rovans_line(eng))
 
 
 def cmd_cup_train(a) -> int:

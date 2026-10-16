@@ -353,7 +353,8 @@ def gated_cup_goal_predictions(engine, cctx: CupContext | None, fixtures: pd.Dat
             try:
                 p = engine.predict_goals(row.comp, row.home_key, row.away_key, row.home, row.away, row.home_country,
                                          row.away_country, row.date, row.time or "", bool(row.neutral), row.source,
-                                         with_interval=with_interval)
+                                         with_interval=with_interval, stage=getattr(row, "stage", None),
+                                         season=getattr(row, "season", None))
             except Exception:  # tek maçın hatası listeyi durdurmaz; nedenli "tahmin yok" olarak kalır
                 p = None
         eid = event_id(row.comp, pd.Timestamp(row.date).date(), row.home, row.away)
@@ -383,7 +384,8 @@ def gated_cup_predictions(engine, cctx: CupContext | None, fixtures: pd.DataFram
         if engine is not None and getattr(engine, "trained", False):
             try:
                 p = engine.predict(row.comp, row.home_key, row.away_key, row.home, row.away, row.home_country,
-                                   row.away_country, row.date, row.time or "", bool(row.neutral), row.source)
+                                   row.away_country, row.date, row.time or "", bool(row.neutral), row.source,
+                                   stage=getattr(row, "stage", None), season=getattr(row, "season", None))
             except Exception:  # tek maçın hatası listeyi durdurmaz; nedenli "tahmin yok" olarak kalır
                 p = None
         if p is not None:

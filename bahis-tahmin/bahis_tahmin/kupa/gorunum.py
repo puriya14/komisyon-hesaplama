@@ -80,6 +80,10 @@ def notes(p, engine) -> list[str]:
            "modelden gelir; kupa maçları için veri setinde piyasa oranı yok (Maç Analizi'nde oran girebilirsiniz)."]
     if info.get("neutral"):
         out.append("Maç tarafsız sahada oynanıyor: iç saha avantajı uygulanmadı.")
+    if info.get("rovans"):
+        from .rovans import card_text
+
+        out.append("Bu maç bir eşleşmenin rövanşı — " + card_text(info["rovans"]) + ".")
     out.append(validation_line(engine, p.league))
     return out
 
@@ -215,6 +219,13 @@ def level_line(engine) -> str:
             + ". Ön kayıtlı kuralı geçmedi, kullanıcı kararıyla uygulandı (docs/KUPA_GOL_06.md, KUPA_GOL_07.md).")
 
 
+def rovans_line(engine) -> str:
+    """Rövanş etkisi (KUPA-ROV-07) bilgi satırı; motor yoksa ya da etki kapalıysa boş."""
+    from .rovans import engine_line
+
+    return engine_line(engine)
+
+
 def goal_model_card(p, engine) -> dict:
     """Maç analizi panelindeki "kullanılan model" bilgisi (kupa maçı)."""
     from .gol import GOAL_RULE
@@ -224,8 +235,10 @@ def goal_model_card(p, engine) -> dict:
     g = goal_part(engine)
     meta = (p.intervals or {}).get("meta", {}) if p.intervals else {}
     from ..goals.piyasa import card_text
+    from .rovans import card_text as rovans_text
 
     vg = info.get("validation_group", "")
+    rovans = rovans_text(info.get("rovans"))
     res = (g.results.get(vg, {}) if g is not None else {})
     n = max((m.get("n", 0) for m in res.values()), default=0)
     market = card_text(info)
@@ -233,7 +246,8 @@ def goal_model_card(p, engine) -> dict:
         "version": (f"{info.get('model_version', '-')} · ilk yarı payı {fmt_pct(info.get('share'))} · gol düzeyi "
                     f"×{info.get('gol_duzeyi', 1.0):.3f}".replace(".", ",") + f" · kural: {GOAL_RULE}"
                     + (f" · {market} — kupa maçlarında geçmiş oranla SINANMADI (lig maçlarında sınandı, ORAN-04); "
-                       "doğrulama statüsü grubun piyasasız ölçümünden" if market else "")),
+                       "doğrulama statüsü grubun piyasasız ölçümünden" if market else "")
+                    + (f" · {rovans}" if rovans else "")),
         "training": (f"{rep.trained_at} · veri kesimi {info.get('data_cutoff', '-')} · {rep.n_domestic:,} lig + "
                      f"{rep.n_cup_matches:,} kupa maçı").replace(",", ".") if rep is not None else "-",
         "validation": (f"{VALIDATION_NAMES.get(vg, vg)}: {n} örneklem dışı kupa maçı (her sezon yalnızca önceki "
@@ -379,4 +393,4 @@ def analyze(engine, store, dctx, settings, *, comp: str, home_key: str, away_key
 
 __all__ = ["compare_rows", "notes", "team_recent", "head_to_head", "is_cup_prediction", "league_label",
            "validation_line", "teams_for_analysis", "team_country", "analyze", "choice_groups", "report_rows", "likely_history_line", "goal_part", "goal_status_line",
-           "goal_model_card", "level_line", "goal_validation_rows", "goal_calibration_bins", "cup_ht_coverage", "goal_match", "key_of"]
+           "goal_model_card", "level_line", "rovans_line", "goal_validation_rows", "goal_calibration_bins", "cup_ht_coverage", "goal_match", "key_of"]

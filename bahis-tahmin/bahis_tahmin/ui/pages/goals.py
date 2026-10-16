@@ -865,7 +865,7 @@ class GoalsPage(Page):
 
     def _refresh_cup_validation(self) -> None:
         from ...kupa.gol import GOAL_RULE
-        from ...kupa.gorunum import goal_validation_rows, level_line
+        from ...kupa.gorunum import goal_validation_rows, level_line, rovans_line
 
         cup = self._cup_engine()
         rows = goal_validation_rows(cup)
@@ -880,7 +880,8 @@ class GoalsPage(Page):
             self.cup_val_text.setText(
                 "Ölçülen maçlar kupa modelinin ileriye dönük tahminleridir: her hafta model yalnızca o haftadan önceki "
                 "maçlarla kuruldu, her sezon yalnızca önceki sezonlarla kalibre edildi. Referans: önceki sezonların kupa "
-                f"taban oranı. Kural: {GOAL_RULE}." + (f" {level_line(cup)}" if level_line(cup) else ""))
+                f"taban oranı. Kural: {GOAL_RULE}." + (f" {level_line(cup)}" if level_line(cup) else "")
+                + (f" {rovans_line(cup)}" if rovans_line(cup) else ""))
         self.cup_val_model.set_frame(pd.DataFrame(rows))
 
     def _plot_cal(self) -> None:

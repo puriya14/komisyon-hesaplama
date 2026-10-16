@@ -1,5 +1,8 @@
 # KUPA-ROV-06: İki ayaklı eşleşmelerde rövanş
 
+> **Sonradan:** kullanıcı 2. seçeneği seçti; V1 kupa motoruna kullanıcı kararıyla eklendi (KUPA-ROV-07). Ne
+> uygulandığı, gerçek veride ne değiştiği ve bedeli: [`KUPA_ROV_07.md`](KUPA_ROV_07.md).
+
 İstek: "4, 5 ve 6'yı da sırayla yap" — 6. fikir: ilk maçın skoru rövanşta takımların oyununu değiştirir (önde olan
 savunur, geride olan saldırır); model bunu bilmiyor.
 

@@ -177,6 +177,7 @@
 <p>Ölçülen maçlar kupa modelinin ileriye dönük tahminleridir: her hafta model yalnızca o haftadan önceki maçlarla kuruldu,
   her sezon yalnızca önceki sezonlarla kalibre edildi. Referans: önceki sezonların kupa taban oranı. Kural: {{ cup_rule }}.</p>
 {% if cup_level %}<p class="muted">{{ cup_level }}</p>{% endif %}
+{% if cup_rovans %}<p class="muted">{{ cup_rovans }}</p>{% endif %}
 {% if cup_rows %}
 <div class="table-wrap"><table class="data compact"><thead><tr>{% for c in cup_rows[0].keys() %}<th>{{ c }}</th>{% endfor %}</tr></thead>
   <tbody>{% for r in cup_rows %}<tr>{% for c, v in r.items() %}

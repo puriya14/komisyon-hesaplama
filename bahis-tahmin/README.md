@@ -93,8 +93,9 @@ Maçın 2,5 Üst/Alt oranından piyasa gol düzeyi (ORAN-04; ön kayıtlı sına
 araç `tools/research/piyasa_duzey.py`.
 Kupada rotasyon (KUPA-ROT-05; ön kayıtlı, etki bulunmadı, model değişmedi): [`docs/KUPA_ROT_05.md`](docs/KUPA_ROT_05.md),
 araç `tools/research/kupa_rotasyon.py`.
-İki ayaklı eşleşmelerde rövanş (KUPA-ROV-06; ön kayıtlı, model değişmedi; izlenecek motivasyon etkisi):
-[`docs/KUPA_ROV_06.md`](docs/KUPA_ROV_06.md), araç `tools/research/kupa_rovans.py`.
+İki ayaklı eşleşmelerde rövanş (KUPA-ROV-06; ön kayıtlı, kural geçilmedi; motivasyon etkisi):
+[`docs/KUPA_ROV_06.md`](docs/KUPA_ROV_06.md), araç `tools/research/kupa_rovans.py`. Rövanş etkisi kullanıcı kararıyla
+kupa motoruna eklendi (KUPA-ROV-07): [`docs/KUPA_ROV_07.md`](docs/KUPA_ROV_07.md).
 
 Tek ligde gerçek veri pilotu (S4; openfootball sonuçları, İngiltere Premier League; bütün yazmalar yalnızca `--ev`
 ile verilen ayrı pilot klasörüne): `pilot-hazirla`, `pilot-kapsam` (salt okunur), `pilot-egit`, `pilot-tahmin`
@@ -169,6 +170,7 @@ dokunmaz (`tests/conftest.py`: `BAHIS_TAHMIN_HOME` geçici dizine yönlendirilir
 - [`docs/ORAN_04.md`](docs/ORAN_04.md) — piyasa gol düzeyi: 2,5 Üst/Alt oranından takım gücü girdilerinin ölçeklenmesi; ön kayıtlı sınama (test: üç pazarın toplam log-kaybı −0,0050, 3,5 Üst ve İY 1,5 Üst belirgin iyileşme), uygulamada oran kaynakları, ayrı doğrulama statüsü, kupa (sınanmadı), ileriye dönük protokolün korunması
 - [`docs/KUPA_ROT_05.md`](docs/KUPA_ROT_05.md) — kupada rotasyon: erken tur favorisi ve yoğun fikstür göstergeleri, ön kayıtlı sınama (etkisiz; model değişmedi), sonradan betimleme (yurt içi erken turlarda çok güçlü favoriler tahminden az kazanıyor; izlenecek hipotez)
 - [`docs/KUPA_ROV_06.md`](docs/KUPA_ROV_06.md) — iki ayaklı eşleşmelerde rövanş: eşleşme tanımı, ön kayıtlı üç aday (motivasyon, kopmuş eşleşme), sonuç (geliştirme dönemi küçüktü; model değişmedi), test ve sonradan kestirim (önde olan rövanşta ~%2,7 az gol; izlenecek hipotez), seçenekler
+- [`docs/KUPA_ROV_07.md`](docs/KUPA_ROV_07.md) — rövanş etkisi (kullanıcı kararıyla, ön kayıtlı kuralı geçmeden uygulandı): çarpanlar, sızıntısız ölçüm (önceki haftaların rövanşları) ve tahmin β'sı (0,027), ilk maçın bulunması, görünürlük, gerçek veride log-kayıp önce/şimdi (iyileşme anlamlı değil), doğrulama statüleri, bedeli, izleme
 - [`docs/KUPA_GOL_02.md`](docs/KUPA_GOL_02.md) — Gol Pazarlarında kupa maçları: ilk yarı skoru kapsamı, `kupa-gol-v1` modeli ve geliştirme döneminde seçimi, `kupa-gol-dogrulama-v1` kuralı (ECE eşiği uyarlaması dahil), gerçek veri sonuçları, uygunluk/karar/sanal takip, sınırlar
 - [`docs/WEB_01.md`](docs/WEB_01.md) — web sürümü: açma, telefondan parolalı erişim, sayfalar, masaüstüyle ortak çekirdek, güvenlik önlemleri
 - [`docs/KAYNAK_06.md`](docs/KAYNAK_06.md) — bütün ligler için ESPN: lig kodları, önceki sezonun play-off maçlarını takvim dışında tutma, geride kalan veri deposu (ek ligler), ad değişikliği, ligler arası kanıt, ESPN benzetimi
